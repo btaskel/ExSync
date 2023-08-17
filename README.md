@@ -1,4 +1,4 @@
-# EXSync
+# EXSync with WebUI
 
 ## 去中心化跨设备数据同步系统(EXSync)
 
