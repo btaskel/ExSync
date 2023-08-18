@@ -1,0 +1,39 @@
+{
+  "log": {
+    "loglevel": ""
+  },
+  "server": {
+    "addr": {
+      "id": null,
+      "ip": "127.0.0.1",
+      "port": 5002,
+      "password": "111222333"
+    },
+    "setting": {
+      "encode": "utf-8"
+    },
+    "scan": {
+      "enabled": true,
+      "type": "lan",
+      "max": 5,
+      "device": [
+        "127.0.0.1:5001"
+      ]
+    },
+    "proxy": {
+      "enabled": false,
+      "hostname": "localhost",
+      "port": 0
+    }
+  },
+  "userdata": [
+    {
+      "spacename": "",
+      "path": "",
+      "interval": 0
+
+    }
+  ],
+
+  "version": 0.01
+}
