@@ -8,8 +8,9 @@ import socks
 import xxhash
 from ping3 import ping
 
-from client import Client
-from config import readConfig
+from server.client import Client
+from server.config import readConfig
+from server.tools.status import Status
 from tools.tools import SocketTools, HashTools
 
 
@@ -160,6 +161,13 @@ class Scan(readConfig):
 class createSocket(Scan, Client):
     """
     创建命令收发和数据收发套接字
+
+    过程：
+    1.首先服务端会设置代理（适用于数据、指令、监听Socket）。
+    2.监听Socket等待客户端指令Socket连接，验证成功的客户端ip会增加进白名单列表，如果验证成功开始第三步。
+    3.指令Socket等待客户端指令Socket连接，如果客户端的ip在白名单中，则连接成功，并进入等待循环。
+    4.数据Socket等待客户端数据Socket连接，如果客户端的ip在白名单中，则连接成功，终止指令Socket的等待循环。
+    5.循环等待客户端指令。
     """
 
     def __init__(self):
@@ -175,9 +183,14 @@ class createSocket(Scan, Client):
         self.ip_list = set(self.testDevice())
         self.connected = set()
 
-        # 会话随机数
+        # 全局共享变量
+        self.command_socket = None
+        self.data_socket = None
+
+        # 本机会话随机数
         self.uuid = uuid.uuid4()
 
+        # 持续刷新可用设备列表
         updateIplist = threading.Thread(target=self.updateIplist)
         updateIplist.start()
 
@@ -194,12 +207,16 @@ class createSocket(Scan, Client):
                 if self.uuid == sub_socket.recv(1024).decode(self.encode_type):
                     # 确认会话id
                     SocketTools.sendCommand(sub_socket, '/_com:comm:sync:post:session|True:_', output=False)
-                    thread = threading.Thread(target=DataSocket.handle_client, args=(sub_socket, addr,))
-                    thread.start()
+                    if self.command_socket:
+                        # 如果指令套接字存在
+                        self.data_socket = sub_socket
+                        thread = threading.Thread(target=self.mergeSocket)
+                        thread.start()
                 else:
                     # 会话id错误
                     SocketTools.sendCommand(sub_socket, '/_com:comm:sync:post:session|False:_', output=False)
                     sub_socket.shutdown(socket.SHUT_RDWR)
+                    sub_socket.close()
 
             else:
                 # 关闭连接
@@ -213,9 +230,8 @@ class createSocket(Scan, Client):
         command_socket.listen(128)
         while True:
             sub_socket, addr = command_socket.accept()
-            verified = False
             if addr[0] in self.ip_list:
-                verified = True
+                pass
             else:
                 # 验证对方合法性
                 self.client_socket.settimeout(2)
@@ -225,14 +241,13 @@ class createSocket(Scan, Client):
                     SocketTools.sendCommand(sub_socket, 'yes', output=False)
                     SocketTools.sendCommand(sub_socket, str(self.uuid), output=False)
                     self.connected.add(addr[0])
-                    verified = True
+                    self.command_socket = sub_socket
                 else:
 
                     # 验证失败
                     SocketTools.sendCommand(sub_socket, 'no', output=False)
-
-            t1 = threading.Thread(target=CommandSocket().recvCommand, args=(sub_socket, verified,))
-            t1.start()
+                    sub_socket.shutdown(socket.SHUT_RDWR)
+                    sub_socket.close()
 
     def createVerifySocket(self):
         """
@@ -267,6 +282,15 @@ class createSocket(Scan, Client):
                 self.ip_list.add(verify_addr)
         verify_socket.shutdown(socket.SHUT_RDWR)
         verify_socket.close()
+
+    def mergeSocket(self):
+        """如果指令套接字连接完毕则等待数据传输套接字连接"""
+        if self.data_socket and self.command_socket:
+            data_socket, command_socket = self.data_socket, self.command_socket
+            self.data_socket, self.command_socket = None, None
+            # 运行指令接收
+            command = CommandSocket()
+            command.recvCommand(command_socket, data_socket)
 
     def updateIplist(self):
         """持续更新设备列表"""
@@ -367,18 +391,34 @@ class DataSocket(Scan):
                         with open(remote_file_path, mode='ab') as f:
                             difference = remote_file_size - local_file_size
                             read_data = 0
+                            self.data_socket.settimeout(2)
                             while True:
                                 if read_data <= difference:
-                                    data = self.data_socket.recv(1024)
+                                    try:
+                                        data = self.data_socket.recv(1024)
+                                    except Exception as e:
+                                        print(e)
+                                        return Status.DATA_RECEIVE_TIMEOUT
                                     f.write(data)
                                     read_data += 1024
                                 else:
                                     break
-
-
-
+                            return True
                 else:
-                    return
+                    # 已经存在文件，不予传输
+                    return False
+
+    def recvFolder(self, command):
+        """
+        接收路径并创建文件夹
+        如果路径已存在，则返回False
+        如果路径不存在，则创建路径并返回True
+        """
+        if os.path.exists(command[0]):
+            return False
+        else:
+            os.makedirs(command[0])
+            return True
 
 
 class CommandSocket(Scan):
@@ -416,11 +456,12 @@ class CommandSocket(Scan):
 
     def __init__(self):
         super().__init__()
+        self.command_socket = None
+        self.data_socket = None
 
-    def recvCommand(self, command_socket, data_socket, verified=False):
+    def recvCommand(self, command_socket, data_socket):
         """
         持续倾听并解析指令
-        verified 验证状态：True已验证，False未验证
         :return:
         """
 
@@ -433,7 +474,7 @@ class CommandSocket(Scan):
                 command = command.split(':')
 
                 # 数据类型判断
-                if command[1] == 'data' and verified is True:
+                if command[1] == 'data':
                     # 文件操作
                     if command[2] == 'file':
 
@@ -444,20 +485,19 @@ class CommandSocket(Scan):
 
                         elif command[3] == 'get':
                             # todo: 对方使用get获取本机文件
+                            # thread = threading.Thread(target=)
                             pass
 
                     # 文件夹操作
                     elif command[2] == 'folder':
 
-                        state = command[4].split('|')
                         # 创建本地文件夹
-                        if state[0] == 'get':
-                            if not os.path.exists(command[3]):
-                                os.makedirs(command[3])
-                        # 创建远程文件夹
-                        elif state[0] == 'post':
+                        if command[3] == 'get':
                             pass
-
+                        # 创建远程文件夹
+                        elif command[3] == 'post':
+                            thread = threading.Thread(target=command_set.recvFolder, args=(command[4].split('|'),))
+                            thread.start()
                 # 普通命令判断
                 elif command[1] == 'comm':
                     # EXSync通讯指令

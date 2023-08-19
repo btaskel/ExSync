@@ -1,9 +1,10 @@
 import concurrent.futures
 import os
-from status import Status
+
 import xxhash
 
-from ..config import readConfig
+from server.config import readConfig
+from server.tools.status import Status
 
 
 def createFile(files_path, content):

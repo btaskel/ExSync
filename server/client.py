@@ -4,10 +4,10 @@ import socket
 import socks
 import xxhash
 
-from config import readConfig
-from tools.status import Status
-from tools.tools import HashTools
-from tools.tools import SocketTools
+from server.config import readConfig
+from server.tools.status import Status
+from server.tools.tools import HashTools
+from server.tools.tools import SocketTools
 
 
 class Client(readConfig):
@@ -207,7 +207,7 @@ class CommandSend(Client):
     @staticmethod
     def send_Folder(socket_, path):
         """输入文件路径，发送文件夹创建指令至服务端"""
-        result = SocketTools.sendCommand(socket_, f'/_com:data:folder:{path}:post|None|None:_')
+        result = SocketTools.sendCommand(socket_, f'/_com:data:folder:post:{path}|None|None:_')
         return CommandSend.status(result)
 
     @staticmethod

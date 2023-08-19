@@ -36,7 +36,7 @@ class readConfig:
 
     @staticmethod
     def readJson():
-        with open('..\\config\\config.json', mode='r', encoding='utf-8') as f:
+        with open('.\\config\\config.json', mode='r', encoding='utf-8') as f:
             return json.loads(f.read())
 
     @staticmethod
@@ -73,7 +73,8 @@ class readConfig:
                 {
                     "spacename": "",
                     "path": "",
-                    "interval": 0
+                    "interval": 30,
+                    "autostart": True
 
                 }
             ],
@@ -81,7 +82,7 @@ class readConfig:
             "version": 0.01
         }
 
-        with open('..\\config\\config.json', mode='w', encoding='utf-8') as f:
+        with open('.\\config\\config.json', mode='w', encoding='utf-8') as f:
             json.dump(json_str, f, indent=4)
 
     # @staticmethod

@@ -1,7 +1,7 @@
 import enum
 
 
-class Status(enum):
+class Status(enum.Enum):
     """客户端的状态信息枚举"""
     CONNECTED = '客户端已经连接'
     CONNECT_TIMEOUT = '客户端连接超时'

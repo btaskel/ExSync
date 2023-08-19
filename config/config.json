@@ -30,10 +30,9 @@
     {
       "spacename": "",
       "path": "",
-      "interval": 0
-
+      "interval": 30,
+      "autostart": true
     }
   ],
-
   "version": 0.01
 }

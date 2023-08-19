@@ -4,19 +4,22 @@ from datetime import datetime
 
 import xxhash
 
-from config import readConfig
-from tools.tools import createFile
+from server.config import readConfig
+from server.tools.tools import createFile
 
 
 class SyncData(readConfig):
     """
     建立索引，并且扫描文件是否同步
     判断文件是否同步，或意外中断
+    首先传入：同步目录的路径
     """
 
-    def __init__(self):
+    def __init__(self, path):
         super().__init__()
         self.config = self.readJson()
+        # 同步目录的路径
+        self.path = path
 
     @staticmethod
     def hashFile(file_path):
@@ -50,50 +53,54 @@ class SyncData(readConfig):
             f.truncate()
             json.dump(data, f, indent=4)
 
-    def initIndex(self, path):
+    def initIndex(self):
         """
         本地ExSync索引初始化
-        :param path:
         :return:
         """
         folders = ['.sync\\base', '.sync\\info']
         for folder in folders:
-            path_ = os.path.join(path, folder)
+            path_ = os.path.join(self.path, folder)
             if not os.path.exists(path_):
                 os.makedirs(path_)
 
         # 创建索引
-        files_path = f'{path}\\.sync\\info\\files.json'
-        folder_path = f'{path}\\.sync\\info\\folders.json'
+        files_path = f'{self.path}\\.sync\\info\\files.json'
+        folder_path = f'{self.path}\\.sync\\info\\folders.json'
         # 创建索引文件
         createFile(files_path, '{\n"data":{\n}\n}')
         createFile(folder_path, '{\n"data":{\n}\n}')
 
-        return self.createIndex(path, folder_path, files_path)
+        return self.createIndex(folder_path, files_path)
 
-    def createIndex(self, path, folder_path, files_path):
+    def createIndex(self, folder_path=None, files_path=None):
         """
         同步路径
-        文件夹索引路径
-        文件索引路径
-        :param path:
+        folder_path：文件夹索引文件路径
+        files_path：文件索引文件路径
         :param folder_path:
-        :param files_path:
+        :param files_path:zz
         :return:
         """
-        abspath = os.path.abspath(path)
+        # 如果没有指定路径，则默认选择此路径
+        if not folder_path:
+            folder_path = os.path.join(self.path, '.sync\\info\\folders.json')
+        if not files_path:
+            files_path = os.path.join(self.path, '.sync\\info\\files.json')
+
+        abspath = os.path.abspath(self.path)
         for home, folders, files in os.walk(abspath):
 
             # 建立文件夹索引
             for folder in folders:
                 folder = os.path.join(home, folder)
-                # folder = os.path.join(home,)
                 folder_table = {
                     "data": {
                         folder: {
                             "type": "folder",
                             "system_date": datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
-                            "file_date": os.path.getmtime(folder),
+                            "file_date": datetime.fromtimestamp(os.path.getmtime(folder)).strftime(
+                                "%Y-%m-%d %H:%M:%S"),
                             "state": ""
                         }
                     }
@@ -109,7 +116,8 @@ class SyncData(readConfig):
                         file: {
                             "type": "file",
                             "system_date": datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
-                            "file_date": os.path.getmtime(file),
+                            "file_date": datetime.fromtimestamp(os.path.getmtime(file)).strftime(
+                                "%Y-%m-%d %H:%M:%S"),
                             "hash": SyncData.hashFile(file),
                             "size": "",
                             "state": ""
@@ -142,7 +150,8 @@ class SyncData(readConfig):
                                 file: {
                                     "type": "file",
                                     "system_date": datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
-                                    "file_date": os.path.getmtime(file),
+                                    "file_date": datetime.fromtimestamp(os.path.getmtime(file)).strftime(
+                                        "%Y-%m-%d %H:%M:%S"),
                                     "hash": SyncData.hashFile(file),
                                     "size": os.path.getsize(file),
                                     "state": ""
@@ -156,12 +165,28 @@ class SyncData(readConfig):
                         # self.createIndex(index_file, )
                         pass
 
-    def readIndex(self, path):
-        pass
+    def readIndex(self):
+        """
+        如果存在：读取并返回索引文件的json对象
+        如果不存在：返回False
+        """
+
+        index_path = os.path.join(self.path, '.sync\\info\\')
+        dirs = ['files.json', 'folders.json']
+        for i in dirs:
+            path = os.path.join(index_path, i)
+            if not os.path.exists(path):
+                return False
+
+        with open(os.path.join(index_path, 'files.json'), mode='r') as f:
+            files_json =  json.load(f)
+        with open(os.path.join(index_path, 'folders.json'), mode='r') as f:
+            folders_json = json.load(f)
+        return files_json, folders_json
 
 
 if __name__ == '__main__':
-    p = '..\\test\\database\\.sync\\info'
-    s = SyncData()
+    p = '.\\test\\space'
+    s = SyncData(p)
     # s.updateIndex(p)
     s.initIndex()
