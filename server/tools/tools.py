@@ -1,5 +1,7 @@
 import concurrent.futures
 import os
+import random
+import string
 
 import xxhash
 
@@ -28,6 +30,16 @@ class HashTools:
                     break
                 hasher.update(data)
         return hasher.hexdigest()
+
+    @staticmethod
+    def getRandomStr(number=6):
+        """
+        随机获取N个 26个大小写字母
+        默认: 6位
+        """
+
+        characters = string.ascii_letters
+        return "".join(random.sample(characters, number))
 
 
 class SocketTools:

@@ -6,8 +6,9 @@ import xxhash
 
 from server.config import readConfig
 from server.tools.status import Status
-from server.tools.tools import HashTools
-from server.tools.tools import SocketTools
+from server.tools.tools import HashTools, SocketTools
+
+global_vars = {}
 
 
 class Client(readConfig):
@@ -101,10 +102,14 @@ class CommandSend(Client):
 
     def __init__(self):
         super().__init__()
+        # 数据包发送分块大小(含头)
+        self.block = 1024
 
     def send_File(self, data_socket, path, mode=1):
         """
         输入文件路径，发送文件至服务端
+        data_socket: 与服务端连接的socket
+        path: 文件绝对路径
 
         mode = 0;
         如果不存在文件，则创建文件，返回True。否则不执行操作，返回False。
@@ -115,10 +120,15 @@ class CommandSend(Client):
         mode = 2;
         如果存在文件，并且准备发送的文件字节是对方文件字节的超集(xxh3_128相同)，则续写文件，返回True。否则停止发送返回False。
         """
+        # 获取6位数长度的文件头标识,用于保证文件的数据唯一性
+        filemark = HashTools.getRandomStr()
+
+
         local_size = os.path.getsize(path)
         hash_value = HashTools.getFileHash(path)
+        data_block = self.block - len(filemark)
         result = SocketTools.sendCommand(self.client_socket,
-                                         f'/_com:data:file:{path}:post|{local_size}|{hash_value}|{mode}:_')
+                                         f'/_com:data:file:post:{path}|{local_size}|{hash_value}|{mode}|{filemark}:_')
         result = CommandSend.status(result)
         if result[0]:
             # 服务端准备完毕，开始传输文件
@@ -145,27 +155,29 @@ class CommandSend(Client):
                         return False
                     else:
                         with open(path, mode='rb') as f:
-                            data = f.read(1024)
+                            data = f.read(data_block)
                             while True:
-                                local_size -= 1024
+                                local_size -= data_block
                                 if local_size > 0:
+                                    data = bytes(filemark, 'utf-8') + data
                                     data_socket.send(data)
-                                    data = f.read(1024)
+                                    data = f.read(data_block)
                                 else:
                                     break
 
                 case 1:
                     with open(path, mode='rb') as f:
                         if exist:
-                            # 如果服务端已经存在文件，那么从服务端缺少的字节起始位置读取并发送
+                            # 如果服务端已经存在文件，那么重写该文件
                             local_size -= remote_size
                             f.seek(remote_size)
-                        data = f.read(1024)
+                        data = f.read(data_block)
                         while True:
-                            local_size -= 1024
+                            local_size -= data_block
                             if local_size > 0:
+                                data = bytes(filemark, 'utf-8') + data
                                 data_socket.send(data)
-                                data = f.read(1024)
+                                data = f.read(data_block)
                             else:
                                 break
 
@@ -189,25 +201,26 @@ class CommandSend(Client):
 
                         if remote_filehash == file_block_hash:
                             # 文件前段xxhash_128相同，证明为未传输完成文件
-                            SocketTools.sendCommand(self.client_socket, '/_com:data:reply:True:True:None:None:None',
+                            SocketTools.sendCommand(self.client_socket,
+                                                    f'/_com:data:reply:{filemark}:True:None:None:None',
                                                     output=False)
 
                             with open(path, mode='rb') as f:
                                 f.seek(remote_size)
-                                data = f.read(1024)
+                                data = f.read(data_block)
                                 while True:
                                     if not data:
                                         break
+                                    data = bytes(filemark, 'utf-8') + data
                                     data_socket.send(data)
                             return True
                         else:
                             # ？这是肾么文件，这个文件不是中断传输的产物
                             return False
 
-    @staticmethod
-    def send_Folder(socket_, path):
+    def send_Folder(self, path):
         """输入文件路径，发送文件夹创建指令至服务端"""
-        result = SocketTools.sendCommand(socket_, f'/_com:data:folder:post:{path}|None|None:_')
+        result = SocketTools.sendCommand(self.client_socket, f'/_com:data:folder:post:{path}|None|None:_')
         return CommandSend.status(result)
 
     @staticmethod
@@ -224,3 +237,4 @@ class CommandSend(Client):
         # 如果接收超时
         elif result == Status.DATA_RECEIVE_TIMEOUT:
             return Status.DATA_RECEIVE_TIMEOUT
+

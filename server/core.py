@@ -13,6 +13,24 @@ from server.config import readConfig
 from server.tools.status import Status
 from tools.tools import SocketTools, HashTools
 
+"""
+全局变量管理(存储答复数据)
+除指令的收发次数(count)其它内容均不稳定(随时改变)
+基本格式[ Random_string: "答复指令" ]
+
+data(数据传输)
+文件随机头: {
+    count: 收发次数(int),
+    
+    exist: 文件存在状态(Boolean),
+    filesize: 文件比特大小(int),
+    filehash: 文件xxh_128哈希值(string),
+    filedate: 文件处理模式(string)
+}
+备注: 将在文件/文件夹传输正确完成后, 答复记录会自动销毁.
+"""
+global_vars = {}
+
 
 class Scan(readConfig):
     """
@@ -312,6 +330,8 @@ class DataSocket(Scan):
 
     def __init__(self, command_socket, data_socket):
         super().__init__()
+        # 数据包传输分块大小(bytes)
+        self.block = 1024
         self.command_socket = command_socket
         self.data_socket = data_socket
 
@@ -336,6 +356,12 @@ class DataSocket(Scan):
         remote_file_hash = command[2]
         mode = int(command[3])
 
+        filemark = command[4]
+        # 答复初始化
+        global_vars[filemark] = {
+            'count': 0
+        }
+
         if os.path.exists(remote_file_path):
             local_file_size = os.path.getsize(remote_file_path)
             local_file_hash = HashTools.getFileHash(remote_file_path)
@@ -348,42 +374,61 @@ class DataSocket(Scan):
         # 文件信息
         remote_file_date = os.path.getmtime(remote_file_path)
 
+        # 服务端返回信息格式：/_com : data : reply: filemark: exist | filesize | filehash | filedate
+        self.command_socket.send(
+            f'/_com:data:reply:{filemark}:{exists}|{local_file_size}|{local_file_hash}|{local_file_date}'.encode())
+
+
+
+        # 文件传输切片
+        data_block = self.block - len(filemark)
         match mode:
             case 0:
                 if exists:
-                    # 服务端返回信息格式：exist | filesize | filehash | filedate
-                    self.command_socket.send(
-                        f'/_com:data:reply:True:{exists}|{local_file_size}|{local_file_hash}|{local_file_date}'.encode())
                     return
 
                 file_size = int(remote_file_size[1])
                 with open(remote_file_path, mode='ab') as f:
                     while True:
                         if file_size > 0:
-                            file_size -= 1024
-                            data = self.data_socket.recv(1024)
-                            f.write(data)
+                            file_size -= data_block
+                            data = self.data_socket.recv(self.block)
+                            if data[:6] == filemark:
+                                f.write(data)
                         else:
                             # todo: 将接收完毕的文件状态写入本地索引文件
 
                             break
             case 1:
-                pass
+                if exists:
+                    os.remove(remote_file_path)
+                    with open(remote_file_path, mode='ab') as f:
+                        read_data = remote_file_size
+                        while True:
+                            if read_data > 0:
+                                read_data -= data_block
+                                data = self.data_socket.recv(self.block)
+                                if data[:6] == filemark:
+                                    f.write(data)
+                else:
+                    file_size = int(remote_file_size[1])
+                    with open(remote_file_path, mode='ab') as f:
+                        while True:
+                            if file_size > 0:
+                                file_size -= data_block
+                                data = self.data_socket.recv(self.block)
+                                if data[:6] == filemark:
+                                    f.write(data)
+                            else:
+                                # todo: 将接收完毕的文件状态写入本地索引文件
+
+                                break
 
             case 2:
                 if exists:
-                    # xxh = xxhash.xxh3_128()
-                    # with open(remote_file_path, mode='rb') as f:
-                    #     while True:
-                    #         if string:
-                    #             string = f.read(8192)
-                    #             xxh.update(string)
-                    #         else:
-                    #             break
-                    #         local_file_hash = xxh.hexdigest()
 
                     self.command_socket.send(
-                        f'/_com:data:reply:True:{exists}:{local_file_size}|{local_file_hash}|{local_file_date}'.encode())
+                        f'/_com:data:reply:{filemark}:{exists}:{local_file_size}|{local_file_hash}|{local_file_date}'.encode())
 
                     result = self.command_socket.recv(1024).decode().split(':')
                     if result[3] == 'True' and result[4] == 'True':
@@ -399,8 +444,9 @@ class DataSocket(Scan):
                                     except Exception as e:
                                         print(e)
                                         return Status.DATA_RECEIVE_TIMEOUT
-                                    f.write(data)
-                                    read_data += 1024
+                                    if data[:6] == filemark:
+                                        f.write(data)
+                                    read_data += self.block
                                 else:
                                     break
                             return True
@@ -415,9 +461,13 @@ class DataSocket(Scan):
         如果路径不存在，则创建路径并返回True
         """
         if os.path.exists(command[0]):
+            SocketTools.sendCommand(self.command_socket, f'/_com:data:reply:{filemark}:True:None:None:None',
+                                    output=False)
             return False
         else:
             os.makedirs(command[0])
+            SocketTools.sendCommand(self.command_socket, f'/_com:data:reply:{filemark}:False:None:None:None',
+                                    output=False)
             return True
 
 
@@ -427,8 +477,8 @@ class CommandSocket(Scan):
 
     Data操作指令：
     文件与文件夹的传输指令:
-        /_com:data:file(folder):get:filepath|size|hash|mode:_
-        /_com:data:file(folder):post:filepath|size|hash|mode:_
+        /_com:data:file(folder):get:filepath|size|hash|mode|filemark:_
+        /_com:data:file(folder):post:filepath|size|hash|mode|filemark:_
 
     EXSync通讯指令:
     会话id确认：
@@ -456,8 +506,6 @@ class CommandSocket(Scan):
 
     def __init__(self):
         super().__init__()
-        self.command_socket = None
-        self.data_socket = None
 
     def recvCommand(self, command_socket, data_socket):
         """
@@ -480,7 +528,8 @@ class CommandSocket(Scan):
 
                         if command[3] == 'post':
                             # 对方使用post提交文件至本机
-                            thread = threading.Thread(target=command_set.recvFile, args=(command[4].split('|'),))
+                            values = command[4].split('|')
+                            thread = threading.Thread(target=command_set.recvFile, args=(values,))
                             thread.start()
 
                         elif command[3] == 'get':
@@ -496,8 +545,36 @@ class CommandSocket(Scan):
                             pass
                         # 创建远程文件夹
                         elif command[3] == 'post':
-                            thread = threading.Thread(target=command_set.recvFolder, args=(command[4].split('|'),))
+                            values = command[4].split('|')
+                            # global_vars[values[3]] = None
+                            thread = threading.Thread(target=command_set.recvFolder, args=(values,))
                             thread.start()
+
+                    elif command[2] == 'reply':
+                        # 将客户端答复存入全局变量
+                        if command[4] == 'True':
+                            exist = True
+                        else:
+                            exist = False
+                        if global_vars[command[3]]:
+                            if global_vars[command[3]]['count']:
+                                count = global_vars[command[3]]['count'] + 1
+                            else:
+                                count = 0
+                        else:
+                            # 判断为答复一个不存在的记录,跳过此答复
+                            continue
+
+                        global_vars[command[3]] = {
+                            'count': count,
+
+                            'exist': exist,
+                            'filesize': command[5],
+                            'filehash': command[6],
+                            'filedate': command[7]
+                        }
+
+
                 # 普通命令判断
                 elif command[1] == 'comm':
                     # EXSync通讯指令
