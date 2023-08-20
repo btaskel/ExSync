@@ -382,6 +382,7 @@ class DataSocket(Scan):
 
         # 文件传输切片
         data_block = self.block - len(filemark)
+        filemark_bytes = bytes(filemark, self.encode_type)
         match mode:
             case 0:
                 if exists:
@@ -393,7 +394,7 @@ class DataSocket(Scan):
                         if file_size > 0:
                             file_size -= data_block
                             data = self.data_socket.recv(self.block)
-                            if data[:6] == filemark:
+                            if data[:6] == filemark_bytes:
                                 f.write(data)
                         else:
                             # todo: 将接收完毕的文件状态写入本地索引文件
@@ -408,7 +409,7 @@ class DataSocket(Scan):
                             if read_data > 0:
                                 read_data -= data_block
                                 data = self.data_socket.recv(self.block)
-                                if data[:6] == filemark:
+                                if data[:6] == filemark_bytes:
                                     f.write(data)
                 else:
                     file_size = int(remote_file_size[1])
@@ -417,7 +418,7 @@ class DataSocket(Scan):
                             if file_size > 0:
                                 file_size -= data_block
                                 data = self.data_socket.recv(self.block)
-                                if data[:6] == filemark:
+                                if data[:6] == filemark_bytes:
                                     f.write(data)
                             else:
                                 # todo: 将接收完毕的文件状态写入本地索引文件
@@ -444,7 +445,7 @@ class DataSocket(Scan):
                                     except Exception as e:
                                         print(e)
                                         return Status.DATA_RECEIVE_TIMEOUT
-                                    if data[:6] == filemark:
+                                    if data[:6] == filemark_bytes:
                                         f.write(data)
                                     read_data += self.block
                                 else:
