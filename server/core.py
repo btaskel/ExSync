@@ -6,10 +6,9 @@ import uuid
 
 import socks
 import xxhash
-from ping3 import ping
 
 from server.client import Client
-from server.config import readConfig
+from server.scan import Scan
 from server.tools.status import Status
 from tools.tools import SocketTools, HashTools
 
@@ -30,150 +29,6 @@ data(数据传输)
 备注: 将在文件/文件夹传输正确完成后, 答复记录会自动销毁.
 """
 global_vars = {}
-
-
-class Scan(readConfig):
-    """
-    对局域网/指定网段进行扫描和添加设备
-    """
-
-    def __init__(self):
-        super().__init__()
-        self.config = readConfig.readJson()
-        self.ip_list = []
-
-        # 端口类型
-        self.data_port = self.config['server']['addr']['port']
-        self.command_port = self.config['server']['addr']['port'] + 1
-        self.listen_port = self.config['server']['addr']['port'] + 2
-
-        self.password = self.config["server"]["addr"]["password"]
-
-        # 读取编码类型
-        if self.config['server']['setting']['encode']:
-            self.encode_type = self.config['server']['setting']['encode']
-        else:
-            self.encode_type = 'utf-8'
-
-    def start(self):
-        """
-        添加
-        """
-        global_ = {}
-        for key, value in self.config["server"]["scan"].items():
-            global_[key] = value
-
-        if global_['enabled']:
-            if global_['type'].lower() == 'lan':
-                """
-                LAN模式：逐一扫描局域网并自动搜寻具有正确密钥的计算机
-                """
-
-                def scan(j):
-                    for c_value in range(j * 15 + 1, j * 15 + 16):
-                        if len(self.ip_list) < self.config['server']['scan']['max']:
-                            ip = f'192.168.1.{c_value}'
-                            if ping(ip, timeout=1):
-                                self.ip_list.append(ip)
-                        else:
-                            # 排除列表
-                            remove_ip = ['192.168.1.1', socket.gethostbyname(socket.gethostname())]
-                            for j in remove_ip:
-                                self.ip_list.remove(j)
-                            return self.ip_list
-
-                threads = []
-                for i in range(17):
-                    t_ = threading.Thread(target=scan, args=(i,))
-                    t_.start()
-                    threads.append(t_)
-
-                for thread in threads:
-                    thread.join()
-
-            elif global_['type'].lower() == 'white':
-                """
-                白名单模式：在此模式下只有添加的ip才能连接
-                """
-                for value in self.config['server']['scan']['device']:
-                    self.ip_list.append(value)
-
-            elif global_['type'].lower() == 'black':
-                """
-                黑名单模式：在此模式下被添加的ip将无法连接
-                """
-                for value in self.config['server']['scan']['device']:
-                    self.ip_list.append(value)
-
-        remove_ip = ['192.168.1.1', socket.gethostbyname(socket.gethostname())]
-        for j in remove_ip:
-            self.ip_list.remove(j)
-        return self.ip_list
-
-    def testDevice(self):
-        """
-        主动嗅探并验证ip列表是否存在活动的设备
-        如果存在活动的设备判断密码是否相同
-        :return: devices
-        """
-        self.g['devices'] = []
-        ip_list = self.start()
-
-        for ip in ip_list:
-            test = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            test.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-            test.settimeout(0.3)
-            # 连接设备的指定端口
-            if test.connect_ex((ip, self.command_port)) == 0:
-
-                # 如果密码为空，则任何客户端均可以连接
-                if self.password == "":
-                    version = SocketTools.sendCommand(test, '/_com:comm:sync:get:version:_')
-                    if version == self.config['version']:
-                        self.g['devices'].append(ip)
-                else:
-                    # 密码不为空，则开始验证
-                    version = SocketTools.sendCommand(test, '/_com:comm:sync:get:version:_')
-                    if version == self.config['version']:
-                        password_hash = SocketTools.sendCommand(test, '/_com:comm:sync:post:password|hash:_')
-                        # 如果 远程密码哈希=本地密码哈希 则验证成功
-                        if password_hash == xxhash.xxh3_128(self.password).hexdigest():
-                            # 如果密码哈希值验证成功，则验证密码
-                            self.g['devices'].append(ip)
-
-            test.shutdown(socket.SHUT_RDWR)
-            test.close()
-        return self.g['devices']
-
-    # def scanDevice(self):
-    #     """
-    #     持续扫描目标局域网的设备
-    #     """
-    #     scan = Scan()
-    #     ip_list = scan.start()
-    #
-    #     # 多线程验证设备
-    #     if len(ip_list) % 8 == 0:
-    #         for i in range(8):
-    #             thread = threading.Thread(target=scan.testDevice, args=(ip_list,))
-    #             thread.start()
-    #             thread.join()
-    #     else:
-    #         l = []
-    #         q, r = divmod(len(ip_list), 8)
-    #         for i in range(8):
-    #             l.append(ip_list[i * q:(i + 1) * q + 1])
-    #         remainder = ip_list[-1:-r - 1:-1]
-    #         l.append(remainder)
-    #
-    #         threads = []
-    #         for i in l:
-    #             thread = threading.Thread(target=scan.testDevice, args=(i,))
-    #             thread.start()
-    #             threads.append(thread)
-    #
-    #         for i in threads:
-    #             i.join()
 
 
 class createSocket(Scan, Client):
@@ -376,9 +231,7 @@ class DataSocket(Scan):
 
         # 服务端返回信息格式：/_com : data : reply: filemark: exist | filesize | filehash | filedate
         self.command_socket.send(
-            f'/_com:data:reply:{filemark}:{exists}|{local_file_size}|{local_file_hash}|{local_file_date}'.encode())
-
-
+            f'/_com:data:reply:{filemark}|{exists}|{local_file_size}|{local_file_hash}|{local_file_date}'.encode())
 
         # 文件传输切片
         data_block = self.block - len(filemark)
@@ -429,9 +282,9 @@ class DataSocket(Scan):
                 if exists:
 
                     self.command_socket.send(
-                        f'/_com:data:reply:{filemark}:{exists}:{local_file_size}|{local_file_hash}|{local_file_date}'.encode())
+                        f'/_com:data:reply:{filemark}|{exists}|{local_file_size}|{local_file_hash}|{local_file_date}'.encode())
 
-                    result = self.command_socket.recv(1024).decode().split(':')
+                    result = self.command_socket.recv(self.block).decode().split(':')
                     if result[3] == 'True' and result[4] == 'True':
                         # 对方客户端确认未传输完成，继续传输
                         with open(remote_file_path, mode='ab') as f:
@@ -441,7 +294,7 @@ class DataSocket(Scan):
                             while True:
                                 if read_data <= difference:
                                     try:
-                                        data = self.data_socket.recv(1024)
+                                        data = self.data_socket.recv(self.block)
                                     except Exception as e:
                                         print(e)
                                         return Status.DATA_RECEIVE_TIMEOUT

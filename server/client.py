@@ -102,7 +102,7 @@ class CommandSend(Client):
 
     def __init__(self):
         super().__init__()
-        # 数据包发送分块大小(含头)
+        # 数据包发送分块大小(含filemark)
         self.block = 1024
 
     def send_File(self, data_socket, path, mode=1):
@@ -123,10 +123,10 @@ class CommandSend(Client):
         # 获取6位数长度的文件头标识,用于保证文件的数据唯一性
         filemark = HashTools.getRandomStr()
 
-
         local_size = os.path.getsize(path)
         hash_value = HashTools.getFileHash(path)
         data_block = self.block - len(filemark)
+        # 远程服务端初始化接收文件
         result = SocketTools.sendCommand(self.client_socket,
                                          f'/_com:data:file:post:{path}|{local_size}|{hash_value}|{mode}|{filemark}:_')
         result = CommandSend.status(result)
@@ -226,15 +226,10 @@ class CommandSend(Client):
     @staticmethod
     def status(result):
         """状态值返回，用于集中判断服务端的接收状态"""
-        # /_com:data:reply:True:Value:_
+        # /_com:data:reply:filemark:Value:_
 
         result = result.split(':')
-        if result[3] == 'True':
+        if result == Status.DATA_RECEIVE_TIMEOUT:
+            return False, Status.DATA_RECEIVE_TIMEOUT
+        else:
             return True, result[4]
-        elif result[3] == 'False':
-            return False, result[4]
-
-        # 如果接收超时
-        elif result == Status.DATA_RECEIVE_TIMEOUT:
-            return Status.DATA_RECEIVE_TIMEOUT
-
