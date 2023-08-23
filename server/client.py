@@ -152,6 +152,7 @@ class CommandSend(Client):
             match mode:
                 case 0:
                     if exist:
+                        self.replyFinish(filemark, False)
                         return False
                     else:
                         with open(path, mode='rb') as f:
@@ -164,6 +165,7 @@ class CommandSend(Client):
                                     data = f.read(data_block)
                                 else:
                                     break
+                            self.replyFinish(filemark)
 
                 case 1:
                     with open(path, mode='rb') as f:
@@ -180,6 +182,7 @@ class CommandSend(Client):
                                 data = f.read(data_block)
                             else:
                                 break
+                        self.replyFinish(filemark)
 
                 case 2:
                     # 远程服务端准备完成
@@ -213,10 +216,14 @@ class CommandSend(Client):
                                         break
                                     data = bytes(filemark, 'utf-8') + data
                                     data_socket.send(data)
+                            self.replyFinish(filemark)
                             return True
                         else:
                             # ？这是肾么文件，这个文件不是中断传输的产物
+                            self.replyFinish(filemark, False)
                             return False
+                    self.replyFinish(filemark, False)
+                    return
 
     def send_Folder(self, path):
         """输入文件路径，发送文件夹创建指令至服务端"""
@@ -233,3 +240,15 @@ class CommandSend(Client):
             return False, Status.DATA_RECEIVE_TIMEOUT
         else:
             return True, result[4]
+
+    def replyFinish(self, filemark, expect=True, *args):
+        """
+        发送请求结束传输，并让服务端删除答复记录
+        此方法不接收服务端返回状态
+        :param filemark: 文件传输标识
+        :param expect: 是否达到客户端的预期目标
+        :param args: 返回至服务端的参数
+        :return: 超时/正常状态
+        """
+        return SocketTools.sendCommand(self.client_socket, f'/_com:data:reply_end:{filemark}:{expect}:{args}',
+                                       output=False)

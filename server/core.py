@@ -283,10 +283,19 @@ class DataSocket(Scan):
 
                     self.command_socket.send(
                         f'/_com:data:reply:{filemark}|{exists}|{local_file_size}|{local_file_hash}|{local_file_date}'.encode())
+                    count = global_vars[filemark]['count']
+                    result = None
+                    if count < 1:
+                        while count < 1:
+                            time.sleep(0.1)
+                            result = global_vars[filemark]
+                    elif count == 1:
+                        result = global_vars[filemark]
+                    else:
+                        return Status.REPLY_ERROR
 
-                    result = self.command_socket.recv(self.block).decode().split(':')
-                    if result[3] == 'True' and result[4] == 'True':
-                        # 对方客户端确认未传输完成，继续传输
+                    if result['exist']:
+                        # 对方客户端确认未传输完成，继续接收文件
                         with open(remote_file_path, mode='ab') as f:
                             difference = remote_file_size - local_file_size
                             read_data = 0
@@ -305,7 +314,7 @@ class DataSocket(Scan):
                                     break
                             return True
                 else:
-                    # 已经存在文件，不予传输
+                    # 不存在文件，不予传输
                     return False
 
     def recvFolder(self, command):
@@ -427,6 +436,16 @@ class CommandSocket(Scan):
                             'filehash': command[6],
                             'filedate': command[7]
                         }
+                    elif command[2] == 'reply_end':
+                        if command[4] == 'True':
+                            # 按预期执行
+                            pass
+                        else:
+                            # 未按预期执行
+                            pass
+
+                        global_vars.pop(command[3], None)
+
 
 
                 # 普通命令判断

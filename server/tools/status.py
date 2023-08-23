@@ -17,3 +17,5 @@ class Status(enum.Enum):
     SESSION_FALSE = '会话验证失败'
 
     PARAMETER_ERROR = '参数错误'
+
+    REPLY_ERROR = '回复错误'
