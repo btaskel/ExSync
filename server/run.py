@@ -1,13 +1,16 @@
+import logging
+
 from server.core import createSocket
-from server.client import Client
+from server.shell import *
+
 
 def run():
+    initLogging(logging.DEBUG)
+
     server = createSocket()
     server.createDataSocket()
     server.createCommandSocket()
     server.createVerifySocket()
-
-
 
 
 if __name__ == '__main__':

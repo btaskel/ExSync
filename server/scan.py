@@ -1,5 +1,8 @@
+import os
+import re
 import socket
 import threading
+import logging
 
 import xxhash
 from ping3 import ping
@@ -35,6 +38,7 @@ class Scan(readConfig):
         """
         添加
         """
+        ip_list = []
         global_ = {}
         for key, value in self.config["server"]["scan"].items():
             global_[key] = value
@@ -45,46 +49,54 @@ class Scan(readConfig):
                 LAN模式：逐一扫描局域网并自动搜寻具有正确密钥的计算机
                 """
 
-                def scan(j):
-                    for c_value in range(j * 15 + 1, j * 15 + 16):
-                        if len(self.ip_list) < self.config['server']['scan']['max']:
-                            ip = f'192.168.1.{c_value}'
-                            if ping(ip, timeout=1):
-                                self.ip_list.append(ip)
-                        else:
-                            # 排除列表
-                            remove_ip = ['192.168.1.1', socket.gethostbyname(socket.gethostname())]
-                            for j in remove_ip:
-                                self.ip_list.remove(j)
-                            return self.ip_list
+                # 获取局域网所在的网段
+                result = os.popen('ipconfig /all').read()
+                pattern = re.compile(r'IPv4.*?(\d+\.\d+\.\d+)\.\d+')
+                print(pattern)
+                match = pattern.search(result)
+                if not match:
+                    print('无法获取局域网所在的网段')
+                    return
+                net = match.group(1)
 
-                threads = []
-                for i in range(17):
-                    t_ = threading.Thread(target=scan, args=(i,))
-                    t_.start()
-                    threads.append(t_)
+                # 清空当前所有的 arp 映射表
+                os.popen('arp -d *')
 
-                for thread in threads:
-                    thread.join()
+                # 循环遍历当前网段所有可能的 IP 与其 ping 一遍建立 arp 映射表
+                for i in range(1, 256):
+                    os.popen(f'ping {net}.{i} -n 1 -w 1')
+
+                # 读取缓存的映射表获取所有与本机连接的设备的 MAC 地址
+                result = os.popen('arp -a').read()
+                pattern = re.compile(
+                    r'(\d+\.\d+\.\d+\.\d+)\s+([\da-f]{2}-[\da-f]{2}-[\da-f]{2}-[\da-f]{2}-[\da-f]{2}-[\da-f]{2})')
+                ips = pattern.findall(result)
+                for ip, mac in ips:
+                    ip_list.append(ip)
+                logging.debug('LAN: Search for IP completed')
+                return ip_list
 
             elif global_['type'].lower() == 'white':
                 """
                 白名单模式：在此模式下只有添加的ip才能连接
                 """
                 for value in self.config['server']['scan']['device']:
-                    self.ip_list.append(value)
+                    ip_list.append(value)
+                logging.info('White List: Search for IP completed')
 
             elif global_['type'].lower() == 'black':
                 """
                 黑名单模式：在此模式下被添加的ip将无法连接
                 """
                 for value in self.config['server']['scan']['device']:
-                    self.ip_list.append(value)
+                    ip_list.append(value)
+                logging.info('Black List: Search for IP completed')
 
         remove_ip = ['192.168.1.1', socket.gethostbyname(socket.gethostname())]
-        for j in remove_ip:
-            self.ip_list.remove(j)
-        return self.ip_list
+        if ip_list:
+            for j in remove_ip:
+                ip_list.remove(j)
+        return ip_list
 
     def testDevice(self):
         """
@@ -98,8 +110,9 @@ class Scan(readConfig):
         for ip in ip_list:
             test = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             test.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-            test.settimeout(0.3)
+            # test.settimeout(1)
             # 连接设备的指定端口
+            print((ip, self.command_port))
             if test.connect_ex((ip, self.command_port)) == 0:
 
                 # 如果密码为空，则任何客户端均可以连接
@@ -117,10 +130,11 @@ class Scan(readConfig):
                             # 如果密码哈希值验证成功，则验证密码
                             self.g['devices'].append(ip)
 
-            test.shutdown(socket.SHUT_RDWR)
+                test.shutdown(socket.SHUT_RDWR)
             test.close()
         return self.g['devices']
 
 
 if __name__ == '__main__':
-    pass
+    scan = Scan()
+    scan.start()

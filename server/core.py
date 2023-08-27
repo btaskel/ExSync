@@ -3,14 +3,15 @@ import socket
 import threading
 import time
 import uuid
+import logging
 
 import socks
 import xxhash
 
-from server.client import Client
+from server.client import Client, CommandSend
 from server.scan import Scan
 from server.tools.status import Status
-from tools.tools import SocketTools, HashTools
+from server.tools.tools import SocketTools, HashTools
 
 """
 全局变量管理(存储答复数据)
@@ -167,8 +168,8 @@ class createSocket(Scan, Client):
 
     def updateIplist(self):
         """持续更新设备列表"""
+        client = Client()
         while True:
-            client = Client()
             client.connectSocket(self.ip_list)
             time.sleep(15)
             self.ip_list = self.testDevice()
@@ -283,16 +284,8 @@ class DataSocket(Scan):
 
                     self.command_socket.send(
                         f'/_com:data:reply:{filemark}|{exists}|{local_file_size}|{local_file_hash}|{local_file_date}'.encode())
-                    count = global_vars[filemark]['count']
-                    result = None
-                    if count < 1:
-                        while count < 1:
-                            time.sleep(0.1)
-                            result = global_vars[filemark]
-                    elif count == 1:
-                        result = global_vars[filemark]
-                    else:
-                        return Status.REPLY_ERROR
+
+                    result = SocketTools.replyCommand(1, global_vars, filemark)
 
                     if result['exist']:
                         # 对方客户端确认未传输完成，继续接收文件
@@ -317,21 +310,45 @@ class DataSocket(Scan):
                     # 不存在文件，不予传输
                     return False
 
+    def sendFile(self, command):
+        """
+        服务端发送文件至客户端
+        文件与文件夹的传输指令:
+        /_com:data:file(folder):get:filepath|size|hash|mode:_
+        /_com:data:file(folder):post:filepath|size|hash|mode:_
+
+        mode = 0;
+        如果不存在文件，则创建文件。否则不执行操作。
+
+        mode = 1;
+        如果不存在文件，则创建文件。否则重写文件。
+
+        mode = 2;
+        如果存在文件，并且准备发送的文件字节是对方文件字节的超集(xxh3_128相同)，则续写文件。
+        """
+
     def recvFolder(self, command):
         """
         接收路径并创建文件夹
-        如果路径已存在，则返回False
-        如果路径不存在，则创建路径并返回True
         """
+        filemark = command[4]
         if os.path.exists(command[0]):
             SocketTools.sendCommand(self.command_socket, f'/_com:data:reply:{filemark}:True:None:None:None',
                                     output=False)
-            return False
         else:
             os.makedirs(command[0])
             SocketTools.sendCommand(self.command_socket, f'/_com:data:reply:{filemark}:False:None:None:None',
                                     output=False)
-            return True
+        return
+
+    def getFolder(self, command):
+        """
+        获取文件夹信息
+        如果服务端存在文件夹，以及其索引，则返回索引
+        如果不存在则向客户端返回状态
+        """
+        # todo:
+        pass
 
 
 class CommandSocket(Scan):
@@ -403,10 +420,10 @@ class CommandSocket(Scan):
                     # 文件夹操作
                     elif command[2] == 'folder':
 
-                        # 创建本地文件夹
+                        # 获取服务端文件夹信息
                         if command[3] == 'get':
                             pass
-                        # 创建远程文件夹
+                        # 创建服务端文件夹
                         elif command[3] == 'post':
                             values = command[4].split('|')
                             # global_vars[values[3]] = None

@@ -17,15 +17,17 @@ class Client(readConfig):
         self.client_socket = None
         self.client_data_socket = None
         self.config = readConfig.readJson()
+
         # 已连接列表
         self.connected = []
+
         # 会话id
         self.uuid = None
 
         self.data_port = self.config['server']['addr']['port']
         self.command_port = self.config['server']['addr']['port'] + 1
         self.listen_port = self.config['server']['addr']['port'] + 2
-        self.encode = self.config['server']['addr']['encode']
+        self.encode = self.config['server']['setting']['encode']
         self.createSocket()
 
     def createSocket(self):
@@ -51,7 +53,7 @@ class Client(readConfig):
                     if self.client_socket.connect_ex((ip, self.command_port)) == 0:
 
                         # 开始验证合法性
-                        result = self.client_socket.recv(1024).decode(self.config['server']['addr']['encode'])
+                        result = self.client_socket.recv(1024).decode(self.encode)
                         if result == '/_com:comm:sync:get:password_hash':
                             result = SocketTools.sendCommand(self.client_socket, xxhash.xxh3_128(
                                 self.encode).hexdigest())
@@ -59,7 +61,7 @@ class Client(readConfig):
                             if result == 'yes':
                                 # 通过验证，接收会话id
                                 self.uuid = self.client_socket.recv(1024).decode(
-                                    self.config['server']['addr']['encode'])
+                                    self.encode)
 
                                 self.connected.append(ip)
                                 return self.client_socket
@@ -227,7 +229,10 @@ class CommandSend(Client):
 
     def send_Folder(self, path):
         """输入文件路径，发送文件夹创建指令至服务端"""
-        result = SocketTools.sendCommand(self.client_socket, f'/_com:data:folder:post:{path}|None|None:_')
+        filemark = HashTools.getRandomStr()
+        SocketTools.sendCommand(self.client_socket,
+                                f'/_com:data:folder:post:{path}|None|None|None|{filemark}:_', output=False)
+
         return CommandSend.status(result)
 
     @staticmethod

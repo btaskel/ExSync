@@ -2,6 +2,7 @@ import concurrent.futures
 import os
 import random
 import string
+import time
 
 import xxhash
 
@@ -102,3 +103,24 @@ class SocketTools:
             except Exception as e:
                 raise TimeoutError('Socket错误: ', e)
             return True
+
+    @staticmethod
+    def replyCommand(value, global_vars, filemark, sleep=0.1):
+        """
+        等待指定次数的答复内容
+        value: 第value次答复次数的内容
+        global_vars: 答复存储的字典
+        filemark: 标识头
+        返回：
+        """
+        count = global_vars[filemark]['count']
+        result = None
+        if count < value:
+            while count < value:
+                time.sleep(sleep)
+                result = global_vars[filemark]
+        elif count == value:
+            result = global_vars[filemark]
+        else:
+            return Status.REPLY_ERROR
+        return result

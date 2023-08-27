@@ -1,12 +1,14 @@
 import json
 import os
 from datetime import datetime
+import configparser
 
 import xxhash
 
 from server.config import readConfig
 from server.tools.tools import createFile
-
+from server.core import createSocket
+from server.run import run
 
 class SyncData(readConfig):
     """
@@ -19,7 +21,8 @@ class SyncData(readConfig):
         super().__init__()
         self.config = self.readJson()
         # 同步目录的路径
-        self.path = path
+        self.path = os.path.abspath(path)
+        run()
 
     @staticmethod
     def hashFile(file_path):
@@ -67,9 +70,18 @@ class SyncData(readConfig):
         # 创建索引
         files_path = f'{self.path}\\.sync\\info\\files.json'
         folder_path = f'{self.path}\\.sync\\info\\folders.json'
+        space_config = f'{self.path}\\.sync\\config.ini'
+
         # 创建索引文件
         createFile(files_path, '{\n"data":{\n}\n}')
         createFile(folder_path, '{\n"data":{\n}\n}')
+
+        config_file = configparser.ConfigParser()
+        config_file['main'] = {
+            'overwrite': False,
+            'priority': '',
+
+        }
 
         return self.createIndex(folder_path, files_path)
 
@@ -183,6 +195,13 @@ class SyncData(readConfig):
         with open(os.path.join(index_path, 'folders.json'), mode='r') as f:
             folders_json = json.load(f)
         return files_json, folders_json
+
+    def analyseFiles(self):
+        """
+        分析双方文件是否需要同步
+        """
+
+
 
 
 if __name__ == '__main__':
