@@ -1,14 +1,14 @@
+import logging
 import os
 import socket
 import threading
 import time
 import uuid
-import logging
 
 import socks
 import xxhash
 
-from server.client import Client, CommandSend
+from server.client import Client
 from server.scan import Scan
 from server.tools.status import Status
 from server.tools.tools import SocketTools, HashTools
@@ -173,6 +173,7 @@ class createSocket(Scan, Client):
             client.connectSocket(self.ip_list)
             time.sleep(15)
             self.ip_list = self.testDevice()
+            logging.debug(f'IP list update: {self.ip_list}')
 
 
 class DataSocket(Scan):

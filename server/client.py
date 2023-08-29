@@ -87,7 +87,7 @@ class Client(readConfig):
 
         session = SocketTools.sendCommand(self.client_data_socket,
                                           str(self.uuid))
-        if eval(session.split(':')[4].split('|')[1]):
+        if session.split(':')[4].split('|')[1] == 'True':
             # 会话验证成功
             pass
         else:

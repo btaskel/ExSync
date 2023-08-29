@@ -1,10 +1,11 @@
-import logging
-
 from server.core import createSocket
 from server.shell import *
 
 
 def run():
+    """
+    服务启动后返回Core(多个socket)实例
+    """
     initLogging(logging.DEBUG)
 
     server = createSocket()

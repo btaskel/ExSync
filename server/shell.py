@@ -1,4 +1,3 @@
-import getopt
 import logging
 import sys
 
@@ -23,10 +22,10 @@ def checkPython():
         print('您不能使用除python 3以外的python版本')
         sys.exit(1)
 
+
 # def getArgs():
 #     optlist, args = getopt.getopt(sys.argv[1:], shortopts, longopts)
 #     print(optlist)
-
 
 
 if __name__ == '__main__':

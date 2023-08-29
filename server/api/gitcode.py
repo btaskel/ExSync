@@ -156,7 +156,6 @@ class GitcodeAPI(ApiConfig):
             raise e
         return BeautifulSoup(html.text, 'html.parser')
 
-
     def __urlInit(self, url):
         """
         这个函数用来初始化URL，让GitCode的URL格式化

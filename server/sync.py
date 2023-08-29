@@ -1,14 +1,15 @@
+import configparser
 import json
+import logging
 import os
 from datetime import datetime
-import configparser
 
 import xxhash
 
 from server.config import readConfig
-from server.tools.tools import createFile
-from server.core import createSocket
-from server.run import run
+from server.shell import initLogging
+from server.tools.tools import createFile, relToAbs
+
 
 class SyncData(readConfig):
     """
@@ -19,10 +20,11 @@ class SyncData(readConfig):
 
     def __init__(self, path):
         super().__init__()
+        initLogging(logging.DEBUG)
         self.config = self.readJson()
         # 同步目录的路径
         self.path = os.path.abspath(path)
-        run()
+        # run()
 
     @staticmethod
     def hashFile(file_path):
@@ -106,6 +108,7 @@ class SyncData(readConfig):
             # 建立文件夹索引
             for folder in folders:
                 folder = os.path.join(home, folder)
+                logging.debug(f'Created index for {folder} folder.')
                 folder_table = {
                     "data": {
                         folder: {
@@ -123,6 +126,7 @@ class SyncData(readConfig):
             for file in files:
                 file = os.path.join(home, file)
                 # folder = os.path.join(home,)
+                logging.debug(f'Created index for {file} file.')
                 file_table = {
                     "data": {
                         file: {
@@ -153,6 +157,7 @@ class SyncData(readConfig):
             for home, folders, files in os.walk(abspath):
                 for file in files:
                     file = os.path.join(abspath, file)
+                    print(file)
 
                     if file in index_dict['data']:
                         # 如果存在记录，则更新记录
@@ -191,15 +196,40 @@ class SyncData(readConfig):
                 return False
 
         with open(os.path.join(index_path, 'files.json'), mode='r') as f:
-            files_json =  json.load(f)
+            files_json = json.load(f)
         with open(os.path.join(index_path, 'folders.json'), mode='r') as f:
             folders_json = json.load(f)
         return files_json, folders_json
 
-    def analyseFiles(self):
+    def analyseFiles(self, remote_data):
         """
-        分析双方文件是否需要同步
+        分析双方文件索引是否需要同步
+        remote_data [file_index_path, folder_index_path]
         """
+
+        result = self.readIndex()
+        local_file_index = result[0]
+        local_folder_index = result[1]
+        with open(relToAbs(remote_data[0]), mode='r', encoding='utf-8') as f:
+            remote_file_index = json.load(f)
+
+        with open(relToAbs(remote_data[1]), mode='r', encoding='utf-8') as f:
+            remote_folder_index = json.load(f)
+
+        change_info = {}
+        ls = [(local_file_index, remote_file_index), (local_folder_index, remote_folder_index)]
+
+        for local_index, remote_index in ls:
+            for local_key, local_value in local_index.items():
+                if local_key in remote_index:
+                    if local_value != remote_index[local_key]:
+                        change_info[local_key] = 0
+                else:
+                    change_info[local_key] = 1
+            for remote_key in remote_index:
+                if remote_key not in local_index:
+                    change_info[remote_key] = 2
+        return change_info
 
 
 

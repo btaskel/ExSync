@@ -1,11 +1,9 @@
+import logging
 import os
 import re
 import socket
-import threading
-import logging
 
 import xxhash
-from ping3 import ping
 
 from server.config import readConfig
 from server.tools.tools import SocketTools

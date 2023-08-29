@@ -1,4 +1,5 @@
 import concurrent.futures
+import logging
 import os
 import random
 import string
@@ -15,6 +16,18 @@ def createFile(files_path, content):
     if not os.path.exists(files_path):
         with open(files_path, mode='w', encoding='utf-8') as f:
             f.write(content)
+
+
+def relToAbs(file_path):
+    """默认将相对路径转换为绝对路径"""
+    try:
+        if os.path.isabs(file_path):
+            return file_path
+        else:
+            return os.path.abspath(file_path)
+    except Exception as e:
+        print(e)
+        logging.error(f'File path error: {file_path}')
 
 
 class HashTools:
