@@ -60,13 +60,10 @@ class createSocket(Scan, Client):
         # 全局共享变量
         self.command_socket = None
         self.data_socket = None
+        self.socket_info = {}
 
         # 本机会话随机数
         self.uuid = uuid.uuid4()
-
-        # 持续刷新可用设备列表
-        updateIplist = threading.Thread(target=self.updateIplist)
-        updateIplist.start()
 
     def createDataSocket(self):
         data_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -86,6 +83,7 @@ class createSocket(Scan, Client):
                         self.data_socket = sub_socket
                         thread = threading.Thread(target=self.mergeSocket)
                         thread.start()
+
                 else:
                     # 会话id错误
                     SocketTools.sendCommand(sub_socket, '/_com:comm:sync:post:session|False:_', output=False)
@@ -105,8 +103,22 @@ class createSocket(Scan, Client):
         while True:
             sub_socket, addr = command_socket.accept()
             if addr[0] in self.ip_list:
-                pass
+                # 验证成功
+                SocketTools.sendCommand(sub_socket, 'yes', output=False)
+                SocketTools.sendCommand(sub_socket, str(self.uuid), output=False)
+                self.connected.add(addr[0])
+                self.command_socket = sub_socket
+
+                if sub_socket.getpeername()[0] in self.socket_info:
+                    self.socket_info[sub_socket.getpeername()[0]]["command"] = sub_socket
+                else:
+                    self.socket_info[sub_socket.getpeername()[0]] = {
+                        "command": sub_socket,
+                        "data": None
+                    }
+
             else:
+
                 # 验证对方合法性
                 self.client_socket.settimeout(2)
                 password_hash = SocketTools.sendCommand(sub_socket, '/_com:comm:sync:get:password_hash')
@@ -116,6 +128,15 @@ class createSocket(Scan, Client):
                     SocketTools.sendCommand(sub_socket, str(self.uuid), output=False)
                     self.connected.add(addr[0])
                     self.command_socket = sub_socket
+
+                    if sub_socket.getpeername()[0] in self.socket_info:
+                        self.socket_info[sub_socket.getpeername()[0]]["command"] = sub_socket
+                    else:
+                        self.socket_info[sub_socket.getpeername()[0]] = {
+                            "command": sub_socket,
+                            "data": None
+                        }
+
                 else:
 
                     # 验证失败
@@ -160,15 +181,28 @@ class createSocket(Scan, Client):
     def mergeSocket(self):
         """如果指令套接字连接完毕则等待数据传输套接字连接"""
         if self.data_socket and self.command_socket:
-            data_socket, command_socket = self.data_socket, self.command_socket
-            self.data_socket, self.command_socket = None, None
-            # 运行指令接收
-            command = CommandSocket()
-            command.recvCommand(command_socket, data_socket)
+            if self.data_socket.getpeername()[0] == self.command_socket.getpeername()[0]:
+                data_socket, command_socket = self.data_socket, self.command_socket
+                self.data_socket, self.command_socket = None, None
+                # 运行指令接收
+                command = CommandSocket()
+                command.recvCommand(command_socket, data_socket)
+            else:
+                pass
 
-    def updateIplist(self):
-        """持续更新设备列表"""
+
+    def createClientCommandSocket(self):
+        """
+        持续刷新可用设备列表
+        返回客户端实例
+        """
         client = Client()
+        updateIplist = threading.Thread(target=self.updateIplist, args=(client,))
+        updateIplist.start()
+        return client
+
+    def updateIplist(self, client):
+        """持续更新设备列表"""
         while True:
             client.connectSocket(self.ip_list)
             time.sleep(15)

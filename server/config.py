@@ -53,7 +53,8 @@ class readConfig:
                     "password": "111222333"
                 },
                 "setting": {
-                    "encode": "utf-8"
+                    "encode": "utf-8",
+                    "iobalance": False
                 },
                 "scan": {
                     "enabled": True,

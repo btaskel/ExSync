@@ -5,6 +5,7 @@ import socks
 import xxhash
 
 from server.config import readConfig
+from server.sync import Index
 from server.tools.status import Status
 from server.tools.tools import HashTools, SocketTools
 
@@ -232,8 +233,7 @@ class CommandSend(Client):
         filemark = HashTools.getRandomStr()
         SocketTools.sendCommand(self.client_socket,
                                 f'/_com:data:folder:post:{path}|None|None|None|{filemark}:_', output=False)
-
-        return CommandSend.status(result)
+        return True
 
     @staticmethod
     def status(result):

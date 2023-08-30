@@ -17,9 +17,11 @@ def checkPython():
     version = sys.version_info
     if version[0] == '3' and version[1] < 11:
         print('python版本小于3.11')
+        logging.error('Python version error.')
         sys.exit(1)
     elif version[0] != '3':
         print('您不能使用除python 3以外的python版本')
+        logging.error('Python version error.')
         sys.exit(1)
 
 

@@ -7,14 +7,14 @@ from datetime import datetime
 import xxhash
 
 from server.config import readConfig
+from server.core import createSocket
 from server.shell import initLogging
 from server.tools.tools import createFile, relToAbs
 
 
-class SyncData(readConfig):
+class Index(readConfig):
     """
-    建立索引，并且扫描文件是否同步
-    判断文件是否同步，或意外中断
+    建立索引，并且扫描文件是否需要同步
     首先传入：同步目录的路径
     """
 
@@ -120,7 +120,7 @@ class SyncData(readConfig):
                         }
                     }
                 }
-                SyncData.updateJson(folder_path, folder_table)
+                Index.updateJson(folder_path, folder_table)
 
             # 建立文件索引
             for file in files:
@@ -134,13 +134,13 @@ class SyncData(readConfig):
                             "system_date": datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
                             "file_date": datetime.fromtimestamp(os.path.getmtime(file)).strftime(
                                 "%Y-%m-%d %H:%M:%S"),
-                            "hash": SyncData.hashFile(file),
+                            "hash": Index.hashFile(file),
                             "size": "",
                             "state": ""
                         }
                     }
                 }
-                SyncData.updateJson(files_path, file_table)
+                Index.updateJson(files_path, file_table)
 
         return
 
@@ -169,13 +169,13 @@ class SyncData(readConfig):
                                     "system_date": datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
                                     "file_date": datetime.fromtimestamp(os.path.getmtime(file)).strftime(
                                         "%Y-%m-%d %H:%M:%S"),
-                                    "hash": SyncData.hashFile(file),
+                                    "hash": Index.hashFile(file),
                                     "size": os.path.getsize(file),
                                     "state": ""
                                 }
                             }
                         }
-                        SyncData.updateJson(index_file, file_table)
+                        Index.updateJson(index_file, file_table)
 
                     else:
                         # 如果没有记录，则创建记录
@@ -217,7 +217,8 @@ class SyncData(readConfig):
             remote_folder_index = json.load(f)
 
         change_info = {}
-        ls = [(local_file_index, remote_file_index), (local_folder_index, remote_folder_index)]
+        ls = [(local_file_index, remote_file_index),
+              (local_folder_index, remote_folder_index)]
 
         for local_index, remote_index in ls:
             for local_key, local_value in local_index.items():
@@ -232,10 +233,31 @@ class SyncData(readConfig):
         return change_info
 
 
+class SyncData(Index):
+    """
+    数据同步
+    """
+
+    def __init__(self, path):
+        super().__init__(path)
+        initLogging(logging.DEBUG)
+
+        self.server = createSocket()
+        self.server.createDataSocket()
+        self.server.createCommandSocket()
+        self.server.createVerifySocket()
+        self.client_socket = self.server.createClientCommandSocket()
+
+    def syncFiles(self, method=0):
+        """
+        同步N方文件
+        method = 0; 同步双方文件
+        method = 1; 同步所有设备的文件
+        """
 
 
 if __name__ == '__main__':
     p = '.\\test\\space'
-    s = SyncData(p)
+    s = Index(p)
     # s.updateIndex(p)
     s.initIndex()
