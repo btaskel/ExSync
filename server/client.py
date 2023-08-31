@@ -9,7 +9,15 @@ from server.sync import Index
 from server.tools.status import Status
 from server.tools.tools import HashTools, SocketTools
 
-global_vars = {}
+"""
+子Socket管理
+当客户端与服务端建立连接后, 用于管理指令与数据传输Socket的存储
+
+command: 指令Socket
+data: 数据传输Socket
+
+"""
+socket_manage = {}
 
 
 class Client(readConfig):
@@ -42,65 +50,68 @@ class Client(readConfig):
 
         self.client_socket = client_socket
 
-    def connectSocket(self, ip_list):
+    def connectCommandSocket(self, ip):
         """
         尝试连接ip_list,连接成功返回连接的ip，并且增加进connected列表
         连接至对方的server-command_socket
         """
-        for ip in ip_list:
-            if ip not in self.connected:
-                for i in range(3):
-                    self.client_socket.settimeout(2)
-                    if self.client_socket.connect_ex((ip, self.command_port)) == 0:
 
-                        # 开始验证合法性
-                        result = self.client_socket.recv(1024).decode(self.encode)
-                        if result == '/_com:comm:sync:get:password_hash':
-                            result = SocketTools.sendCommand(self.client_socket, xxhash.xxh3_128(
-                                self.encode).hexdigest())
+        if not socket_manage['command'] and ip not in self.connected:
+            for i in range(3):
+                self.client_socket.settimeout(2)
+                if self.client_socket.connect_ex((ip, self.command_port)) == 0:
 
-                            if result == 'yes':
-                                # 通过验证，接收会话id
-                                self.uuid = self.client_socket.recv(1024).decode(
-                                    self.encode)
+                    # 开始验证合法性
+                    result = self.client_socket.recv(1024).decode(self.encode)
+                    if result == '/_com:comm:sync:get:password_hash':
+                        result = SocketTools.sendCommand(self.client_socket, xxhash.xxh3_128(
+                            self.encode).hexdigest())
 
-                                self.connected.append(ip)
-                                return self.client_socket
+                        if result == 'yes':
+                            # 通过验证，接收会话id
+                            self.uuid = self.client_socket.recv(1024).decode(
+                                self.encode)
 
-                            else:
-                                # 验证失败
-                                return Status.CONFIRMATION_FAILED
+                            self.connected.append(ip)
+                            socket_manage['command'] = self.client_socket
+                            return self.client_socket
+
                         else:
-                            return Status.KEY_ERROR
-                    return Status.CONNECT_TIMEOUT
-                return Status.CONNECTED
+                            # 验证失败
+                            return Status.CONFIRMATION_FAILED
+                    else:
+                        return Status.KEY_ERROR
+                return Status.CONNECT_TIMEOUT
+            return Status.CONNECTED
 
     def createClientDataSocket(self, ip):
         """
         创建并连接client_data_socket - server_command_socket
         :return:
         """
-        self.client_data_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.client_data_socket.bind((self.config['server']['addr']['ip'], 0))
-        if self.client_data_socket.connect_ex((ip, self.data_port)) != 0:
-            # 关闭连接
-            self.closeAllSocket()
+        if not socket_manage['data']:
+            self.client_data_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            self.client_data_socket.bind((self.config['server']['addr']['ip'], 0))
+            if self.client_data_socket.connect_ex((ip, self.data_port)) != 0:
+                # 关闭连接
+                self.closeAllSocket()
 
-        session = SocketTools.sendCommand(self.client_data_socket,
-                                          str(self.uuid))
-        if session.split(':')[4].split('|')[1] == 'True':
-            # 会话验证成功
-            pass
-        else:
-            # 会话验证失败
-            return Status.SESSION_FALSE
+            session = SocketTools.sendCommand(self.client_data_socket,
+                                              str(self.uuid))
+            if session.split(':')[4].split('|')[1] == 'True':
+                # 会话验证成功
+                socket_manage['data'] = self.client_socket
+                return self.client_data_socket
+            else:
+                # 会话验证失败
+                return Status.SESSION_FALSE
 
     def closeAllSocket(self):
         """结束与服务端的所有会话"""
         pass
 
 
-class CommandSend(Client):
+class CommandSend:
     """客户端指令发送类"""
 
     def __init__(self):
@@ -108,7 +119,13 @@ class CommandSend(Client):
         # 数据包发送分块大小(含filemark)
         self.block = 1024
 
-    def send_File(self, data_socket, path, mode=1):
+        if socket_manage['data'] and socket_manage['command']:
+            self.data_socket = socket_manage['data']
+            self.command_socket = socket_manage['command']
+        else:
+            raise '客户端套接字对象缺失：意外调用指令'
+
+    def send_File(self, path, mode=1):
         """
         输入文件路径，发送文件至服务端
         data_socket: 与服务端连接的socket
@@ -164,7 +181,7 @@ class CommandSend(Client):
                                 local_size -= data_block
                                 if local_size > 0:
                                     data = bytes(filemark, 'utf-8') + data
-                                    data_socket.send(data)
+                                    self.data_socket.send(data)
                                     data = f.read(data_block)
                                 else:
                                     break
@@ -181,7 +198,7 @@ class CommandSend(Client):
                             local_size -= data_block
                             if local_size > 0:
                                 data = bytes(filemark, 'utf-8') + data
-                                data_socket.send(data)
+                                self.data_socket.send(data)
                                 data = f.read(data_block)
                             else:
                                 break
@@ -218,7 +235,7 @@ class CommandSend(Client):
                                     if not data:
                                         break
                                     data = bytes(filemark, 'utf-8') + data
-                                    data_socket.send(data)
+                                    self.data_socket.send(data)
                             self.replyFinish(filemark)
                             return True
                         else:

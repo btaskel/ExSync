@@ -20,6 +20,8 @@ class Status(enum.Enum):
 
     REPLY_ERROR = '回复错误'
 
+    SOCKET_OBJECT_ERROR = '套接字对象错误'
+
 class SyncStatus(enum.Enum):
     """同步状态"""
     DIFF_FILE = '双方文件不同'

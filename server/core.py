@@ -14,7 +14,7 @@ from server.tools.status import Status
 from server.tools.tools import SocketTools, HashTools
 
 """
-全局变量管理(存储答复数据)
+存储答复数据
 除指令的收发次数(count)其它内容均不稳定(随时改变)
 基本格式[ Random_string: "答复指令" ]
 
@@ -29,7 +29,18 @@ data(数据传输)
 }
 备注: 将在文件/文件夹传输正确完成后, 答复记录会自动销毁.
 """
-global_vars = {}
+reply_manage = {}
+
+"""
+子Socket管理
+当客户端与服务端建立连接后, 用于管理指令与数据传输Socket的存储
+
+ip : {
+    command: 指令Socket
+    data: 数据传输Socket
+}
+"""
+socket_manage = {}
 
 
 class createSocket(Scan, Client):
@@ -47,6 +58,7 @@ class createSocket(Scan, Client):
     def __init__(self):
         super().__init__()
         # Socks5代理设置
+        self.client_connected = set()
         if self.config['server']['proxy']['enabled']:
             proxy_host, proxy_port = self.config['server']['proxy']['hostname'], self.config['server']['proxy']['port']
             socks.set_default_proxy(socks.SOCKS5, proxy_host, proxy_port)
@@ -54,16 +66,32 @@ class createSocket(Scan, Client):
             socket.socket = socks.socksocket
 
         self.local_password_hash = xxhash.xxh3_128(self.config['server']['addr']['password']).hexdigest()
+
+        # 首先扫描设备
         self.ip_list = set(self.testDevice())
+
+        # 服务端指令Socket连接状态
         self.connected = set()
 
-        # 全局共享变量
-        self.command_socket = None
-        self.data_socket = None
+        """
+        Socket套接字连接成功实例存储
+        address : {
+            command: command_socket 
+            data: data_socket
+        }
+        """
         self.socket_info = {}
 
-        # 本机会话随机数
+        """
+        本机会话随机数
+        用于表示本次会话的id
+        """
         self.uuid = uuid.uuid4()
+
+        """
+        当前与客户端建立连接的ip
+        """
+        self.ip = None
 
     def createDataSocket(self):
         data_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -78,11 +106,14 @@ class createSocket(Scan, Client):
                 if self.uuid == sub_socket.recv(1024).decode(self.encode_type):
                     # 确认会话id
                     SocketTools.sendCommand(sub_socket, '/_com:comm:sync:post:session|True:_', output=False)
-                    if self.command_socket:
-                        # 如果指令套接字存在
-                        self.data_socket = sub_socket
-                        thread = threading.Thread(target=self.mergeSocket)
-                        thread.start()
+                    # 如果指令套接字存在
+                    if sub_socket.getpeername()[0] in self.socket_info:
+                        self.socket_info[sub_socket.getpeername()[0]]["data"] = sub_socket
+                    else:
+                        self.socket_info[sub_socket.getpeername()[0]] = {
+                            "command": None,
+                            "data": sub_socket
+                        }
 
                 else:
                     # 会话id错误
@@ -107,7 +138,6 @@ class createSocket(Scan, Client):
                 SocketTools.sendCommand(sub_socket, 'yes', output=False)
                 SocketTools.sendCommand(sub_socket, str(self.uuid), output=False)
                 self.connected.add(addr[0])
-                self.command_socket = sub_socket
 
                 if sub_socket.getpeername()[0] in self.socket_info:
                     self.socket_info[sub_socket.getpeername()[0]]["command"] = sub_socket
@@ -127,7 +157,6 @@ class createSocket(Scan, Client):
                     SocketTools.sendCommand(sub_socket, 'yes', output=False)
                     SocketTools.sendCommand(sub_socket, str(self.uuid), output=False)
                     self.connected.add(addr[0])
-                    self.command_socket = sub_socket
 
                     if sub_socket.getpeername()[0] in self.socket_info:
                         self.socket_info[sub_socket.getpeername()[0]]["command"] = sub_socket
@@ -179,35 +208,47 @@ class createSocket(Scan, Client):
         verify_socket.close()
 
     def mergeSocket(self):
-        """如果指令套接字连接完毕则等待数据传输套接字连接"""
-        if self.data_socket and self.command_socket:
-            if self.data_socket.getpeername()[0] == self.command_socket.getpeername()[0]:
-                data_socket, command_socket = self.data_socket, self.command_socket
-                self.data_socket, self.command_socket = None, None
-                # 运行指令接收
-                command = CommandSocket()
-                command.recvCommand(command_socket, data_socket)
-            else:
-                pass
+        """如果在被动模式下指令套接字连接完毕则"""
+        # if self.data_socket and self.command_socket:
+        #     if self.data_socket.getpeername()[0] == self.command_socket.getpeername()[0]:
+        #         data_socket, command_socket = self.data_socket, self.command_socket
+        #         self.data_socket, self.command_socket = None, None
+        #         # 运行指令接收
+        #         command = CommandSocket()
+        #         command.recvCommand(command_socket, data_socket)
+        #     else:
+        #         pass
+        command = CommandSocket()
+        while True:
+            if self.socket_info[0] and self.socket_info[0][0] and self.socket_info[0][1]:
+                addr = self.socket_info.pop(0)
+                thread = threading.Thread(target=command.recvCommand, args=(addr['command'], addr['data']))
+                thread.start()
+            time.sleep(0.25)
 
-
-    def createClientCommandSocket(self):
+    def createClientCommandSocket(self, ip):
         """
-        持续刷新可用设备列表
-        返回客户端实例
+        本地客户端主动连接远程服务端
         """
         client = Client()
-        updateIplist = threading.Thread(target=self.updateIplist, args=(client,))
-        updateIplist.start()
-        return client
+        # 连接指令Socket
+        client.connectCommandSocket(ip)
+        # 连接数据Socket
+        client.createClientDataSocket(ip)
 
-    def updateIplist(self, client):
+
+
+    def updateIplist(self):
         """持续更新设备列表"""
         while True:
-            client.connectSocket(self.ip_list)
             time.sleep(15)
             self.ip_list = self.testDevice()
             logging.debug(f'IP list update: {self.ip_list}')
+            for ip in self.ip_list:
+                if ip not in self.client_connected:
+                    thread = threading.Thread(target=self.createClientCommandSocket, args=(ip,))
+                    thread.start()
+                    self.client_connected.add(ip)
 
 
 class DataSocket(Scan):
@@ -249,7 +290,7 @@ class DataSocket(Scan):
 
         filemark = command[4]
         # 答复初始化
-        global_vars[filemark] = {
+        reply_manage[filemark] = {
             'count': 0
         }
 
@@ -320,7 +361,7 @@ class DataSocket(Scan):
                     self.command_socket.send(
                         f'/_com:data:reply:{filemark}|{exists}|{local_file_size}|{local_file_hash}|{local_file_date}'.encode())
 
-                    result = SocketTools.replyCommand(1, global_vars, filemark)
+                    result = SocketTools.replyCommand(1, reply_manage, filemark)
 
                     if result['exist']:
                         # 对方客户端确认未传输完成，继续接收文件
@@ -471,16 +512,16 @@ class CommandSocket(Scan):
                             exist = True
                         else:
                             exist = False
-                        if global_vars[command[3]]:
-                            if global_vars[command[3]]['count']:
-                                count = global_vars[command[3]]['count'] + 1
+                        if reply_manage[command[3]]:
+                            if reply_manage[command[3]]['count']:
+                                count = reply_manage[command[3]]['count'] + 1
                             else:
                                 count = 0
                         else:
                             # 判断为答复一个不存在的记录,跳过此答复
                             continue
 
-                        global_vars[command[3]] = {
+                        reply_manage[command[3]] = {
                             'count': count,
 
                             'exist': exist,
@@ -496,7 +537,7 @@ class CommandSocket(Scan):
                             # 未按预期执行
                             pass
 
-                        global_vars.pop(command[3], None)
+                        reply_manage.pop(command[3], None)
 
 
 
