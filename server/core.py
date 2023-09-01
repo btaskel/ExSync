@@ -447,7 +447,6 @@ class DataSocket(Scan):
                     data = bytes(filemark, 'utf-8') + data
                     self.data_socket.send(data)
 
-
     def recvFolder(self, command):
         """
         接收路径并创建文件夹

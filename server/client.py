@@ -240,7 +240,6 @@ class CommandSend:
         /_com:data:file:get:{path}|{mode}|{filemark}:_
         """
         filemark = HashTools.getRandomStr()
-        path = relToAbs(path)
         data_block = self.block - len(filemark)
 
         if os.path.exists(path):
