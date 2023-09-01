@@ -386,19 +386,66 @@ class DataSocket(Scan):
     def sendFile(self, command):
         """
         服务端发送文件至客户端
-        文件与文件夹的传输指令:
-        /_com:data:file(folder):get:filepath|size|hash|mode:_
-        /_com:data:file(folder):post:filepath|size|hash|mode:_
 
         mode = 0;
-        如果不存在文件，则创建文件。否则不执行操作。
+        直接发送所有数据。
 
         mode = 1;
-        如果不存在文件，则创建文件。否则重写文件。
-
-        mode = 2;
-        如果存在文件，并且准备发送的文件字节是对方文件字节的超集(xxh3_128相同)，则续写文件。
+        根据客户端发送的文件哈希值，判断是否是意外中断传输的文件，如果是则继续传输。
         """
+        block = 1024
+        path, remote_file_hash, remote_size, filemark = command[0], command[1], command[2], command[3]
+        data_block = block - len(filemark)
+
+        if os.path.exists(path):
+            local_file_size = os.path.getsize(path)
+            local_file_hash = HashTools.getFileHash(path)
+        else:
+            local_file_size = 0
+            local_file_hash = 0
+
+        # 向客户端回复/_com:data:reply:filemark:{remote_size}|{hash_value}
+        SocketTools.sendCommand(self.command_socket, f'/_com:data:reply:{filemark}:{local_file_size}|{local_file_hash}',
+                                output=False)
+        if local_file_size == 0:
+            return
+
+        if local_file_size:
+            read_data = 0
+            breakpoint_hash = xxhash.xxh3_128()
+            block_times, little_block = divmod(remote_size, 8192)
+            with open(path, mode='rb') as f:
+                while True:
+                    if read_data < block_times:
+                        data = f.read(8192)
+                        breakpoint_hash.update(data)
+                        read_data += 1
+                    else:
+                        data = f.read(little_block)
+                        breakpoint_hash.update(data)
+                        break
+            file_block_hash = breakpoint_hash.hexdigest()
+
+            if file_block_hash == remote_file_hash:
+                # 确定为中断文件，开始继续传输
+                with open(path, mode='rb') as f:
+                    while True:
+                        data = f.read(data_block)
+                        if not data:
+                            break
+                        data = bytes(filemark, 'utf-8') + data
+                        self.data_socket.send(data)
+            else:
+                SocketTools.sendCommand(self.command_socket, '/_com:data:reply:True')
+        else:
+            with open(path, mode='rb') as f:
+                while True:
+                    data = f.read(data_block)
+                    if not data:
+                        break
+                    data = bytes(filemark, 'utf-8') + data
+                    self.data_socket.send(data)
+
 
     def recvFolder(self, command):
         """
@@ -486,10 +533,9 @@ class CommandSocket(Scan):
                             thread.start()
 
                         elif command[3] == 'get':
-                            # todo: 对方使用get获取本机文件
-                            # thread = threading.Thread(target=)
-                            pass
-
+                            values = command[4].split('|')
+                            thread = threading.Thread(target=command_set.sendFile, args=(values,))
+                            thread.start()
                     # 文件夹操作
                     elif command[2] == 'folder':
 

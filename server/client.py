@@ -6,7 +6,7 @@ import xxhash
 
 from server.config import readConfig
 from server.tools.status import Status
-from server.tools.tools import HashTools, SocketTools
+from server.tools.tools import HashTools, SocketTools, relToAbs
 
 """
 子Socket管理
@@ -113,11 +113,13 @@ class Client(readConfig):
 
 class CommandSend:
     """客户端指令发送类"""
+
     def __init__(self, data_socket, command_socket):
         self.data_socket = data_socket
         self.command_socket = command_socket
+        self.block = 1024
 
-    def send_File(self, path, mode=1):
+    def post_File(self, path, mode=1):
         """
         输入文件路径，发送文件至服务端
         data_socket: 与服务端连接的socket
@@ -133,14 +135,13 @@ class CommandSend:
         如果存在文件，并且准备发送的文件字节是对方文件字节的超集(xxh3_128相同)，则续写文件，返回True。否则停止发送返回False。
         """
         # 数据包发送分块大小(含filemark)
-        block = 1024
 
         # 获取6位数长度的文件头标识,用于保证文件的数据唯一性
         filemark = HashTools.getRandomStr()
 
         local_size = os.path.getsize(path)
         hash_value = HashTools.getFileHash(path)
-        data_block = block - len(filemark)
+        data_block = self.block - len(filemark)
         # 远程服务端初始化接收文件
         result = SocketTools.sendCommand(self.command_socket,
                                          f'/_com:data:file:post:{path}|{local_size}|{hash_value}|{mode}|{filemark}:_')
@@ -148,115 +149,146 @@ class CommandSend:
         if result[0]:
             # 服务端准备完毕，开始传输文件
             # 服务端返回信息格式：exist | filesize | filehash | filedate
-            info = result[1].split('|')
+            info = result[1].split(':')
+            value = info.split('|')
 
             # 文件存在状态
-            if result[0] == 'True':
+            if value[0] == 'True':
                 exist = True
-            elif result[0] == 'False':
+            elif value[0] == 'False':
                 exist = False
             else:
                 return Status.PARAMETER_ERROR
 
             # 远程文件大小, 远程文件hash值，远程文件日期
-            remote_size, remote_filehash, remote_filedate = info[1], info[2], info[3]
+            remote_size, remote_filehash, remote_filedate = value[1], value[2], value[3]
 
             # 本地文件大小，本地文件hash值，远程文件日期
             local_size, local_filehash, local_filedate = local_size, hash_value, os.path.getmtime(path)
 
-            match mode:
-                case 0:
-                    if exist:
-                        self.replyFinish(filemark, False)
-                        return False
-                    else:
-                        with open(path, mode='rb') as f:
-                            data = f.read(data_block)
-                            while True:
-                                local_size -= data_block
-                                if local_size > 0:
-                                    data = bytes(filemark, 'utf-8') + data
-                                    self.data_socket.send(data)
-                                    data = f.read(data_block)
-                                else:
-                                    break
-                            self.replyFinish(filemark)
-
-                case 1:
+            if mode == 0 or mode == 1:
+                if mode == 0 and exist:
+                    self.replyFinish(filemark, False)
+                    return False
+                else:
                     with open(path, mode='rb') as f:
-                        if exist:
+                        if mode == 1 and exist:
                             # 如果服务端已经存在文件，那么重写该文件
                             local_size -= remote_size
                             f.seek(remote_size)
                         data = f.read(data_block)
                         while True:
                             local_size -= data_block
-                            if local_size > 0:
-                                data = bytes(filemark, 'utf-8') + data
-                                self.data_socket.send(data)
-                                data = f.read(data_block)
-                            else:
+                            if local_size <= 0:
                                 break
+                            data = bytes(filemark, 'utf-8') + data
+                            self.data_socket.send(data)
+                            data = f.read(data_block)
+
                         self.replyFinish(filemark)
 
-                case 2:
-                    # 远程服务端准备完成
-                    xxh = xxhash.xxh3_128()
+            elif mode == 2:
+                # 远程服务端准备完成
+                xxh = xxhash.xxh3_128()
 
-                    if result == 'True':
-                        block, little_block = divmod(remote_size, 8192)
-
-                        read_data = 0
-                        with open(path, mode='rb') as f:
-                            if read_data < block:
-                                read_data += 8192
+                if result == 'True':
+                    block_times, little_block = divmod(remote_size, 8192)
+                    read_data = 0
+                    with open(path, mode='rb') as f:
+                        while True:
+                            if read_data < block_times:
                                 data = f.read(8192)
                                 xxh.update(data)
+                                read_data += 1
                             else:
                                 data = f.read(little_block)
                                 xxh.update(data)
-                        file_block_hash = xxh.hexdigest()
+                                break
+                    file_block_hash = xxh.hexdigest()
 
-                        if remote_filehash == file_block_hash:
-                            # 文件前段xxhash_128相同，证明为未传输完成文件
-                            SocketTools.sendCommand(self.command_socket,
-                                                    f'/_com:data:reply:{filemark}:True:None:None:None',
-                                                    output=False)
+                    if remote_filehash == file_block_hash:
+                        # 文件前段xxhash_128相同，证明为未传输完成文件
+                        SocketTools.sendCommand(self.command_socket,
+                                                f'/_com:data:reply:{filemark}:True:None:None:None',
+                                                output=False)
 
-                            with open(path, mode='rb') as f:
-                                f.seek(remote_size)
-                                data = f.read(data_block)
-                                while True:
-                                    if not data:
-                                        break
-                                    data = bytes(filemark, 'utf-8') + data
-                                    self.data_socket.send(data)
-                            self.replyFinish(filemark)
-                            return True
-                        else:
-                            # ？这是肾么文件，这个文件不是中断传输的产物
-                            self.replyFinish(filemark, False)
-                            return False
-                    self.replyFinish(filemark, False)
-                    return
+                        with open(path, mode='rb') as f:
+                            f.seek(remote_size)
+                            data = f.read(data_block)
+                            while True:
+                                if not data:
+                                    break
+                                data = bytes(filemark, 'utf-8') + data
+                                self.data_socket.send(data)
+                        self.replyFinish(filemark)
+                        return True
+                    else:
+                        # ？这是肾么文件，这个文件不是中断传输的产物
+                        self.replyFinish(filemark, False)
+                        return False
+                self.replyFinish(filemark, False)
+                return
 
-    def send_Folder(self, path):
+    def post_Folder(self, path):
         """输入文件路径，发送文件夹创建指令至服务端"""
         filemark = HashTools.getRandomStr()
         SocketTools.sendCommand(self.command_socket,
                                 f'/_com:data:folder:post:{path}|None|None|None|{filemark}:_', output=False)
         return True
 
+    def get_File(self, path):
+        """
+        获取远程文件
+        /_com:data:file:get:{path}|{mode}|{filemark}:_
+        """
+        filemark = HashTools.getRandomStr()
+        path = relToAbs(path)
+        data_block = self.block - len(filemark)
+
+        if os.path.exists(path):
+            file_hash = HashTools.getFileHash(path)
+            file_size = os.path.getsize(path)
+        else:
+            file_hash = 0
+            file_size = 0
+
+        # 发送指令，远程服务端准备
+        # 服务端return: /_com:data:reply:filemark:{remote_size}|{hash_value}
+        result = SocketTools.sendCommand(self.command_socket,
+                                         f'/_com:data:file:get:{path}|{file_hash}|{file_size}|{filemark}:_')
+        command = CommandSend.status(result)[1].split(':')
+        values = command[4].split('|')
+        remote_filemark, remote_file_size, remote_file_hash = command[3], values[0], values[1]
+        if file_size:
+            read_data = 0
+            with open(path, mode='ab') as f:
+                while True:
+                    if read_data < remote_file_size:
+                        data = self.data_socket.recv(self.block)
+                    if data[:6] == filemark:
+                        data = data[6:]
+                        f.write(data)
+                        read_data += data_block
+        else:
+            read_data = 0
+            with open(path, mode='ab') as f:
+                while True:
+                    if read_data < remote_file_size:
+                        data = self.data_socket.recv(self.block)
+                    if data[:6] == filemark:
+                        data = data[6:]
+                        f.write(data)
+                        read_data += data_block
+
     @staticmethod
     def status(result):
         """状态值返回，用于集中判断服务端的接收状态"""
         # /_com:data:reply:filemark:Value:_
-
-        result = result.split(':')
         if result == Status.DATA_RECEIVE_TIMEOUT:
             return False, Status.DATA_RECEIVE_TIMEOUT
         else:
-            return True, result[4]
+            result = result.split(':')
+            return True, result
 
     def replyFinish(self, filemark, expect=True, *args):
         """
