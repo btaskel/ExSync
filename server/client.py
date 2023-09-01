@@ -5,7 +5,6 @@ import socks
 import xxhash
 
 from server.config import readConfig
-from server.sync import Index
 from server.tools.status import Status
 from server.tools.tools import HashTools, SocketTools
 
@@ -13,9 +12,10 @@ from server.tools.tools import HashTools, SocketTools
 子Socket管理
 当客户端与服务端建立连接后, 用于管理指令与数据传输Socket的存储
 
-command: 指令Socket
-data: 数据传输Socket
-
+ip: {
+    command: 指令Socket
+    data: 数据传输Socket
+}
 """
 socket_manage = {}
 
@@ -113,17 +113,9 @@ class Client(readConfig):
 
 class CommandSend:
     """客户端指令发送类"""
-
-    def __init__(self):
-        super().__init__()
-        # 数据包发送分块大小(含filemark)
-        self.block = 1024
-
-        if socket_manage['data'] and socket_manage['command']:
-            self.data_socket = socket_manage['data']
-            self.command_socket = socket_manage['command']
-        else:
-            raise '客户端套接字对象缺失：意外调用指令'
+    def __init__(self, data_socket, command_socket):
+        self.data_socket = data_socket
+        self.command_socket = command_socket
 
     def send_File(self, path, mode=1):
         """
@@ -140,14 +132,17 @@ class CommandSend:
         mode = 2;
         如果存在文件，并且准备发送的文件字节是对方文件字节的超集(xxh3_128相同)，则续写文件，返回True。否则停止发送返回False。
         """
+        # 数据包发送分块大小(含filemark)
+        block = 1024
+
         # 获取6位数长度的文件头标识,用于保证文件的数据唯一性
         filemark = HashTools.getRandomStr()
 
         local_size = os.path.getsize(path)
         hash_value = HashTools.getFileHash(path)
-        data_block = self.block - len(filemark)
+        data_block = block - len(filemark)
         # 远程服务端初始化接收文件
-        result = SocketTools.sendCommand(self.client_socket,
+        result = SocketTools.sendCommand(self.command_socket,
                                          f'/_com:data:file:post:{path}|{local_size}|{hash_value}|{mode}|{filemark}:_')
         result = CommandSend.status(result)
         if result[0]:
@@ -224,7 +219,7 @@ class CommandSend:
 
                         if remote_filehash == file_block_hash:
                             # 文件前段xxhash_128相同，证明为未传输完成文件
-                            SocketTools.sendCommand(self.client_socket,
+                            SocketTools.sendCommand(self.command_socket,
                                                     f'/_com:data:reply:{filemark}:True:None:None:None',
                                                     output=False)
 
@@ -248,7 +243,7 @@ class CommandSend:
     def send_Folder(self, path):
         """输入文件路径，发送文件夹创建指令至服务端"""
         filemark = HashTools.getRandomStr()
-        SocketTools.sendCommand(self.client_socket,
+        SocketTools.sendCommand(self.command_socket,
                                 f'/_com:data:folder:post:{path}|None|None|None|{filemark}:_', output=False)
         return True
 
@@ -272,5 +267,5 @@ class CommandSend:
         :param args: 返回至服务端的参数
         :return: 超时/正常状态
         """
-        return SocketTools.sendCommand(self.client_socket, f'/_com:data:reply_end:{filemark}:{expect}:{args}',
+        return SocketTools.sendCommand(self.command_socket, f'/_com:data:reply_end:{filemark}:{expect}:{args}',
                                        output=False)

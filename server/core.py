@@ -8,7 +8,6 @@ import uuid
 import socks
 import xxhash
 
-from server.client import Client
 from server.scan import Scan
 from server.tools.status import Status
 from server.tools.tools import SocketTools, HashTools
@@ -32,18 +31,14 @@ data(数据传输)
 reply_manage = {}
 
 """
-子Socket管理
-当客户端与服务端建立连接后, 用于管理指令与数据传输Socket的存储
+客户端实例管理
 
-ip : {
-    command: 指令Socket
-    data: 数据传输Socket
-}
+ip : client_server
 """
 socket_manage = {}
 
 
-class createSocket(Scan, Client):
+class createSocket(Scan):
     """
     创建命令收发和数据收发套接字
 
@@ -92,6 +87,9 @@ class createSocket(Scan, Client):
         当前与客户端建立连接的ip
         """
         self.ip = None
+
+        thread = threading.Thread(target=self.updateIplist)
+        thread.start()
 
     def createDataSocket(self):
         data_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -226,17 +224,16 @@ class createSocket(Scan, Client):
                 thread.start()
             time.sleep(0.25)
 
-    def createClientCommandSocket(self, ip):
+    def createClientCommandSocket(self, ip, Client):
         """
         本地客户端主动连接远程服务端
         """
         client = Client()
         # 连接指令Socket
         client.connectCommandSocket(ip)
+        socket_manage[ip] = client
         # 连接数据Socket
         client.createClientDataSocket(ip)
-
-
 
     def updateIplist(self):
         """持续更新设备列表"""
