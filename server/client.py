@@ -87,7 +87,6 @@ class Client(readConfig):
     def createClientDataSocket(self, ip):
         """
         创建并连接client_data_socket - server_command_socket
-        :return:
         """
         if not socket_manage['data']:
             self.client_data_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -181,8 +180,7 @@ class CommandSend:
                             local_size -= data_block
                             if local_size <= 0:
                                 break
-                            data = bytes(filemark, 'utf-8') + data
-                            self.data_socket.send(data)
+                            self.data_socket.send(bytes(filemark, 'utf-8') + data)
                             data = f.read(data_block)
 
                         self.replyFinish(filemark)
@@ -262,6 +260,7 @@ class CommandSend:
         if file_size:
             read_data = 0
             with open(path, mode='ab') as f:
+                f.seek(file_size)
                 while True:
                     if read_data < remote_file_size:
                         data = self.data_socket.recv(self.block)

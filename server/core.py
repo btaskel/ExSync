@@ -148,7 +148,7 @@ class createSocket(Scan):
             else:
 
                 # 验证对方合法性
-                self.client_socket.settimeout(2)
+                sub_socket.settimeout(2)
                 password_hash = SocketTools.sendCommand(sub_socket, '/_com:comm:sync:get:password_hash')
                 if password_hash == self.local_password_hash:
                     # 验证成功
@@ -410,7 +410,7 @@ class DataSocket(Scan):
         if local_file_size == 0:
             return
 
-        if local_file_size:
+        if remote_size:
             read_data = 0
             breakpoint_hash = xxhash.xxh3_128()
             block_times, little_block = divmod(remote_size, 8192)
@@ -429,6 +429,7 @@ class DataSocket(Scan):
             if file_block_hash == remote_file_hash:
                 # 确定为中断文件，开始继续传输
                 with open(path, mode='rb') as f:
+                    f.seek(remote_size)
                     while True:
                         data = f.read(data_block)
                         if not data:
