@@ -6,7 +6,7 @@ import xxhash
 
 from server.config import readConfig
 from server.tools.status import Status
-from server.tools.tools import HashTools, SocketTools, relToAbs
+from server.tools.tools import HashTools, SocketTools
 
 """
 子Socket管理
@@ -227,16 +227,14 @@ class CommandSend:
                 self.replyFinish(filemark, False)
                 return
 
-    def post_Folder(self, path):
-        """输入文件路径，发送文件夹创建指令至服务端"""
-        filemark = HashTools.getRandomStr()
-        SocketTools.sendCommand(self.command_socket,
-                                f'/_com:data:folder:post:{path}|None|None|None|{filemark}:_', output=False)
-        return True
-
     def get_File(self, path):
         """
         获取远程文件
+        传入获取文件的路径，如果本地文件已经存在则会检查是否为意外中断文件，如果是则继续传输；
+        如果本地文件不存在则接收远程文件传输
+
+        如果远程文件不存在则返回False
+
         /_com:data:file:get:{path}|{mode}|{filemark}:_
         """
         filemark = HashTools.getRandomStr()
@@ -254,6 +252,9 @@ class CommandSend:
         result = SocketTools.sendCommand(self.command_socket,
                                          f'/_com:data:file:get:{path}|{file_hash}|{file_size}|{filemark}:_')
         command = CommandSend.status(result)[1].split(':')
+        if not command[4]:
+            return False
+
         values = command[4].split('|')
         remote_filemark, remote_file_size, remote_file_hash = command[3], values[0], values[1]
         if file_size:
@@ -277,6 +278,21 @@ class CommandSend:
                         data = data[6:]
                         f.write(data)
                         read_data += data_block
+
+    def post_Folder(self, path):
+        """输入文件路径，发送文件夹创建指令至服务端"""
+        SocketTools.sendCommand(self.command_socket,
+                                f'/_com:data:folder:post:{path}:_', output=False)
+        return True
+
+    def get_Folder(self, path):
+        """
+        遍历获取远程文件夹下的所有文件夹
+        :param path:
+        :return folder_paths:
+        """
+        SocketTools.sendCommand(self.command_socket, f'/_com:data:folder:get:{path}', output=False)
+
 
     @staticmethod
     def status(result):

@@ -49,6 +49,9 @@ PS:
     mode：对文件(或文件夹)的操作模式
 
     文件与文件夹的传输指令:
+        /_com:data:file:get:path|hash|size|filemark:_
+        /_com:data:file:post:path|size|hash|mode|filemark:_
+
         /_com:data:file(folder):get:filepath|size|hash|mode|filemark:_
         /_com:data:file(folder):post:filepath|size|hash|mode|filemark:_
     ——————————————————————————————————————————————————

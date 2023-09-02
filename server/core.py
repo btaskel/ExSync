@@ -467,8 +467,11 @@ class DataSocket(Scan):
         如果服务端存在文件夹，以及其索引，则返回索引
         如果不存在则向客户端返回状态
         """
-        # todo:
-        pass
+
+        paths = []
+        for home, folders, files in os.walk(path):
+            paths.append(folders)
+        return paths
 
 
 class CommandSocket(Scan):
