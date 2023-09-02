@@ -108,7 +108,7 @@ class Scan(readConfig):
         for ip in ip_list:
             test = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             test.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-            # test.settimeout(1)
+            test.settimeout(1)
             # 连接设备的指定端口
             print((ip, self.command_port))
             if test.connect_ex((ip, self.command_port)) == 0:

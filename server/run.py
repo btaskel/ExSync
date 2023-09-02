@@ -76,11 +76,23 @@ class Control(Init):
 
     @staticmethod
     def postFolder(ip, path):
+        """
+        创建远程文件夹路径
+        :param ip:
+        :param path:
+        :return:
+        """
         command_send = Control._get_command_send(ip)
         command_send.post_Folder(relToAbs(path))
 
     @staticmethod
     def getFolder(ip, path):
+        """
+        遍历远程path路径下的所有文件夹路径并返回
+        :param ip:
+        :param path:
+        :return paths:
+        """
         command_send = Control._get_command_send(ip)
         command_send.get_Folder(relToAbs(path))
 

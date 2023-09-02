@@ -264,6 +264,8 @@ class CommandSend:
                 while True:
                     if read_data < remote_file_size:
                         data = self.data_socket.recv(self.block)
+                    else:
+                        return True
                     if data[:6] == filemark:
                         data = data[6:]
                         f.write(data)
@@ -274,6 +276,8 @@ class CommandSend:
                 while True:
                     if read_data < remote_file_size:
                         data = self.data_socket.recv(self.block)
+                    else:
+                        return True
                     if data[:6] == filemark:
                         data = data[6:]
                         f.write(data)
@@ -292,7 +296,8 @@ class CommandSend:
         :return folder_paths:
         """
         SocketTools.sendCommand(self.command_socket, f'/_com:data:folder:get:{path}', output=False)
-
+        paths = self.data_socket.recv(1024).decode('utf-8')
+        return paths
 
     @staticmethod
     def status(result):

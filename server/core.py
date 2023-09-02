@@ -469,8 +469,9 @@ class DataSocket(Scan):
         """
 
         paths = []
-        for home, folders, files in os.walk(path):
+        for home, folders, files in os.walk(command[4]):
             paths.append(folders)
+        SocketTools.sendCommand(self.data_socket, str(paths), output=False)
         return paths
 
 

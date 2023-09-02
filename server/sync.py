@@ -2,12 +2,13 @@ import configparser
 import json
 import logging
 import os
+import time
 from datetime import datetime
 
+import ntplib
 import xxhash
 
 from server.config import readConfig
-from server.core import createSocket
 from server.shell import initLogging
 from server.tools.tools import createFile, relToAbs
 
@@ -132,10 +133,11 @@ class Index(readConfig):
                         file: {
                             "type": "file",
                             "system_date": datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
-                            "file_date": datetime.fromtimestamp(os.path.getmtime(file)).strftime(
-                                "%Y-%m-%d %H:%M:%S"),
+                            "file_edit_date": os.path.getmtime(file),
+                            "file_create_date": os.path.getctime(file),
+                            "file_read_date": os.path.getatime(file),
                             "hash": Index.hashFile(file),
-                            "size": "",
+                            "size": os.path.getsize(file),
                             "state": ""
                         }
                     }
@@ -167,8 +169,9 @@ class Index(readConfig):
                                 file: {
                                     "type": "file",
                                     "system_date": datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
-                                    "file_date": datetime.fromtimestamp(os.path.getmtime(file)).strftime(
-                                        "%Y-%m-%d %H:%M:%S"),
+                                    "file_edit_date": os.path.getmtime(file),
+                                    "file_create_date": os.path.getctime(file),
+                                    "file_read_date": os.path.getatime(file),
                                     "hash": Index.hashFile(file),
                                     "size": os.path.getsize(file),
                                     "state": ""
@@ -205,6 +208,7 @@ class Index(readConfig):
         """
         分析双方文件索引是否需要同步
         remote_data [file_index_path, folder_index_path]
+        0: 双方文件不同; 1: 本地文件不存在; 2: 远程文件不存在;
         """
 
         result = self.readIndex()
@@ -217,6 +221,7 @@ class Index(readConfig):
             remote_folder_index = json.load(f)
 
         change_info = {}
+
         ls = [(local_file_index, remote_file_index),
               (local_folder_index, remote_folder_index)]
 
@@ -230,7 +235,7 @@ class Index(readConfig):
             for remote_key in remote_index:
                 if remote_key not in local_index:
                     change_info[remote_key] = 2
-        return change_info
+        return change_info, local_file_index, local_folder_index, remote_file_index, remote_folder_index
 
 
 class SyncData(Index):
@@ -241,12 +246,18 @@ class SyncData(Index):
     def __init__(self, path):
         super().__init__(path)
         initLogging(logging.DEBUG)
+        self.path = relToAbs(path)
 
-        self.server = createSocket()
-        self.server.createDataSocket()
-        self.server.createCommandSocket()
-        self.server.createVerifySocket()
-        self.client_socket = self.server.createClientCommandSocket()
+    @staticmethod
+    def updateSystemTime():
+        """同步系统时间"""
+        ntp_client = ntplib.NTPClient()
+        response = ntp_client.request("pool.ntp.org")
+        time_str = response.tx_time
+        ntp_date = time.strftime('%Y-%m-%d', time.localtime(time_str))
+        ntp_time = time.strftime('%X', time.localtime(time_str))
+        os.system('date {} && time {}'.format(ntp_date, ntp_time))
+        logging.debug('Synchronized system time')
 
     def syncFiles(self, method=0):
         """
@@ -254,6 +265,33 @@ class SyncData(Index):
         method = 0; 同步双方文件
         method = 1; 同步所有设备的文件
         """
+        result = self.analyseFiles(self.path)
+        change_info, local_file_index, local_folder_index, remote_file_index, remote_folder_index = result[0], result[
+            1], result[2], result[3], result[4]
+        if method:
+            logging.info(f'syncFiles method: {method} Synchronize files for all devices.')
+            pass
+        else:
+            logging.info(f'syncFiles method: {method} Synchronize files between both parties.')
+            for key in change_info:
+                if key == 0:
+                    # 文件不同, 开始进行判断
+                    if local_file_index['data'][key]['file_edit_date'] < remote_file_index['data'][key][
+                        'file_edit_date']:
+                        # 更新文件至本地
+                        pass
+                    elif local_file_index['data'][key]['file_edit_date'] > remote_file_index['data'][key][
+                        'file_edit_date']:
+                        # 更新文件至远程
+                        pass
+                    else:
+                        # 无操作
+                        pass
+
+                elif key == 1:
+                    pass
+                elif key == 2:
+                    pass
 
 
 if __name__ == '__main__':
