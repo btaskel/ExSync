@@ -36,6 +36,7 @@ reply_manage = {}
 ip : client_server
 """
 socket_manage = {}
+socket_manage_id = {}
 
 
 class createSocket(Scan):
@@ -232,6 +233,7 @@ class createSocket(Scan):
         # 连接指令Socket
         client.connectCommandSocket(ip)
         socket_manage[ip] = client
+        socket_manage_id[HashTools.getRandomStr(8)] = client
         # 连接数据Socket
         client.createClientDataSocket(ip)
 

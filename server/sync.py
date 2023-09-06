@@ -11,6 +11,7 @@ import xxhash
 from server.config import readConfig
 from server.shell import initLogging
 from server.tools.tools import createFile, relToAbs
+from server.run import Control
 
 
 class Index(readConfig):
@@ -59,6 +60,22 @@ class Index(readConfig):
             f.truncate()
             json.dump(data, f, indent=4)
 
+    @staticmethod
+    def writeIndex(path, json_path):
+        """更新单个文件的索引"""
+        table = {
+            "data": {
+                path: {
+                    "type": "folder",
+                    "system_date": datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                    "file_date": datetime.fromtimestamp(os.path.getmtime(path)).strftime(
+                        "%Y-%m-%d %H:%M:%S"),
+                    "state": ""
+                }
+            }
+        }
+        Index.updateJson(json_path, table)
+
     def initIndex(self):
         """
         本地ExSync索引初始化
@@ -105,44 +122,18 @@ class Index(readConfig):
 
         abspath = os.path.abspath(self.path)
         for home, folders, files in os.walk(abspath):
-
             # 建立文件夹索引
             for folder in folders:
                 folder = os.path.join(home, folder)
                 logging.debug(f'Created index for {folder} folder.')
-                folder_table = {
-                    "data": {
-                        folder: {
-                            "type": "folder",
-                            "system_date": datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
-                            "file_date": datetime.fromtimestamp(os.path.getmtime(folder)).strftime(
-                                "%Y-%m-%d %H:%M:%S"),
-                            "state": ""
-                        }
-                    }
-                }
-                Index.updateJson(folder_path, folder_table)
+                Index.writeIndex(folder, folder_path)
 
             # 建立文件索引
             for file in files:
                 file = os.path.join(home, file)
                 # folder = os.path.join(home,)
                 logging.debug(f'Created index for {file} file.')
-                file_table = {
-                    "data": {
-                        file: {
-                            "type": "file",
-                            "system_date": datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
-                            "file_edit_date": os.path.getmtime(file),
-                            "file_create_date": os.path.getctime(file),
-                            "file_read_date": os.path.getatime(file),
-                            "hash": Index.hashFile(file),
-                            "size": os.path.getsize(file),
-                            "state": ""
-                        }
-                    }
-                }
-                Index.updateJson(files_path, file_table)
+                Index.writeIndex(file, files_path)
 
         return
 
@@ -159,7 +150,6 @@ class Index(readConfig):
             for home, folders, files in os.walk(abspath):
                 for file in files:
                     file = os.path.join(abspath, file)
-                    print(file)
 
                     if file in index_dict['data']:
                         # 如果存在记录，则更新记录
@@ -238,7 +228,7 @@ class Index(readConfig):
         return change_info, local_file_index, local_folder_index, remote_file_index, remote_folder_index
 
 
-class SyncData(Index):
+class SyncData(Index, Control):
     """
     数据同步
     """
@@ -275,7 +265,21 @@ class SyncData(Index):
             logging.info(f'syncFiles method: {method} Synchronize files between both parties.')
             for key in change_info:
                 if key == 0:
-                    # 文件不同, 开始进行判断
+                    # 文件时间不同, 开始进行判断
+
+                    tic = 5 # 文件修改时间在 tic 秒以内的文件，不进行同步
+                    local_file_start_time, local_file_end_time = float(
+                        local_file_index['data'][key]['file_edit_date']) - tic, float(
+                        local_file_index['data'][key]['file_edit_date']) + tic
+                    remote_file_start_time, remote_file_end_time = float(
+                        remote_file_index['data'][key]['file_edit_date']) - tic, float(
+                        remote_file_index['data'][key]['file_edit_date']) + tic
+                    # 如果文件修改的时间差在5s以内则进行同步
+                    if abs(remote_file_end_time - local_file_end_time) < tic and abs(
+                            remote_file_start_time - local_file_start_time) < tic:
+                        # todo:
+                        pass
+
                     if local_file_index['data'][key]['file_edit_date'] < remote_file_index['data'][key][
                         'file_edit_date']:
                         # 更新文件至本地
