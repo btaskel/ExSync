@@ -18,18 +18,6 @@ class GitcodeAPI(ApiConfig):
         self.logs = ApiConfig.logs
         self.url = url
 
-        # 设置全局变量管理
-        self.cache = {}
-
-    def __setitem__(self, key, value):
-        self.cache[key] = value
-
-    def __getitem__(self, item):
-        return self.cache[item]
-
-    def __delitem__(self, key):
-        del self.cache[key]
-
     def getInfo(self, url=None):
         """
         获取指定Gitcode仓库信息：
@@ -102,48 +90,6 @@ class GitcodeAPI(ApiConfig):
         else:
             update = sorted(time_list)[-1]
         return update
-
-    def getIndexCache(self, path):
-        """
-        搜索索引缓存, 可用加快搜索速度, 默认索引大小最多不会超过10MB
-        它会从gitcode从仓库中的resources/index/cache中下载索引文件
-        """
-
-        cache_path = self.url + '/-/tree/master/resources/index/cache'
-        print(cache_path)
-        cache_logs = self.url + '/-/refs/master/resources/index/cache' + self.logs
-
-        files = os.listdir(path)
-        if files:
-            filesize = 0
-            for file in files:
-                file_path = os.path.join(path, file)
-                if os.path.isfile(file_path):
-                    filesize += os.path.getsize(file_path)
-
-            # 当目前总索引文件小于10MB时下载 索引
-            if filesize < 10485760:
-                files = self.getInfo(cache_path)
-                if files[0]:
-                    index_list = []
-                    for file in files[1]:
-                        # 会忽略过前缀带.的文件，这些文件可以当作readme
-                        if not file['file_name'].startswith('.'):
-                            # print(file['file_name'])
-                            index_list.append(file['file_name'])
-                        # Stream.download_file(self.url, save_path)
-                    return index_list
-                else:
-                    raise FileNotFoundError('Gitcode缓存文件未发现')
-            else:
-                return []
-
-
-        else:
-            pass
-            return '错误'
-
-        # Stream.download_file()
 
     def getFileContent(self, url):
         """

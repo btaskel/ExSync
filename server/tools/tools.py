@@ -90,11 +90,8 @@ class SocketTools:
             socket_encode = readConfig.readJson()['server']['addr']['encode']
         except Exception as e:
             raise KeyError('读取Config时错误：', e)
-
         if output:
-
             command_ = command.split(':')
-
             try:
                 socket_.send(command.encode(socket_encode))
                 with concurrent.futures.ThreadPoolExecutor() as excutor:
@@ -106,10 +103,8 @@ class SocketTools:
                     except concurrent.futures.TimeoutError:
                         # 超时返回错误
                         return Status.DATA_RECEIVE_TIMEOUT
-
             except Exception as e:
                 raise TimeoutError('Socket错误：', e)
-
         else:
             try:
                 socket_.send(command.encode(socket_encode))

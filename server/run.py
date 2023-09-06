@@ -111,6 +111,11 @@ class Control(Init):
         command_send = Control._get_command_send(Control._idToIp(device_id))
         command_send.get_Folder(relToAbs(path))
 
+    @staticmethod
+    def getIndex(device_id):
+        command_send = Control._get_command_send(Control._idToIp(device_id))
+        command_send.get_Folder()
+
 
 if __name__ == '__main__':
     pass

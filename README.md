@@ -10,8 +10,7 @@
 4. 去中心化，**拒绝**无条件信任第三者。
 5. 远程**控制桌面**(实验性)。
 
-
-目前贡献者： 
+目前贡献者：
 
     Bt（Bt_Asker）
 
@@ -71,6 +70,10 @@ PS:
         /_com:comm:sync:get:password|local_password:_
         /_com:comm:sync:post:password|local_password:_
 
+    索引文件操作
+        /_com:comm:sync:get:index:_
+        /_com:comm:sync:post:index|path(file_index):_
+
     获取客户端信息:
         /_com:comm:sync:get:version:_
         /_com:comm:sync:post:version:_
@@ -89,7 +92,5 @@ PS:
     /_com:data:reply:True:Value:_
 
     ——————————————————————————————————————————————————
-
-
 
 _最后：有一部分是故意重造轮子，用于练习的_

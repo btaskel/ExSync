@@ -227,15 +227,14 @@ class CommandSend:
                 self.replyFinish(filemark, False)
                 return
 
-    def get_File(self, path):
+    def get_File(self, path, output_path=None):
         """
         获取远程文件
         传入获取文件的路径，如果本地文件已经存在则会检查是否为意外中断文件，如果是则继续传输；
         如果本地文件不存在则接收远程文件传输
-
         如果远程文件不存在则返回False
 
-        /_com:data:file:get:{path}|{mode}|{filemark}:_
+        output_path: 写入路径（如果未填写则按path参数写入）
         """
         filemark = HashTools.getRandomStr()
         data_block = self.block - len(filemark)
@@ -257,9 +256,12 @@ class CommandSend:
 
         values = command[4].split('|')
         remote_filemark, remote_file_size, remote_file_hash = command[3], values[0], values[1]
+
+        if not output_path:
+            output_path = path
         if file_size:
             read_data = 0
-            with open(path, mode='ab') as f:
+            with open(output_path, mode='ab') as f:
                 f.seek(file_size)
                 while True:
                     if read_data < remote_file_size:
@@ -272,7 +274,7 @@ class CommandSend:
                         read_data += data_block
         else:
             read_data = 0
-            with open(path, mode='ab') as f:
+            with open(output_path, mode='ab') as f:
                 while True:
                     if read_data < remote_file_size:
                         data = self.data_socket.recv(self.block)
@@ -295,9 +297,34 @@ class CommandSend:
         :param path:
         :return folder_paths:
         """
-        SocketTools.sendCommand(self.command_socket, f'/_com:data:folder:get:{path}', output=False)
+        result = SocketTools.sendCommand(self.command_socket, f'/_com:data:folder:get:{path}', output=False)
+        if result == Status.DATA_RECEIVE_TIMEOUT:
+            return False
         paths = self.data_socket.recv(1024).decode('utf-8')
         return paths
+
+    def get_Index(self, index_save_path):
+        """
+        获取对方索引文件
+        :param index_save_path:
+        :return Boolean:
+        """
+        path = SocketTools.sendCommand(self.command_socket, f'/_com:comm:sync:get:index:_')
+        if path == Status.DATA_RECEIVE_TIMEOUT:
+            return False
+        else:
+            result = self.get_File(os.path.join(path, '\\.sync\\info\\files.json'), index_save_path), self.get_File(
+                os.path.join(path, '\\.sync\\info\\folders.json'), index_save_path)
+            if result[0] and result[1]:
+                return True
+            else:
+                return False
+
+    def post_Index(self, local_index_path):
+        SocketTools.sendCommand(self.command_socket, f'/_com:comm:sync:post:index|{local_index_path}:_', output=False)
+        self.post_File(os.path.join(local_index_path, '\\.sync\\info\\files.json'))
+        self.post_File(os.path.join(local_index_path, '\\.sync\\info\\folders.json'))
+
 
     @staticmethod
     def status(result):

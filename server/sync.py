@@ -9,9 +9,9 @@ import ntplib
 import xxhash
 
 from server.config import readConfig
+from server.run import Control
 from server.shell import initLogging
 from server.tools.tools import createFile, relToAbs
-from server.run import Control
 
 
 class Index(readConfig):
@@ -233,10 +233,11 @@ class SyncData(Index, Control):
     数据同步
     """
 
-    def __init__(self, path):
-        super().__init__(path)
+    def __init__(self, remote_path):
+        super().__init__()
         initLogging(logging.DEBUG)
-        self.path = relToAbs(path)
+        self.remote_path = relToAbs(remote_path)
+        self.devices = Control.getAllDevice()
 
     @staticmethod
     def updateSystemTime():
@@ -249,15 +250,17 @@ class SyncData(Index, Control):
         os.system('date {} && time {}'.format(ntp_date, ntp_time))
         logging.debug('Synchronized system time')
 
-    def syncFiles(self, method=0):
+    def syncFiles(self, devices, method=False):
         """
-        同步N方文件
-        method = 0; 同步双方文件
-        method = 1; 同步所有设备的文件
+        devices 同步的设备id（多个）
+        method = True; 同步所有文件
         """
-        result = self.analyseFiles(self.path)
+
+
+        result = self.analyseFiles(self.remote_path)
         change_info, local_file_index, local_folder_index, remote_file_index, remote_folder_index = result[0], result[
             1], result[2], result[3], result[4]
+
         if method:
             logging.info(f'syncFiles method: {method} Synchronize files for all devices.')
             pass
@@ -266,8 +269,7 @@ class SyncData(Index, Control):
             for key in change_info:
                 if key == 0:
                     # 文件时间不同, 开始进行判断
-
-                    tic = 5 # 文件修改时间在 tic 秒以内的文件，不进行同步
+                    tic = 5  # 文件修改时间在 tic 秒以内的文件，不进行同步
                     local_file_start_time, local_file_end_time = float(
                         local_file_index['data'][key]['file_edit_date']) - tic, float(
                         local_file_index['data'][key]['file_edit_date']) + tic
@@ -277,8 +279,7 @@ class SyncData(Index, Control):
                     # 如果文件修改的时间差在5s以内则进行同步
                     if abs(remote_file_end_time - local_file_end_time) < tic and abs(
                             remote_file_start_time - local_file_start_time) < tic:
-                        # todo:
-                        pass
+                        Control.postFile(devices,)
 
                     if local_file_index['data'][key]['file_edit_date'] < remote_file_index['data'][key][
                         'file_edit_date']:
