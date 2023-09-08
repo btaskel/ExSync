@@ -1,4 +1,6 @@
+import logging
 import os
+import shutil
 import socket
 
 import socks
@@ -116,9 +118,10 @@ class CommandSend:
     def __init__(self, data_socket, command_socket):
         self.data_socket = data_socket
         self.command_socket = command_socket
+        # 数据包发送分块大小(含filemark)
         self.block = 1024
 
-    def post_File(self, path, mode=1):
+    def post_File(self, path, mode=1, output_path=None):
         """
         输入文件路径，发送文件至服务端
         data_socket: 与服务端连接的socket
@@ -133,7 +136,8 @@ class CommandSend:
         mode = 2;
         如果存在文件，并且准备发送的文件字节是对方文件字节的超集(xxh3_128相同)，则续写文件，返回True。否则停止发送返回False。
         """
-        # 数据包发送分块大小(含filemark)
+        if not output_path:
+            output_path = path
 
         # 获取6位数长度的文件头标识,用于保证文件的数据唯一性
         filemark = HashTools.getRandomStr()
@@ -170,7 +174,7 @@ class CommandSend:
                     self.replyFinish(filemark, False)
                     return False
                 else:
-                    with open(path, mode='rb') as f:
+                    with open(output_path, mode='rb') as f:
                         if mode == 1 and exist:
                             # 如果服务端已经存在文件，那么重写该文件
                             local_size -= remote_size
@@ -192,7 +196,7 @@ class CommandSend:
                 if result == 'True':
                     block_times, little_block = divmod(remote_size, 8192)
                     read_data = 0
-                    with open(path, mode='rb') as f:
+                    with open(output_path, mode='rb') as f:
                         while True:
                             if read_data < block_times:
                                 data = f.read(8192)
@@ -210,7 +214,7 @@ class CommandSend:
                                                 f'/_com:data:reply:{filemark}:True:None:None:None',
                                                 output=False)
 
-                        with open(path, mode='rb') as f:
+                        with open(output_path, mode='rb') as f:
                             f.seek(remote_size)
                             data = f.read(data_block)
                             while True:
@@ -303,20 +307,42 @@ class CommandSend:
         paths = self.data_socket.recv(1024).decode('utf-8')
         return paths
 
-    def get_Index(self, index_save_path):
+    def get_Index(self, spacename):
         """
         获取对方索引文件
-        :param index_save_path:
+        :param spacename:
         :return Boolean:
         """
-        path = SocketTools.sendCommand(self.command_socket, f'/_com:comm:sync:get:index:_')
+        path = SocketTools.sendCommand(self.command_socket, f'/_com:comm:sync:get:index:{spacename}_')
         if path == Status.DATA_RECEIVE_TIMEOUT:
             return False
         else:
-            result = self.get_File(os.path.join(path, '\\.sync\\info\\files.json'), index_save_path), self.get_File(
-                os.path.join(path, '\\.sync\\info\\folders.json'), index_save_path)
-            if result[0] and result[1]:
-                return True
+            index_save_path = os.path.join(os.getcwd(), f'\\userdata\\space')
+            cache_path = os.path.join(index_save_path, 'cache')
+            save_path = os.path.join(cache_path, HashTools.getRandomStr())
+
+            if not os.path.exists(cache_path):
+                os.makedirs(cache_path)
+            result = self.get_File(os.path.join(path, '\\.sync\\info\\files.json'),
+                                   os.path.join(save_path, 'files.jsons')), self.get_File(
+                os.path.join(path, '\\.sync\\info\\folders.json'), os.path.join(save_path, 'folders.json'))
+
+            if all(result):
+                folder_name = HashTools.getFileHash_32(
+                    os.path.join(save_path, 'files.jsons')) + HashTools.getFileHash_32(
+                    os.path.join(save_path, 'folders.jsons'))
+                save_folder_path = os.path.join(index_save_path, spacename, folder_name)
+                if os.path.exists(save_folder_path):
+                    if os.path.exists(os.path.join(save_folder_path, 'files.jsons')) and os.path.exists(
+                            os.path.join(save_folder_path, 'folders.jsons')):
+                        logging.debug(f'{spacename} getIndex finish.')
+                        return save_folder_path
+                else:
+                    os.makedirs(save_folder_path)
+                    for file in [os.path.join(save_path, 'files.jsons'), os.path.join(save_path, 'folders.json')]:
+                        shutil.move(file, os.path.join(save_folder_path, file))
+                    logging.debug(f'{spacename} getIndex finish.')
+                    return save_folder_path
             else:
                 return False
 
@@ -324,7 +350,6 @@ class CommandSend:
         SocketTools.sendCommand(self.command_socket, f'/_com:comm:sync:post:index|{local_index_path}:_', output=False)
         self.post_File(os.path.join(local_index_path, '\\.sync\\info\\files.json'))
         self.post_File(os.path.join(local_index_path, '\\.sync\\info\\folders.json'))
-
 
     @staticmethod
     def status(result):

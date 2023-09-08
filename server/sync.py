@@ -233,10 +233,10 @@ class SyncData(Index, Control):
     数据同步
     """
 
-    def __init__(self, remote_path):
+    def __init__(self):
         super().__init__()
         initLogging(logging.DEBUG)
-        self.remote_path = relToAbs(remote_path)
+        self.remote_path = relToAbs()
         self.devices = Control.getAllDevice()
 
     @staticmethod
@@ -250,22 +250,17 @@ class SyncData(Index, Control):
         os.system('date {} && time {}'.format(ntp_date, ntp_time))
         logging.debug('Synchronized system time')
 
-    def syncFiles(self, devices, method=False):
+    def syncFiles(self, devices=None):
         """
-        devices 同步的设备id（多个）
-        method = True; 同步所有文件
+        devices 同步的设备id（多个）, 如果为None，则同步所有的设备
         """
-
 
         result = self.analyseFiles(self.remote_path)
         change_info, local_file_index, local_folder_index, remote_file_index, remote_folder_index = result[0], result[
             1], result[2], result[3], result[4]
 
-        if method:
-            logging.info(f'syncFiles method: {method} Synchronize files for all devices.')
-            pass
-        else:
-            logging.info(f'syncFiles method: {method} Synchronize files between both parties.')
+        if devices:
+            logging.info(f'syncFiles method: {devices} Synchronize files between both parties.')
             for key in change_info:
                 if key == 0:
                     # 文件时间不同, 开始进行判断
@@ -279,7 +274,7 @@ class SyncData(Index, Control):
                     # 如果文件修改的时间差在5s以内则进行同步
                     if abs(remote_file_end_time - local_file_end_time) < tic and abs(
                             remote_file_start_time - local_file_start_time) < tic:
-                        Control.postFile(devices,)
+                        Control.postFile(devices, )
 
                     if local_file_index['data'][key]['file_edit_date'] < remote_file_index['data'][key][
                         'file_edit_date']:
@@ -292,11 +287,14 @@ class SyncData(Index, Control):
                     else:
                         # 无操作
                         pass
-
                 elif key == 1:
                     pass
+
                 elif key == 2:
                     pass
+        else:
+            logging.info(f'syncFiles method: All devices Synchronize files for all devices.')
+            pass
 
 
 if __name__ == '__main__':

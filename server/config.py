@@ -93,4 +93,6 @@ class readConfig:
 
 if __name__ == '__main__':
     r = readConfig()
-    r.readJson()
+    config = r.readJson()
+    for userdata in config['userdata']:
+        print(userdata)

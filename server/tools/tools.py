@@ -33,9 +33,21 @@ def relToAbs(file_path):
 class HashTools:
     @staticmethod
     def getFileHash(path, block=65536):
-        """获取文件的128 xxhash值"""
-
+        """获取文件的128位 xxhash值"""
         hasher = xxhash.xxh3_128()
+
+        with open(path, mode="rb") as f:
+            while True:
+                data = f.read(block)
+                if not data:
+                    break
+                hasher.update(data)
+        return hasher.hexdigest()
+
+    @staticmethod
+    def getFileHash_32(path, block=65536):
+        """获取文件的32位 xxhash值"""
+        hasher = xxhash.xxh32()
 
         with open(path, mode="rb") as f:
             while True:

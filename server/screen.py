@@ -1,5 +1,7 @@
-import mss.tools
 import time
+
+import mss.tools
+
 
 class Screen:
     def __init__(self):
@@ -22,7 +24,7 @@ class Screen:
             return png_bytes
 
 
-s= Screen()
+s = Screen()
 while True:
     # 0.03 30fps
     # 0.017 60fps

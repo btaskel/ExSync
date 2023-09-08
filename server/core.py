@@ -208,15 +208,6 @@ class createSocket(Scan):
 
     def mergeSocket(self):
         """如果在被动模式下指令套接字连接完毕则"""
-        # if self.data_socket and self.command_socket:
-        #     if self.data_socket.getpeername()[0] == self.command_socket.getpeername()[0]:
-        #         data_socket, command_socket = self.data_socket, self.command_socket
-        #         self.data_socket, self.command_socket = None, None
-        #         # 运行指令接收
-        #         command = CommandSocket()
-        #         command.recvCommand(command_socket, data_socket)
-        #     else:
-        #         pass
         command = CommandSocket()
         while True:
             if self.socket_info[0] and self.socket_info[0][0] and self.socket_info[0][1]:
@@ -588,8 +579,6 @@ class CommandSocket(Scan):
 
                         reply_manage.pop(command[3], None)
 
-
-
                 # 普通命令判断
                 elif command[1] == 'comm':
                     # EXSync通讯指令
@@ -602,6 +591,13 @@ class CommandSocket(Scan):
                                 password_hash = xxhash.xxh3_128(password).hexdigest()
                                 SocketTools.sendCommand(command_socket, password_hash.encode(self.encode_type),
                                                         output=False)
+                            elif command[4] == 'index':
+                                # 获取索引文件
+                                for userdata in self.config['userdata']:
+                                    if command[5] == userdata['spacename']:
+                                        SocketTools.sendCommand(command_socket, userdata['path'])
+
+
                         # 提交EXSync信息
                         elif command[3] == 'post':
                             if command[4] == 'password_hash':

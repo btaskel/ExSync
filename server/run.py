@@ -112,9 +112,15 @@ class Control(Init):
         command_send.get_Folder(relToAbs(path))
 
     @staticmethod
-    def getIndex(device_id):
+    def getIndex(device_id, spacename):
+        """
+        获取指定设备的同步目录的索引文件
+        :param device_id:
+        :param spacename:
+        :return:
+        """
         command_send = Control._get_command_send(Control._idToIp(device_id))
-        command_send.get_Folder()
+        command_send.get_Index(spacename)
 
 
 if __name__ == '__main__':

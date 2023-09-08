@@ -22,9 +22,9 @@ class Status(enum.Enum):
 
     SOCKET_OBJECT_ERROR = '套接字对象错误'
 
+
 class SyncStatus(enum.Enum):
     """同步状态"""
     DIFF_FILE = '双方文件不同'
     LOCAL_FILE = '本地文件缺失'
     REMOTE_FILE = '远程文件缺失'
-
