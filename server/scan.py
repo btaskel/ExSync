@@ -110,7 +110,6 @@ class Scan(readConfig):
             test.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             test.settimeout(1)
             # 连接设备的指定端口
-            print((ip, self.command_port))
             if test.connect_ex((ip, self.command_port)) == 0:
 
                 # 如果密码为空，则任何客户端均可以连接

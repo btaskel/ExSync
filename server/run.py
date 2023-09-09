@@ -8,10 +8,10 @@ global_vars = {}
 
 class Init:
     def __init__(self):
-        self.server = None
         self.run()
 
-    def run(self):
+    @staticmethod
+    def run():
         """
         服务启动后返回Core(多个socket)实例
         """
@@ -22,11 +22,12 @@ class Init:
         server.createDataSocket()
         server.createCommandSocket()
         server.createVerifySocket()
-        self.server = server
 
 
 class Control(Init):
-    """操作接口"""
+    """
+    本地客户端与远程服务端操作接口
+    """
 
     def __init__(self):
         super().__init__()
@@ -77,17 +78,18 @@ class Control(Init):
         return command_send.post_File(relToAbs(path), mode)
 
     @staticmethod
-    def getFile(device_id, path):
+    def getFile(device_id, path, output_path=None):
         """
         获取远程文件
         传入获取文件的路径，如果本地文件已经存在则会检查是否为意外中断文件，如果是则继续传输；
         如果本地文件不存在则接收远程文件传输
+        :param output_path:
         :param device_id:
         :param path:
         :return:
         """
         command_send = Control._get_command_send(Control._idToIp(device_id))
-        return command_send.get_File(relToAbs(path))
+        return command_send.get_File(relToAbs(path), output_path)
 
     @staticmethod
     def postFolder(device_id, path):
@@ -120,8 +122,19 @@ class Control(Init):
         :return:
         """
         command_send = Control._get_command_send(Control._idToIp(device_id))
-        command_send.get_Index(spacename)
+        return command_send.get_Index(spacename)
 
+    @staticmethod
+    def postIndex(device_id, spacename, dict_example):
+        """
+        接收同步空间名，将dict_example更新到远程索引中
+        :param device_id:
+        :param spacename:
+        :param dict_example:
+        :return:
+        """
+        command_send = Control._get_command_send(Control._idToIp(device_id))
+        return command_send.post_Index(spacename, dict_example)
 
 if __name__ == '__main__':
     pass

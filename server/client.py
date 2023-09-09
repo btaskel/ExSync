@@ -309,7 +309,7 @@ class CommandSend:
 
     def get_Index(self, spacename):
         """
-        获取对方索引文件
+        传入spacename，获取对方指定同步空间的索引文件
         :param spacename:
         :return Boolean:
         """
@@ -346,7 +346,8 @@ class CommandSend:
             else:
                 return False
 
-    def post_Index(self, local_index_path):
+    def post_Index(self, spacename, dict_example):
+        """更新远程设备指定同步空间 文件/文件夹 索引"""
         SocketTools.sendCommand(self.command_socket, f'/_com:comm:sync:post:index|{local_index_path}:_', output=False)
         self.post_File(os.path.join(local_index_path, '\\.sync\\info\\files.json'))
         self.post_File(os.path.join(local_index_path, '\\.sync\\info\\folders.json'))

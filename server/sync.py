@@ -236,7 +236,6 @@ class SyncData(Index, Control):
     def __init__(self):
         super().__init__()
         initLogging(logging.DEBUG)
-        self.remote_path = relToAbs()
         self.devices = Control.getAllDevice()
 
     @staticmethod
@@ -250,51 +249,55 @@ class SyncData(Index, Control):
         os.system('date {} && time {}'.format(ntp_date, ntp_time))
         logging.debug('Synchronized system time')
 
-    def syncFiles(self, devices=None):
+    def syncFiles(self, device, spacename):
         """
-        devices 同步的设备id（多个）, 如果为None，则同步所有的设备
+        device 同步的设备id
         """
+        ls = []
+        for i in ['files.json', 'folders.json']:
+            index_path = Control.getIndex(device, spacename)
+            ls.append(os.path.join(index_path, i))
+        result = self.analyseFiles(ls)
 
-        result = self.analyseFiles(self.remote_path)
         change_info, local_file_index, local_folder_index, remote_file_index, remote_folder_index = result[0], result[
             1], result[2], result[3], result[4]
-
-        if devices:
-            logging.info(f'syncFiles method: {devices} Synchronize files between both parties.')
-            for key in change_info:
-                if key == 0:
-                    # 文件时间不同, 开始进行判断
-                    tic = 5  # 文件修改时间在 tic 秒以内的文件，不进行同步
-                    local_file_start_time, local_file_end_time = float(
-                        local_file_index['data'][key]['file_edit_date']) - tic, float(
-                        local_file_index['data'][key]['file_edit_date']) + tic
-                    remote_file_start_time, remote_file_end_time = float(
-                        remote_file_index['data'][key]['file_edit_date']) - tic, float(
-                        remote_file_index['data'][key]['file_edit_date']) + tic
-                    # 如果文件修改的时间差在5s以内则进行同步
-                    if abs(remote_file_end_time - local_file_end_time) < tic and abs(
-                            remote_file_start_time - local_file_start_time) < tic:
-                        Control.postFile(devices, )
+        logging.info(f'syncFiles: {device} Synchronize files between both parties.')
+        for key in change_info:
+            if key == 0:
+                # 文件时间不同, 开始进行判断
+                tic = 5  # 文件修改时间在 tic 秒以内的文件，不进行同步
+                local_file_start_time, local_file_end_time = float(
+                    local_file_index['data'][key]['file_edit_date']) - tic, float(
+                    local_file_index['data'][key]['file_edit_date']) + tic
+                remote_file_start_time, remote_file_end_time = float(
+                    remote_file_index['data'][key]['file_edit_date']) - tic, float(
+                    remote_file_index['data'][key]['file_edit_date']) + tic
+                # 如果文件修改的时间差在5s以内则进行同步
+                if abs(remote_file_end_time - local_file_end_time) < tic and abs(
+                        remote_file_start_time - local_file_start_time) < tic:
 
                     if local_file_index['data'][key]['file_edit_date'] < remote_file_index['data'][key][
                         'file_edit_date']:
                         # 更新文件至本地
-                        pass
+                        Control.getFile(device, local_file_index['data'][key])
+
                     elif local_file_index['data'][key]['file_edit_date'] > remote_file_index['data'][key][
                         'file_edit_date']:
                         # 更新文件至远程
-                        pass
+                        Control.postFile(device, local_file_index['data'][key])
+
                     else:
                         # 无操作
                         pass
-                elif key == 1:
-                    pass
 
-                elif key == 2:
-                    pass
-        else:
-            logging.info(f'syncFiles method: All devices Synchronize files for all devices.')
-            pass
+            elif key == 1:
+                pass
+
+            elif key == 2:
+                pass
+
+            # todo: 更新远程索引列表
+
 
 
 if __name__ == '__main__':
