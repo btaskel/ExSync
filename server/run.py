@@ -125,16 +125,28 @@ class Control(Init):
         return command_send.get_Index(spacename)
 
     @staticmethod
-    def postIndex(device_id, spacename, dict_example):
+    def postIndex(device_id, spacename, json_object):
         """
         接收同步空间名，将dict_example更新到远程索引中
         :param device_id:
         :param spacename:
-        :param dict_example:
+        :param json_object:
         :return:
         """
         command_send = Control._get_command_send(Control._idToIp(device_id))
-        return command_send.post_Index(spacename, dict_example)
+        return command_send.post_Index(spacename, json_object)
+
+    @staticmethod
+    def sendCommand(device_id, command):
+        """
+        客户端向指定设备id发送指令
+        :param device_id:
+        :param command:
+        :return:
+        """
+        command_send = Control._get_command_send(Control._idToIp(device_id))
+        return command_send.sendCommand(command)
+
 
 if __name__ == '__main__':
     pass

@@ -467,6 +467,12 @@ class DataSocket(Scan):
         SocketTools.sendCommand(self.data_socket, str(paths), output=False)
         return paths
 
+    def postIndex(self, command):
+        """
+        根据远程发送过来的索引数据更新本地同步空间的索引
+
+        """
+
 
 class CommandSocket(Scan):
     """
@@ -597,19 +603,25 @@ class CommandSocket(Scan):
                                     if command[5] == userdata['spacename']:
                                         SocketTools.sendCommand(command_socket, userdata['path'])
 
-
                         # 提交EXSync信息
                         elif command[3] == 'post':
+
                             if command[4] == 'password_hash':
+
                                 # 对比本地密码hash
                                 password = self.config['server']['addr']['password']
                                 password_hash = xxhash.xxh3_128(password).hexdigest()
                                 if command[4].split('|')[1] == password_hash:
                                     SocketTools.sendCommand(command_socket, 'True'.encode(self.encode_type),
                                                             output=False)
+
                                 else:
                                     SocketTools.sendCommand(command_socket, 'False'.encode(self.encode_type),
                                                             output=False)
+
+                            # 更新本地索引
+                            elif command[4] == 'index':
+                                thread = threading.Thread(target=command_set.postIndex, args=(command[5],))
 
 
 if __name__ == '__main__':

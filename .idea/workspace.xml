@@ -4,15 +4,10 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="cf4f83ad-3c2a-4894-b3a1-82f233ce359d" name="变更" comment="The client getIndex function is complete.">
+    <list default="true" id="cf4f83ad-3c2a-4894-b3a1-82f233ce359d" name="变更" comment="update">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/LICENSE" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/server/client.py" beforeDir="false" afterPath="$PROJECT_DIR$/server/client.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/server/core.py" beforeDir="false" afterPath="$PROJECT_DIR$/server/core.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/server/run.py" beforeDir="false" afterPath="$PROJECT_DIR$/server/run.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/server/scan.py" beforeDir="false" afterPath="$PROJECT_DIR$/server/scan.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/server/server.py" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/server/sync.py" beforeDir="false" afterPath="$PROJECT_DIR$/server/sync.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/server/updater.py" beforeDir="false" afterPath="$PROJECT_DIR$/server/updater.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -64,7 +59,7 @@
     &quot;WebServerToolWindowFactoryState&quot;: &quot;false&quot;,
     &quot;last_opened_file_path&quot;: &quot;H:/Python project/ExSync/server/config&quot;,
     &quot;nodejs_package_manager_path&quot;: &quot;npm&quot;,
-    &quot;settings.editor.selected.configurable&quot;: &quot;configurable.group.appearance&quot;
+    &quot;settings.editor.selected.configurable&quot;: &quot;project.propDebugger&quot;
   },
   &quot;keyToStringList&quot;: {
     &quot;DatabaseDriversLRU&quot;: [
@@ -234,7 +229,10 @@
       <workItem from="1694148690636" duration="1218000" />
       <workItem from="1694149994774" duration="9953000" />
       <workItem from="1694165120740" duration="14568000" />
-      <workItem from="1694238752690" duration="8707000" />
+      <workItem from="1694238752690" duration="9058000" />
+      <workItem from="1694340541056" duration="6464000" />
+      <workItem from="1694391210106" duration="87000" />
+      <workItem from="1694416350973" duration="495000" />
     </task>
     <task id="LOCAL-00001" summary="fix">
       <created>1693484658275</created>
@@ -285,7 +283,14 @@
       <option name="project" value="LOCAL" />
       <updated>1694158527859</updated>
     </task>
-    <option name="localTasksCounter" value="8" />
+    <task id="LOCAL-00008" summary="update">
+      <created>1694268497796</created>
+      <option name="number" value="00008" />
+      <option name="presentableId" value="LOCAL-00008" />
+      <option name="project" value="LOCAL" />
+      <updated>1694268497796</updated>
+    </task>
+    <option name="localTasksCounter" value="9" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -316,12 +321,12 @@
   </component>
   <component name="VcsManagerConfiguration">
     <MESSAGE value="fix" />
-    <MESSAGE value="update" />
     <MESSAGE value="getFile function Finish." />
     <MESSAGE value="基本交互内核完成." />
     <MESSAGE value="fix bugs." />
     <MESSAGE value="The client getIndex function is complete." />
-    <option name="LAST_COMMIT_MESSAGE" value="The client getIndex function is complete." />
+    <MESSAGE value="update" />
+    <option name="LAST_COMMIT_MESSAGE" value="update" />
   </component>
   <component name="com.intellij.coverage.CoverageDataManagerImpl">
     <SUITE FILE_PATH="coverage/Sync$sum_of_squares_pyx.coverage" NAME="sum_of_squares.pyx 覆盖结果" MODIFIED="1691302028250" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$" />
