@@ -1,3 +1,5 @@
+import threading
+
 from server.client import CommandSend
 from server.core import createSocket, socket_manage, socket_manage_id
 from server.shell import *
@@ -7,21 +9,21 @@ global_vars = {}
 
 
 class Init:
+    """EXSync初始化"""
+
     def __init__(self):
         self.run()
 
     @staticmethod
     def run():
-        """
-        服务启动后返回Core(多个socket)实例
-        """
         initLogging(logging.DEBUG)
 
         # 初始化服务端/客户端
         server = createSocket()
-        server.createDataSocket()
-        server.createCommandSocket()
-        server.createVerifySocket()
+        socket_ls = [server.createDataSocket, server.createCommandSocket, server.createVerifySocket]
+        for thread in socket_ls:
+            thread = threading.Thread(target=thread)
+            thread.start()
 
 
 class Control(Init):
@@ -125,27 +127,35 @@ class Control(Init):
         return command_send.get_Index(spacename)
 
     @staticmethod
-    def postIndex(device_id, spacename, json_object):
+    def postIndex(device_id, spacename, json_object, is_file=True):
         """
         接收同步空间名，将dict_example更新到远程索引中
+        :param is_file:
         :param device_id:
         :param spacename:
         :param json_object:
         :return:
+
+        "H:\\Python project\\Sync\\test\\space\\\u795e\u91cc\u51cc\u534e-adjust.jpg": {
+            "type": "file",
+            xxxx......
+
         """
         command_send = Control._get_command_send(Control._idToIp(device_id))
-        return command_send.post_Index(spacename, json_object)
+        return command_send.post_Index(spacename, json_object, is_file)
 
     @staticmethod
     def sendCommand(device_id, command):
         """
         客户端向指定设备id发送指令
+        如果当前设备没有权限操作对方系统级指令则只能执行EXSync指令(成功返回True, 否则为False)
+        如果当前设备有权限操作对方系统级指令则执行返回信息，否则返回False
         :param device_id:
         :param command:
         :return:
         """
         command_send = Control._get_command_send(Control._idToIp(device_id))
-        return command_send.sendCommand(command)
+        return command_send.send_Command(command)
 
 
 if __name__ == '__main__':

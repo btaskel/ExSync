@@ -116,7 +116,8 @@ class SocketTools:
                         # 超时返回错误
                         return Status.DATA_RECEIVE_TIMEOUT
             except Exception as e:
-                raise TimeoutError('Socket错误：', e)
+                print(e)
+                return False
         else:
             try:
                 socket_.send(command.encode(socket_encode))

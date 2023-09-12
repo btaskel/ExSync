@@ -1,3 +1,4 @@
+import json
 import logging
 import os
 import socket
@@ -132,7 +133,8 @@ class createSocket(Scan):
         command_socket.listen(128)
         while True:
             sub_socket, addr = command_socket.accept()
-            if addr[0] in self.ip_list:
+
+            def done():
                 # 验证成功
                 SocketTools.sendCommand(sub_socket, 'yes', output=False)
                 SocketTools.sendCommand(sub_socket, str(self.uuid), output=False)
@@ -146,27 +148,17 @@ class createSocket(Scan):
                         "data": None
                     }
 
-            else:
+            if addr[0] in self.ip_list:
+                done()
 
+            else:
                 # 验证对方合法性
                 sub_socket.settimeout(2)
                 password_hash = SocketTools.sendCommand(sub_socket, '/_com:comm:sync:get:password_hash')
                 if password_hash == self.local_password_hash:
-                    # 验证成功
-                    SocketTools.sendCommand(sub_socket, 'yes', output=False)
-                    SocketTools.sendCommand(sub_socket, str(self.uuid), output=False)
-                    self.connected.add(addr[0])
-
-                    if sub_socket.getpeername()[0] in self.socket_info:
-                        self.socket_info[sub_socket.getpeername()[0]]["command"] = sub_socket
-                    else:
-                        self.socket_info[sub_socket.getpeername()[0]] = {
-                            "command": sub_socket,
-                            "data": None
-                        }
+                    done()
 
                 else:
-
                     # 验证失败
                     SocketTools.sendCommand(sub_socket, 'no', output=False)
                     sub_socket.shutdown(socket.SHUT_RDWR)
@@ -216,7 +208,8 @@ class createSocket(Scan):
                 thread.start()
             time.sleep(0.25)
 
-    def createClientCommandSocket(self, ip, Client):
+    @staticmethod
+    def createClientCommandSocket(ip, Client):
         """
         本地客户端主动连接远程服务端
         """
@@ -275,7 +268,7 @@ class DataSocket(Scan):
         """
         remote_file_path = command[0]
         remote_file_size = command[1]
-        remote_file_hash = command[2]
+        # remote_file_hash = command[2]
         mode = int(command[3])
 
         filemark = command[4]
@@ -294,7 +287,7 @@ class DataSocket(Scan):
             exists = False
 
         # 文件信息
-        remote_file_date = os.path.getmtime(remote_file_path)
+        # remote_file_date = os.path.getmtime(remote_file_path)
 
         # 服务端返回信息格式：/_com : data : reply: filemark: exist | filesize | filehash | filedate
         self.command_socket.send(
@@ -472,6 +465,48 @@ class DataSocket(Scan):
         根据远程发送过来的索引数据更新本地同步空间的索引
 
         """
+        spacename, json_example, isfile = command[0], command[1], command[2]
+        if spacename in self.config['userdata']:
+            path = self.config['userdata'][spacename]['path']
+            files_index_path = os.path.join(path, '\\.sync\\info\\files.json')
+            folders_index_path = os.path.join(path, '\\.sync\\info\\folders.json')
+            for file in [files_index_path, folders_index_path]:
+                if not os.path.exists(file):
+                    SocketTools.sendCommand(self.command_socket, '/_com:data:reply:False:remoteIndexNoExist:_', output=False)
+                    return False
+            try:
+                json_example = json.loads(command[1])
+            except Exception as e:
+                print(e)
+                logging.warning(f'Failed to load local index: {command[0]}')
+                return False
+
+            def __updateIndex(index_path):
+                with open(index_path, mode='r+', encoding=self.encode_type) as f:
+                    try:
+                        data = json.load(f)
+                    except Exception as error:
+                        print(error)
+                        logging.warning(f'Failed to load index file: {index_path}')
+                        SocketTools.sendCommand(self.command_socket, '/_com:data:reply:False:remoteIndexError:_',
+                                                output=False)
+                        return False
+                    data['data'].update(json_example)
+                    f.truncate(0)
+                    json.dump(data, f, indent=4)
+
+            if isfile == 'True':
+                # 写入文件索引
+                __updateIndex(files_index_path)
+            else:
+                # 写入文件索引
+                __updateIndex(folders_index_path)
+
+            SocketTools.sendCommand(self.command_socket, '/_com:data:reply:True:remoteIndexError:_', output=False)
+            return True
+        else:
+            SocketTools.sendCommand(self.command_socket, '/_com:data:reply:False:remoteSpaceNameNoExist:_', output=False)
+            return False
 
 
 class CommandSocket(Scan):
@@ -548,7 +583,6 @@ class CommandSocket(Scan):
                         # 创建服务端文件夹
                         elif command[3] == 'post':
                             values = command[4].split('|')
-                            # global_vars[values[3]] = None
                             thread = threading.Thread(target=command_set.recvFolder, args=(values,))
                             thread.start()
 
@@ -605,7 +639,6 @@ class CommandSocket(Scan):
 
                         # 提交EXSync信息
                         elif command[3] == 'post':
-
                             if command[4] == 'password_hash':
 
                                 # 对比本地密码hash
@@ -622,6 +655,7 @@ class CommandSocket(Scan):
                             # 更新本地索引
                             elif command[4] == 'index':
                                 thread = threading.Thread(target=command_set.postIndex, args=(command[5],))
+                                thread.start()
 
 
 if __name__ == '__main__':

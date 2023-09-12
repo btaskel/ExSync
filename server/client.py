@@ -346,11 +346,22 @@ class CommandSend:
             else:
                 return False
 
-    def post_Index(self, spacename, dict_example):
-        """更新远程设备指定同步空间 文件/文件夹 索引"""
-        SocketTools.sendCommand(self.command_socket, f'/_com:comm:sync:post:index|{local_index_path}:_', output=False)
-        self.post_File(os.path.join(local_index_path, '\\.sync\\info\\files.json'))
-        self.post_File(os.path.join(local_index_path, '\\.sync\\info\\folders.json'))
+    def post_Index(self, spacename, json_example, is_file):
+        """
+        更新远程设备指定同步空间 文件/文件夹 索引
+        发送成功返回 True 否则 False
+        """
+        if is_file:
+            is_file = 'True'
+        else:
+            is_file = 'False'
+
+        if SocketTools.sendCommand(self.command_socket,
+                                   f'/_com:comm:sync:post:index:{spacename}|{json_example}|{is_file}:_',
+                                   output=False):
+            return True
+        else:
+            return False
 
     @staticmethod
     def status(result):

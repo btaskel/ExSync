@@ -46,18 +46,21 @@ class Index(readConfig):
         return hash_object.hexdigest()
 
     @staticmethod
-    def updateJson(folder_path, folder_table):
+    def updateJson(path, table):
         """
         更新本地文件索引
-        :param folder_path:
-        :param folder_table:
+        :param path:
+        :param table:
         :return:
         """
-        with open(folder_path, mode='r+', encoding='utf-8') as f:
-            data = json.load(f)
-            data["data"].update(folder_table["data"])
-            f.seek(0)
-            f.truncate()
+        with open(path, mode='r+', encoding='utf-8') as f:
+            try:
+                data = json.load(f)
+            except Exception as e:
+                print(e)
+                logging.warning(f'Failed to load index file: {path}')
+            data['data'].update(table)
+            f.truncate(0)
             json.dump(data, f, indent=4)
 
     @staticmethod
@@ -237,10 +240,14 @@ class SyncData(Index, Control):
         super().__init__()
         initLogging(logging.DEBUG)
         self.devices = Control.getAllDevice()
+        self.index_cache = []
 
     @staticmethod
     def updateSystemTime():
-        """同步系统时间"""
+        """
+        EXSync依赖系统时间进行文件同步
+        同步系统时间
+        """
         ntp_client = ntplib.NTPClient()
         response = ntp_client.request("pool.ntp.org")
         time_str = response.tx_time
@@ -248,6 +255,12 @@ class SyncData(Index, Control):
         ntp_time = time.strftime('%X', time.localtime(time_str))
         os.system('date {} && time {}'.format(ntp_date, ntp_time))
         logging.debug('Synchronized system time')
+
+    def pushIndex(self, index_content, cache_length=10):
+        """
+        把将要发送的索引内容加入队列，当达到cache_length则向服务端发送
+        相当于多路复用减少延迟的效果
+        """
 
     def syncFiles(self, device, spacename):
         """
@@ -280,11 +293,13 @@ class SyncData(Index, Control):
                         'file_edit_date']:
                         # 更新文件至本地
                         Control.getFile(device, local_file_index['data'][key])
+                        # todo: 更新本地索引
 
                     elif local_file_index['data'][key]['file_edit_date'] > remote_file_index['data'][key][
                         'file_edit_date']:
                         # 更新文件至远程
                         Control.postFile(device, local_file_index['data'][key])
+                        Control.postIndex(device, spacename, remote_file_index['data'][key])
 
                     else:
                         # 无操作

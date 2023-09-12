@@ -1,4 +1,5 @@
 from datetime import datetime
+from functools import lru_cache
 
 import requests
 from bs4 import BeautifulSoup
@@ -17,6 +18,7 @@ class GitcodeAPI(ApiConfig):
         self.logs = ApiConfig.logs
         self.url = url
 
+    @lru_cache
     def getInfo(self, url=None):
         """
         获取指定Gitcode仓库信息：
@@ -53,6 +55,7 @@ class GitcodeAPI(ApiConfig):
             return False, file_list
 
     @staticmethod
+    @lru_cache
     def getFileSize(file_url):
         """
         获取仓库中的文件大小
@@ -63,6 +66,7 @@ class GitcodeAPI(ApiConfig):
         file_size = response.headers['Content-Length']
         return file_size
 
+    @lru_cache
     def getUpdateDate(self):
         """
         获取指定仓库的最新更新日期
@@ -90,6 +94,7 @@ class GitcodeAPI(ApiConfig):
             update = sorted(time_list)[-1]
         return update
 
+    @lru_cache
     def getFileContent(self, url):
         """
         用于获取＜1MB的文件内容
@@ -101,6 +106,7 @@ class GitcodeAPI(ApiConfig):
             raise e
         return BeautifulSoup(html.text, 'html.parser')
 
+    @lru_cache
     def __urlInit(self, url):
         """
         这个函数用来初始化URL，让GitCode的URL格式化

@@ -1,6 +1,6 @@
 import json
 
-
+import re
 class ApiConfig:
     """
     基本配置信息
@@ -37,7 +37,8 @@ class readConfig:
     @staticmethod
     def readJson():
         with open('.\\config\\config.json', mode='r', encoding='utf-8') as f:
-            return json.loads(f.read())
+            config = json.loads(f.read())
+            return config
 
     @staticmethod
     def createJson():
@@ -92,7 +93,8 @@ class readConfig:
 
 
 if __name__ == '__main__':
-    r = readConfig()
-    config = r.readJson()
-    for userdata in config['userdata']:
-        print(userdata)
+    # r = readConfig()
+    # config = r.readJson()
+    # for userdata in config['userdata']:
+    #     print(userdata)
+    pass
