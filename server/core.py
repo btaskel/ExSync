@@ -463,7 +463,6 @@ class DataSocket(Scan):
     def postIndex(self, command):
         """
         根据远程发送过来的索引数据更新本地同步空间的索引
-
         """
         spacename, json_example, isfile = command[0], command[1], command[2]
         if spacename in self.config['userdata']:
@@ -472,7 +471,8 @@ class DataSocket(Scan):
             folders_index_path = os.path.join(path, '\\.sync\\info\\folders.json')
             for file in [files_index_path, folders_index_path]:
                 if not os.path.exists(file):
-                    SocketTools.sendCommand(self.command_socket, '/_com:data:reply:False:remoteIndexNoExist:_', output=False)
+                    SocketTools.sendCommand(self.command_socket, '/_com:data:reply:False:remoteIndexNoExist:_',
+                                            output=False)
                     return False
             try:
                 json_example = json.loads(command[1])
@@ -505,7 +505,8 @@ class DataSocket(Scan):
             SocketTools.sendCommand(self.command_socket, '/_com:data:reply:True:remoteIndexError:_', output=False)
             return True
         else:
-            SocketTools.sendCommand(self.command_socket, '/_com:data:reply:False:remoteSpaceNameNoExist:_', output=False)
+            SocketTools.sendCommand(self.command_socket, '/_com:data:reply:False:remoteSpaceNameNoExist:_',
+                                    output=False)
             return False
 
 

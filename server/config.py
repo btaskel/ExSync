@@ -1,6 +1,6 @@
 import json
 
-import re
+
 class ApiConfig:
     """
     基本配置信息
@@ -76,7 +76,9 @@ class readConfig:
                     "spacename": "",
                     "path": "",
                     "interval": 30,
-                    "autostart": True
+                    "autostart": True,
+                    "active": True,
+                    "devices": [""]
 
                 }
             ],

@@ -262,6 +262,40 @@ class SyncData(Index, Control):
         相当于多路复用减少延迟的效果
         """
 
+    def updateLocalIndex(self, spacename, json_example, isFile=True):
+        """
+        更新本地指定同步空间的索引文件
+        :param json_example:
+        :param isFile:
+        :param spacename:
+        :return:
+        """
+        space = None
+        config = self.config['userdata']
+        for userdata in config['userdata']:
+            if spacename == userdata['spacename']:
+                space = userdata
+
+        if space:
+            if isFile:
+                index_json = os.path.join(space['path'], '\\.sync\\info\\files.json')
+            else:
+                index_json = os.path.join(space['path'], '\\.sync\\info\\folders.json')
+
+            with open(index_json, mode='r+', encoding='utf-8') as f:
+                try:
+                    data = json.load(f)
+                except Exception as error:
+                    print(error)
+                    logging.warning(f'Failed to load index file: {index_json}')
+                    return False
+                data['data'].update(json_example)
+                f.truncate(0)
+                json.dump(data, f, indent=4)
+        else:
+            logging.warning(f'No synchronization space was found in the configuration file: {spacename}')
+            return False
+
     def syncFiles(self, device, spacename):
         """
         device 同步的设备id
@@ -291,15 +325,20 @@ class SyncData(Index, Control):
 
                     if local_file_index['data'][key]['file_edit_date'] < remote_file_index['data'][key][
                         'file_edit_date']:
-                        # 更新文件至本地
-                        Control.getFile(device, local_file_index['data'][key])
-                        # todo: 更新本地索引
+                        if local_file_index['data'][key]['hash'] != remote_file_index['data'][key]['hash']:
+                            # 更新文件至本地
+                            Control.getFile(device, key)
+                            value = local_file_index['data'].get(key)
+                            self.updateLocalIndex(spacename, f"{{'{key}': {value}}}")
+
 
                     elif local_file_index['data'][key]['file_edit_date'] > remote_file_index['data'][key][
                         'file_edit_date']:
-                        # 更新文件至远程
-                        Control.postFile(device, local_file_index['data'][key])
-                        Control.postIndex(device, spacename, remote_file_index['data'][key])
+                        if local_file_index['data'][key]['hash'] != remote_file_index['data'][key]['hash']:
+                            # 更新文件至远程
+                            Control.postFile(device, key, mode=2)
+                            value = local_file_index['data'].get(key)
+                            Control.postIndex(device, spacename, f"{{'{key}': {value}}}")
 
                     else:
                         # 无操作
@@ -312,7 +351,6 @@ class SyncData(Index, Control):
                 pass
 
             # todo: 更新远程索引列表
-
 
 
 if __name__ == '__main__':
