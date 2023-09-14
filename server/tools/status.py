@@ -28,3 +28,8 @@ class SyncStatus(enum.Enum):
     DIFF_FILE = '双方文件不同'
     LOCAL_FILE = '本地文件缺失'
     REMOTE_FILE = '远程文件缺失'
+
+class CommandSet(enum.Enum):
+    EXSYNC_INSUFFICIENT_PERMISSION = 'EXSync权限不足'
+    FAILED = '执行失败'
+    SUCCESSFUL = '执行成功'

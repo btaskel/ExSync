@@ -2,6 +2,7 @@ import configparser
 import json
 import logging
 import os
+import threading
 import time
 from datetime import datetime
 
@@ -309,9 +310,9 @@ class SyncData(Index, Control):
         change_info, local_file_index, local_folder_index, remote_file_index, remote_folder_index = result[0], result[
             1], result[2], result[3], result[4]
         logging.info(f'syncFiles: {device} Synchronize files between both parties.')
-        for key in change_info:
-            if key == 0:
-                # 文件时间不同, 开始进行判断
+        for key, value in change_info.items():
+            if value == 0:
+                # 0: 文件时间不同, 开始进行判断
                 tic = 5  # 文件修改时间在 tic 秒以内的文件，不进行同步
                 local_file_start_time, local_file_end_time = float(
                     local_file_index['data'][key]['file_edit_date']) - tic, float(
@@ -328,7 +329,7 @@ class SyncData(Index, Control):
                         if local_file_index['data'][key]['hash'] != remote_file_index['data'][key]['hash']:
                             # 更新文件至本地
                             Control.getFile(device, key)
-                            value = local_file_index['data'].get(key)
+                            value = remote_file_index['data'].get(key)
                             self.updateLocalIndex(spacename, f"{{'{key}': {value}}}")
 
 
@@ -344,13 +345,32 @@ class SyncData(Index, Control):
                         # 无操作
                         pass
 
-            elif key == 1:
-                pass
+            elif value == 1:
+                # 1: 本地文件不存在;
+                value = remote_file_index['data'].get(key)
+                Control.getFile(device, key)
+                self.updateLocalIndex(spacename, f"{{'{key}': {value}}}")
 
-            elif key == 2:
-                pass
+            elif value == 2:
+                # 2: 远程文件不存在;
+                value = local_file_index['data'].get(key)
+                Control.postFile(device, key, mode=2)
+                Control.postIndex(device, spacename, f"{{'key': {value}}}")
 
-            # todo: 更新远程索引列表
+    def syncFilesToAllDevices(self, spacename, method=0):
+        """
+        同步所有设备的文件
+
+        method = 0; 逻辑：本机依次同步所有设备的文件
+        （拟）method = 1; 逻辑：本机首先发送给第一个需要同步设备IP名单，如果名单中的IP也在对方的同步列表中，
+        那么对方设备会为IP名单中的设备进行文件同步，以此类推。（过程中本机也会继续同步其它设备文件）
+        """
+        if method:
+            pass
+        else:
+            for device in self.devices:
+                thread = threading.Thread(target=self.syncFiles, args=(device, spacename))
+                thread.start()
 
 
 if __name__ == '__main__':

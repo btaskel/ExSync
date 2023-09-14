@@ -7,7 +7,7 @@ import socks
 import xxhash
 
 from server.config import readConfig
-from server.tools.status import Status
+from server.tools.status import Status, CommandSet
 from server.tools.tools import HashTools, SocketTools
 
 """
@@ -362,6 +362,26 @@ class CommandSend:
             return True
         else:
             return False
+
+    def send_Command(self, command):
+        """
+        发送指令：以/sync开头的指令为EXSync指令
+        :param command:
+        :return:
+        """
+        result = SocketTools.sendCommand(self.command_socket, f'/_com:comm:sync:post:comm:{command}_')
+        try:
+            if result[0] == Status.DATA_RECEIVE_TIMEOUT:
+                return Status.DATA_RECEIVE_TIMEOUT
+            elif result[0] == CommandSet.EXSYNC_INSUFFICIENT_PERMISSION:
+                return CommandSet.EXSYNC_INSUFFICIENT_PERMISSION
+            elif result[0] == CommandSet.FAILED:
+                return CommandSet.FAILED
+            elif result[0] == CommandSet.SUCCESSFUL:
+                return CommandSet.SUCCESSFUL, result[1]
+        except Exception as e:
+            print(e)
+            logging.warning(f"Command execution failed: {command}")
 
     @staticmethod
     def status(result):

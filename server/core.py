@@ -509,6 +509,21 @@ class DataSocket(Scan):
                                     output=False)
             return False
 
+    def executeCommand(self, command):
+        """
+
+        """
+        import subprocess
+
+        # 创建一个新的进程来执行命令
+        process = subprocess.Popen(['ls', '-l'], stdout=subprocess.PIPE)
+
+        # 使用.communicate()方法来获取命令的输出
+        stdout, stderr = process.communicate()
+
+        # 输出命令执行结果
+        print(stdout.decode('utf-8'))
+
 
 class CommandSocket(Scan):
     """
@@ -658,6 +673,9 @@ class CommandSocket(Scan):
                                 thread = threading.Thread(target=command_set.postIndex, args=(command[5],))
                                 thread.start()
 
+                            elif command[4] == 'comm':
+                                thread = threading.Thread(target=command_set.executeCommand, args=(command[5],))
+                                thread.start()
 
 if __name__ == '__main__':
     s = createSocket()
