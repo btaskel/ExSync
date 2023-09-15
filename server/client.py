@@ -8,7 +8,7 @@ import xxhash
 
 from server.config import readConfig
 from server.tools.status import Status, CommandSet
-from server.tools.tools import HashTools, SocketTools
+from server.tools.tools import HashTools, SocketTools, TimeDict
 
 """
 子Socket管理
@@ -120,6 +120,21 @@ class CommandSend:
         self.command_socket = command_socket
         # 数据包发送分块大小(含filemark)
         self.block = 1024
+
+    def recvDate(self):
+        """
+        持续接收数据等待接下来的方法处理数据，同时遵循TimeDict的元素生命周期
+        以mark头来区分数据流，如果接收到发现数据流的标识不存在则丢弃数据流
+        EXSync的mark头为数据流的前8位
+        """
+
+        def addData():
+            """添加数据，如果不存在则创建数据，"""
+
+        timedict = TimeDict()
+        while True:
+            result = self.data_socket.recv(1024)
+            mark, data = result[:8], result[8:]
 
     def post_File(self, path, mode=1, output_path=None):
         """

@@ -3,6 +3,7 @@ import logging
 import os
 import random
 import string
+import threading
 import time
 
 import xxhash
@@ -145,3 +146,54 @@ class SocketTools:
         else:
             return Status.REPLY_ERROR
         return result
+
+
+class TimeDict:
+    """
+    可以理解为一个小型的redis
+    默认情况下每次扫描间隔是5秒，如果有元素存在超过4秒则予以删除
+    """
+
+    def __init__(self, release=4, scan=5):
+        self.dict = {}
+        self.lock = threading.Lock()
+        try:
+            self.release_time = int(release)
+            self.scan = float(scan)
+        except Exception as e:
+            print(e)
+            self.release_time = 4
+            self.scan = 5
+
+        thread = threading.Thread(target=self.__release)
+        thread.start()
+
+    def set(self, key, value):
+        """设置键值对"""
+        with self.lock:
+            self.dict[key] = [value, time.time()]
+
+    def get(self, key):
+        """获取键值对"""
+        with self.lock:
+            return self.dict.get(key, (None, None))[0]
+
+    def __release(self):
+        """周期性扫描过期键值对并删除"""
+        while True:
+            time.sleep(self.scan)
+            keys_to_delete = []
+            with self.lock:
+                for key, value in self.dict.items():
+                    if time.time() - value[1] > self.release_time:
+                        keys_to_delete.append(key)
+                for key in keys_to_delete:
+                    del self.dict[key]
+
+
+if __name__ == '__main__':
+    # timedict = TimeDict()
+    # timedict.set('a', 10)
+    # time.sleep(10)
+    # print(timedict.get('a'))
+    pass
