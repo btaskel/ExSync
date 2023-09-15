@@ -372,6 +372,14 @@ class SyncData(Index, Control):
                 thread = threading.Thread(target=self.syncFiles, args=(device, spacename))
                 thread.start()
 
+    def syncShell(self, device, Command):
+        """
+        发送
+        :param device:
+        :param Command:
+        :return:
+        """
+
 
 if __name__ == '__main__':
     p = '.\\test\\space'

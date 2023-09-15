@@ -1,7 +1,9 @@
 import json
+import locale
 import logging
 import os
 import socket
+import subprocess
 import threading
 import time
 import uuid
@@ -10,7 +12,7 @@ import socks
 import xxhash
 
 from server.scan import Scan
-from server.tools.status import Status
+from server.tools.status import Status, PermissionEnum, CommandSet
 from server.tools.tools import SocketTools, HashTools
 
 """
@@ -37,7 +39,6 @@ reply_manage = {}
 ip : client_server
 """
 socket_manage = {}
-socket_manage_id = {}
 
 
 class createSocket(Scan):
@@ -90,8 +91,11 @@ class createSocket(Scan):
         """
         self.ip = None
 
-        thread = threading.Thread(target=self.updateIplist)
-        thread.start()
+        # 持续合并指令与数据传输套接字
+        funcs = [self.mergeSocket, self.updateIplist]
+        for func in funcs:
+            thread = threading.Thread(target=func)
+            thread.start()
 
     def createDataSocket(self):
         data_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -143,6 +147,7 @@ class createSocket(Scan):
                 if sub_socket.getpeername()[0] in self.socket_info:
                     self.socket_info[sub_socket.getpeername()[0]]["command"] = sub_socket
                 else:
+                    sub_socket.permission = PermissionEnum.SYNC
                     self.socket_info[sub_socket.getpeername()[0]] = {
                         "command": sub_socket,
                         "data": None
@@ -200,12 +205,22 @@ class createSocket(Scan):
 
     def mergeSocket(self):
         """如果在被动模式下指令套接字连接完毕则"""
-        command = CommandSocket()
+        # command = CommandSocket()
+        # while True:
+        #     if self.socket_info[0] and self.socket_info[0][0] and self.socket_info[0][1]:
+        #         addr = self.socket_info.pop(0)
+        #         thread = threading.Thread(target=command.recvCommand, args=(addr['command'], addr['data']))
+        #         thread.start()
+        #     time.sleep(0.25)
         while True:
-            if self.socket_info[0] and self.socket_info[0][0] and self.socket_info[0][1]:
-                addr = self.socket_info.pop(0)
-                thread = threading.Thread(target=command.recvCommand, args=(addr['command'], addr['data']))
-                thread.start()
+            index = 0
+            for key, value in self.socket_info.items():
+                if value['command'] and value['data']:
+                    command = CommandSocket()
+                    command_socket, data_socket = self.socket_info.pop(index)
+                    thread = threading.Thread(target=command.recvCommand, args=(command_socket, data_socket))
+                    thread.start()
+                    index += 1
             time.sleep(0.25)
 
     @staticmethod
@@ -216,8 +231,10 @@ class createSocket(Scan):
         client = Client()
         # 连接指令Socket
         client.connectCommandSocket(ip)
-        socket_manage[ip] = client
-        socket_manage_id[HashTools.getRandomStr(8)] = client
+        socket_manage[HashTools.getRandomStr(8)] = {
+            'ip': ip,
+            'command_socket': client
+        }
         # 连接数据Socket
         client.createClientDataSocket(ip)
 
@@ -249,6 +266,7 @@ class DataSocket(Scan):
         self.block = 1024
         self.command_socket = command_socket
         self.data_socket = data_socket
+        self.system_encode = locale.getpreferredencoding()
 
     def recvFile(self, command):
         """
@@ -511,18 +529,35 @@ class DataSocket(Scan):
 
     def executeCommand(self, command):
         """
-
+        执行远程的指令
+        :return return_code, output, error
         """
-        import subprocess
+        if command.startswith('/sync'):
+            # sync指令
+            if self.command_socket.permission == PermissionEnum.SYNC:
+                logging.debug(f'Sync level command: {command}')
+                if command == '/sync restart':
+                    # todo:重启服务
+                    pass
+                return 0
+            else:
+                SocketTools.sendCommand(self.command_socket, f'[{CommandSet.EXSYNC_INSUFFICIENT_PERMISSION}]')
+                return CommandSet.EXSYNC_INSUFFICIENT_PERMISSION
 
-        # 创建一个新的进程来执行命令
-        process = subprocess.Popen(['ls', '-l'], stdout=subprocess.PIPE)
-
-        # 使用.communicate()方法来获取命令的输出
-        stdout, stderr = process.communicate()
-
-        # 输出命令执行结果
-        print(stdout.decode('utf-8'))
+        else:
+            # 系统指令
+            if self.command_socket.permission == PermissionEnum.ADMIN:
+                logging.debug(f'System level command: {command}')
+                process = subprocess.Popen(command.split(' '), stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                           shell=True)
+                output, error = process.communicate()
+                return_code = process.wait()
+                SocketTools.sendCommand(self.command_socket, f'[{return_code}, {output}, {error}]',
+                                        output=False)
+                return return_code
+            else:
+                SocketTools.sendCommand(self.command_socket, f'[{CommandSet.EXSYNC_INSUFFICIENT_PERMISSION}]')
+                return CommandSet.EXSYNC_INSUFFICIENT_PERMISSION
 
 
 class CommandSocket(Scan):
@@ -674,8 +709,10 @@ class CommandSocket(Scan):
                                 thread.start()
 
                             elif command[4] == 'comm':
-                                thread = threading.Thread(target=command_set.executeCommand, args=(command[5],))
+                                thread = threading.Thread(target=command_set.executeCommand,
+                                                          args=(command['/_com:comm:sync:post:comm:'][1],))
                                 thread.start()
+
 
 if __name__ == '__main__':
     s = createSocket()

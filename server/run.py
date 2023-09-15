@@ -1,7 +1,7 @@
 import threading
 
 from server.client import CommandSend
-from server.core import createSocket, socket_manage, socket_manage_id
+from server.core import createSocket, socket_manage
 from server.shell import *
 from server.tools.tools import relToAbs
 
@@ -35,11 +35,11 @@ class Control(Init):
         :param device_id:
         :return device_ip:
         """
-        return socket_manage_id[device_id].getpeername()[0]
+        return socket_manage[device_id]['ip']
 
     @staticmethod
-    def _get_command_send(device_id):
-        client_example = socket_manage[Control._idToIp(device_id)]  # ip映射为唯一的客户端实例
+    def _get_command_send(device_ip):
+        client_example = socket_manage[device_ip]  # ip映射为唯一的客户端实例
         data_socket = client_example.client_data_socket  # data Socket
         command_socket = client_example.client_socket  # command Socket
         return CommandSend(data_socket, command_socket)
@@ -49,7 +49,10 @@ class Control(Init):
         """
         :return 返回所有设备id:
         """
-        return list(socket_manage_id.keys())
+        ipList = []
+        for value in socket_manage.values():
+            ipList.append(value['ip'])
+        return ipList
 
     @staticmethod
     def postFile(device_id, path, mode=1):
@@ -143,8 +146,10 @@ class Control(Init):
     def sendCommand(device_id, command):
         """
         客户端向指定设备id发送指令
-        如果当前设备没有权限操作对方系统级指令则只能执行EXSync指令(成功返回True, 否则为False)
-        如果当前设备有权限操作对方系统级指令则执行返回信息，否则返回False
+        如果当前设备没有权限操作对方系统级指令则只能执行EXSync指令
+        如果当前设备有权限操作对方系统级指令则执行返回 CommandSet.EXSYNC_INSUFFICIENT_PERMISSION
+        如果当前设备发送指令后对方设备长时间未答复则返回 Status.DATA_RECEIVE_TIMEOUT
+        如果当前设备发送指令后对方答复的内容格式不正确则返回 CommandSet.FORMAT_ERROR
         :param device_id:
         :param command:
         :return:

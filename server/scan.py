@@ -134,4 +134,4 @@ class Scan(readConfig):
 
 if __name__ == '__main__':
     scan = Scan()
-    scan.start()
+    print(scan.start())

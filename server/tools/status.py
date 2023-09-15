@@ -29,7 +29,12 @@ class SyncStatus(enum.Enum):
     LOCAL_FILE = '本地文件缺失'
     REMOTE_FILE = '远程文件缺失'
 
+
 class CommandSet(enum.Enum):
     EXSYNC_INSUFFICIENT_PERMISSION = 'EXSync权限不足'
-    FAILED = '执行失败'
-    SUCCESSFUL = '执行成功'
+    FORMAT_ERROR = '格式化输出结果错误'
+
+
+class PermissionEnum(enum.Enum):
+    ADMIN = '管理员'
+    SYNC = '用户'

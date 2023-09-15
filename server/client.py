@@ -363,25 +363,33 @@ class CommandSend:
         else:
             return False
 
-    def send_Command(self, command):
+    def send_Command(self, command, timeout=2):
         """
         发送指令：以/sync开头的指令为EXSync指令
+        :param timeout:
         :param command:
         :return:
         """
-        result = SocketTools.sendCommand(self.command_socket, f'/_com:comm:sync:post:comm:{command}_')
+        result = SocketTools.sendCommand(self.command_socket, f'/_com:comm:sync:post:comm:{command}_', timeout=timeout)
+
+        try:
+            result = list(result)
+        except Exception as e:
+            print(e)
+            logging.debug(f'Format result error: {result}')
+            return CommandSet.FORMAT_ERROR
+
         try:
             if result[0] == Status.DATA_RECEIVE_TIMEOUT:
                 return Status.DATA_RECEIVE_TIMEOUT
             elif result[0] == CommandSet.EXSYNC_INSUFFICIENT_PERMISSION:
                 return CommandSet.EXSYNC_INSUFFICIENT_PERMISSION
-            elif result[0] == CommandSet.FAILED:
-                return CommandSet.FAILED
-            elif result[0] == CommandSet.SUCCESSFUL:
-                return CommandSet.SUCCESSFUL, result[1]
+            else:
+                return result
         except Exception as e:
             print(e)
             logging.warning(f"Command execution failed: {command}")
+            return CommandSet.FORMAT_ERROR
 
     @staticmethod
     def status(result):
