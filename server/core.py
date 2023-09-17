@@ -13,7 +13,7 @@ import xxhash
 
 from server.scan import Scan
 from server.tools.status import Status, PermissionEnum, CommandSet
-from server.tools.tools import SocketTools, HashTools
+from server.tools.tools import SocketTools, HashTools, TimeDict
 
 """
 存储答复数据
@@ -263,10 +263,43 @@ class DataSocket(Scan):
     def __init__(self, command_socket, data_socket):
         super().__init__()
         # 数据包传输分块大小(bytes)
+
         self.block = 1024
         self.command_socket = command_socket
         self.data_socket = data_socket
         self.system_encode = locale.getpreferredencoding()
+
+        self.closeTimeDict = False
+        self.timedict = TimeDict()
+
+    def _recvData(self):
+        """
+        持续接收数据等待接下来的方法处理数据，同时遵循TimeDict的元素生命周期
+        以mark头来区分数据流，如果接收到发现数据流的标识不存在则丢弃数据流
+        EXSync的mark头为数据流的前8位
+        """
+
+        while True:
+            if self.closeTimeDict:
+                self.timedict.close()
+                return
+            else:
+                result = self.data_socket.recv(1024)
+                mark, data = result[:8], result[8:]
+                if self.timedict.hasKey(mark):
+                    self.timedict.set(mark, data)
+
+    def _getRecvData(self, mark):
+        """取出指定mark队列第一个值，并且将其弹出"""
+        return self.timedict.get(mark, pop=True)
+
+    def _createRecvData(self, mark):
+        """创建一个数据流接收队列"""
+        self.timedict.set(mark)
+
+    def closeRecvData(self):
+        """销毁所有数据"""
+        self.closeTimeDict = True
 
     def recvFile(self, command):
         """
@@ -286,10 +319,12 @@ class DataSocket(Scan):
         """
         remote_file_path = command[0]
         remote_file_size = command[1]
-        # remote_file_hash = command[2]
         mode = int(command[3])
 
         filemark = command[4]
+
+        # 接收数据初始化
+        self._createRecvData(filemark)
         # 答复初始化
         reply_manage[filemark] = {
             'count': 0
@@ -305,8 +340,6 @@ class DataSocket(Scan):
             exists = False
 
         # 文件信息
-        # remote_file_date = os.path.getmtime(remote_file_path)
-
         # 服务端返回信息格式：/_com : data : reply: filemark: exist | filesize | filehash | filedate
         self.command_socket.send(
             f'/_com:data:reply:{filemark}|{exists}|{local_file_size}|{local_file_hash}|{local_file_date}'.encode())
@@ -324,9 +357,9 @@ class DataSocket(Scan):
                     while True:
                         if file_size > 0:
                             file_size -= data_block
-                            data = self.data_socket.recv(self.block)
-                            if data[:6] == filemark_bytes:
-                                f.write(data)
+                            # data = self.data_socket.recv(self.block)
+                            data = self._getRecvData(filemark_bytes)
+                            f.write(data)
                         else:
                             # todo: 将接收完毕的文件状态写入本地索引文件
 
@@ -339,18 +372,16 @@ class DataSocket(Scan):
                         while True:
                             if read_data > 0:
                                 read_data -= data_block
-                                data = self.data_socket.recv(self.block)
-                                if data[:6] == filemark_bytes:
-                                    f.write(data)
+                                data = self._getRecvData(filemark_bytes)
+                                f.write(data)
                 else:
                     file_size = int(remote_file_size[1])
                     with open(remote_file_path, mode='ab') as f:
                         while True:
                             if file_size > 0:
                                 file_size -= data_block
-                                data = self.data_socket.recv(self.block)
-                                if data[:6] == filemark_bytes:
-                                    f.write(data)
+                                data = self._getRecvData(filemark_bytes)
+                                f.write(data)
                             else:
                                 # todo: 将接收完毕的文件状态写入本地索引文件
 
@@ -373,12 +404,11 @@ class DataSocket(Scan):
                             while True:
                                 if read_data <= difference:
                                     try:
-                                        data = self.data_socket.recv(self.block)
+                                        data = self._getRecvData(filemark)
                                     except Exception as e:
                                         print(e)
                                         return Status.DATA_RECEIVE_TIMEOUT
-                                    if data[:6] == filemark_bytes:
-                                        f.write(data)
+                                    f.write(data)
                                     read_data += self.block
                                 else:
                                     break

@@ -1,6 +1,6 @@
 import os
 
-from flask import Blueprint
+from flask import Blueprint, flash, render_template
 
 from server.sync import SyncData
 
@@ -17,3 +17,8 @@ def test():
     s.createIndex()
 
     return 'ok'
+
+@bp.route('/flash')
+def flash_():
+    # flash('Test Message')
+    return render_template('test.html')

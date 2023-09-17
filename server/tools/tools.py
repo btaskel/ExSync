@@ -64,8 +64,7 @@ class HashTools:
         随机获取N个 26个大小写字母
         默认: 6位
         """
-
-        characters = string.ascii_letters
+        characters = string.ascii_letters + '1234567890'
         return "".join(random.sample(characters, number))
 
 
@@ -151,10 +150,10 @@ class SocketTools:
 class TimeDict:
     """
     可以理解为一个小型的redis
-    默认情况下每次扫描间隔是5秒，如果有元素存在超过4秒则予以删除
+    默认情况下每次扫描间隔(scan)是4秒，如果有元素存在(release)超过4秒则予以删除
     """
 
-    def __init__(self, release=4, scan=5):
+    def __init__(self, release=4, scan=4):
         self.dict = {}
         self.lock = threading.Lock()
         try:
@@ -163,29 +162,63 @@ class TimeDict:
         except Exception as e:
             print(e)
             self.release_time = 4
-            self.scan = 5
+            self.scan = 4
 
+        self.close_flag = False
         thread = threading.Thread(target=self.__release)
         thread.start()
 
-    def set(self, key, value):
+    def set(self, key, value=None):
         """设置键值对"""
         with self.lock:
-            self.dict[key] = [value, time.time()]
+            if key in self.dict:
+                self.dict[key].insert(0, value)
+                self.dict[key][-1] = time.time()
+            elif key in self.dict and value is not None:
+                self.dict[key] = [value, time.time()]
+            else:
+                self.dict[key] = [time.time()]
 
-    def get(self, key):
-        """获取键值对"""
+    def get(self, key, pop=True):
+        """
+        获取键值对
+        如果pop=True则获取完元素立即弹出该元素(如果元素内容被读取完毕，则返回False)
+        如果无法获取到则会阻塞到有数据再继续返回, 如果超过2000ms则解除阻塞
+        """
         with self.lock:
-            return self.dict.get(key, (None, None))[0]
+            if pop:
+                tic = time.time()
+                while True:
+                    if time.time() - tic > 2:
+                        return
+                    result = self.dict[key]
+                    if len(result) > 1:
+                        return result.pop(0)
+                    time.sleep(0.002)
+            else:
+                return self.dict.get(key, False)[0:-1]
+
+    def hasKey(self, key):
+        with self.lock:
+            if key in self.dict:
+                result = True
+            else:
+                result = False
+            return result
+
+    def close(self):
+        self.close_flag = True
 
     def __release(self):
         """周期性扫描过期键值对并删除"""
         while True:
+            if self.close_flag:
+                return
             time.sleep(self.scan)
             keys_to_delete = []
             with self.lock:
                 for key, value in self.dict.items():
-                    if time.time() - value[1] > self.release_time:
+                    if time.time() - value[-1] > self.release_time:
                         keys_to_delete.append(key)
                 for key in keys_to_delete:
                     del self.dict[key]
@@ -196,4 +229,4 @@ if __name__ == '__main__':
     # timedict.set('a', 10)
     # time.sleep(10)
     # print(timedict.get('a'))
-    pass
+    print(HashTools.getRandomStr())

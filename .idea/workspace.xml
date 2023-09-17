@@ -4,10 +4,13 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="cf4f83ad-3c2a-4894-b3a1-82f233ce359d" name="变更" comment="客户端与服务端(sync/system)指令执行完成">
+    <list default="true" id="cf4f83ad-3c2a-4894-b3a1-82f233ce359d" name="变更" comment="TimeDict 完成">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/blueprints/test.py" beforeDir="false" afterPath="$PROJECT_DIR$/blueprints/test.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/server/client.py" beforeDir="false" afterPath="$PROJECT_DIR$/server/client.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/server/core.py" beforeDir="false" afterPath="$PROJECT_DIR$/server/core.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/server/tools/tools.py" beforeDir="false" afterPath="$PROJECT_DIR$/server/tools/tools.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/test/yonglonius.github.io/index.html" beforeDir="false" afterPath="$PROJECT_DIR$/test/yonglonius.github.io/index.html" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -44,7 +47,7 @@
     <option name="stateVersion" value="1" />
   </component>
   <component name="ProjectId" id="2TWNqSa5AkZXQ2FYXRlE1CqR7pf" />
-  <component name="ProjectLevelVcsManager">
+  <component name="ProjectLevelVcsManager" settingsEditedManually="true">
     <ConfirmationsSetting value="1" id="Add" />
   </component>
   <component name="ProjectViewState">
@@ -61,11 +64,11 @@
     &quot;WebServerToolWindowFactoryState&quot;: &quot;false&quot;,
     &quot;javascript.nodejs.core.library.configured.version&quot;: &quot;20.6.1&quot;,
     &quot;javascript.nodejs.core.library.typings.version&quot;: &quot;20.6.0&quot;,
-    &quot;last_opened_file_path&quot;: &quot;H:/Python project/ExSync/test/study/ajax post&quot;,
+    &quot;last_opened_file_path&quot;: &quot;H:/Python project/ExSync/test/study/jquery&quot;,
     &quot;nodejs_interpreter_path&quot;: &quot;F:/Program Files/NodeJs/node&quot;,
     &quot;nodejs_package_manager_path&quot;: &quot;npm&quot;,
     &quot;run.code.analysis.last.selected.profile&quot;: &quot;pProject Default&quot;,
-    &quot;settings.editor.selected.configurable&quot;: &quot;settings.nodejs&quot;,
+    &quot;settings.editor.selected.configurable&quot;: &quot;preferences.pluginManager&quot;,
     &quot;ts.external.directory.path&quot;: &quot;D:\\PyCharm 2022.1.3\\plugins\\JavaScriptLanguage\\jsLanguageServicesImpl\\external&quot;
   },
   &quot;keyToStringList&quot;: {
@@ -76,6 +79,7 @@
 }</component>
   <component name="RecentsManager">
     <key name="CopyFile.RECENT_KEYS">
+      <recent name="H:\Python project\ExSync\test\study\jquery" />
       <recent name="H:\Python project\ExSync\test\study\ajax post" />
       <recent name="H:\Python project\ExSync\server\config" />
     </key>
@@ -83,8 +87,8 @@
       <recent name="H:\Python project\ExSync\test\study\ajax get" />
     </key>
   </component>
-  <component name="RunManager" selected="Python.tools">
-    <configuration name="demo.html" type="JavascriptDebugType" temporary="true" nameIsGenerated="true" uri="http://localhost:63342/ExSync/study/jquery/demo7/demo.html" useBuiltInWebServerPort="true">
+  <component name="RunManager" selected="Python.demo1">
+    <configuration name="demo.html (1)" type="JavascriptDebugType" temporary="true" nameIsGenerated="true" uri="http://localhost:63342/ExSync/study/jquery/demo9/demo.html" useBuiltInWebServerPort="true">
       <method v="2" />
     </configuration>
     <configuration name="demo" type="PythonConfigurationType" factoryName="Python" temporary="true" nameIsGenerated="true">
@@ -131,28 +135,6 @@
       <option name="INPUT_FILE" value="" />
       <method v="2" />
     </configuration>
-    <configuration name="scan" type="PythonConfigurationType" factoryName="Python" temporary="true" nameIsGenerated="true">
-      <module name="Sync" />
-      <option name="INTERPRETER_OPTIONS" value="" />
-      <option name="PARENT_ENVS" value="true" />
-      <envs>
-        <env name="PYTHONUNBUFFERED" value="1" />
-      </envs>
-      <option name="SDK_HOME" value="" />
-      <option name="WORKING_DIRECTORY" value="$PROJECT_DIR$/server" />
-      <option name="IS_MODULE_SDK" value="true" />
-      <option name="ADD_CONTENT_ROOTS" value="true" />
-      <option name="ADD_SOURCE_ROOTS" value="true" />
-      <EXTENSION ID="PythonCoverageRunConfigurationExtension" runner="coverage.py" />
-      <option name="SCRIPT_NAME" value="$PROJECT_DIR$/server/scan.py" />
-      <option name="PARAMETERS" value="" />
-      <option name="SHOW_COMMAND_LINE" value="false" />
-      <option name="EMULATE_TERMINAL" value="false" />
-      <option name="MODULE_MODE" value="false" />
-      <option name="REDIRECT_INPUT" value="false" />
-      <option name="INPUT_FILE" value="" />
-      <method v="2" />
-    </configuration>
     <configuration name="tools" type="PythonConfigurationType" factoryName="Python" temporary="true" nameIsGenerated="true">
       <module name="Sync" />
       <option name="INTERPRETER_OPTIONS" value="" />
@@ -175,6 +157,21 @@
       <option name="INPUT_FILE" value="" />
       <method v="2" />
     </configuration>
+    <configuration name="Flask (app.py)" type="Python.FlaskServer" temporary="true" nameIsGenerated="true">
+      <module name="Sync" />
+      <option name="target" value="$PROJECT_DIR$/app.py" />
+      <option name="targetType" value="PATH" />
+      <option name="INTERPRETER_OPTIONS" value="" />
+      <option name="PARENT_ENVS" value="true" />
+      <option name="SDK_HOME" value="" />
+      <option name="WORKING_DIRECTORY" value="" />
+      <option name="IS_MODULE_SDK" value="true" />
+      <option name="ADD_CONTENT_ROOTS" value="true" />
+      <option name="ADD_SOURCE_ROOTS" value="true" />
+      <EXTENSION ID="PythonCoverageRunConfigurationExtension" runner="coverage.py" />
+      <option name="launchJavascriptDebuger" value="false" />
+      <method v="2" />
+    </configuration>
     <configuration name="Sync" type="Python.FlaskServer">
       <option name="flaskDebug" value="true" />
       <module name="Sync" />
@@ -193,19 +190,19 @@
     </configuration>
     <list>
       <item itemvalue="Flask 服务器.Sync" />
-      <item itemvalue="JavaScript 调试.demo.html" />
-      <item itemvalue="Python.tools" />
-      <item itemvalue="Python.scan" />
+      <item itemvalue="Flask 服务器.Flask (app.py)" />
+      <item itemvalue="JavaScript 调试.demo.html (1)" />
       <item itemvalue="Python.demo1" />
+      <item itemvalue="Python.tools" />
       <item itemvalue="Python.demo" />
     </list>
     <recent_temporary>
       <list>
-        <item itemvalue="Python.tools" />
-        <item itemvalue="Python.demo" />
-        <item itemvalue="Python.scan" />
         <item itemvalue="Python.demo1" />
-        <item itemvalue="JavaScript 调试.demo.html" />
+        <item itemvalue="Python.demo" />
+        <item itemvalue="Flask 服务器.Flask (app.py)" />
+        <item itemvalue="Python.tools" />
+        <item itemvalue="JavaScript 调试.demo.html (1)" />
       </list>
     </recent_temporary>
   </component>
@@ -270,7 +267,13 @@
       <workItem from="1694695437540" duration="1956000" />
       <workItem from="1694698588675" duration="2358000" />
       <workItem from="1694753600243" duration="11294000" />
-      <workItem from="1694767121504" duration="4791000" />
+      <workItem from="1694767121504" duration="10731000" />
+      <workItem from="1694787920952" duration="1930000" />
+      <workItem from="1694848959423" duration="620000" />
+      <workItem from="1694850436905" duration="17565000" />
+      <workItem from="1694923208904" duration="7384000" />
+      <workItem from="1694938442872" duration="896000" />
+      <workItem from="1694952988837" duration="4516000" />
     </task>
     <task id="LOCAL-00001" summary="fix">
       <created>1693484658275</created>
@@ -356,7 +359,14 @@
       <option name="project" value="LOCAL" />
       <updated>1694760319340</updated>
     </task>
-    <option name="localTasksCounter" value="13" />
+    <task id="LOCAL-00013" summary="TimeDict 完成">
+      <created>1694780020620</created>
+      <option name="number" value="00013" />
+      <option name="presentableId" value="LOCAL-00013" />
+      <option name="project" value="LOCAL" />
+      <updated>1694780020620</updated>
+    </task>
+    <option name="localTasksCounter" value="14" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -395,7 +405,8 @@
     <MESSAGE value="远程索引更新完成" />
     <MESSAGE value="双方文件同步完成" />
     <MESSAGE value="客户端与服务端(sync/system)指令执行完成" />
-    <option name="LAST_COMMIT_MESSAGE" value="客户端与服务端(sync/system)指令执行完成" />
+    <MESSAGE value="TimeDict 完成" />
+    <option name="LAST_COMMIT_MESSAGE" value="TimeDict 完成" />
   </component>
   <component name="com.intellij.coverage.CoverageDataManagerImpl">
     <SUITE FILE_PATH="coverage/Sync$sum_of_squares_pyx.coverage" NAME="sum_of_squares.pyx 覆盖结果" MODIFIED="1691302028250" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$" />
@@ -403,20 +414,22 @@
     <SUITE FILE_PATH="coverage/ExSync$b.coverage" NAME="b 覆盖结果" MODIFIED="1694003075744" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/test" />
     <SUITE FILE_PATH="coverage/Sync$test3.coverage" NAME="test3 覆盖结果" MODIFIED="1691976250069" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$" />
     <SUITE FILE_PATH="coverage/ExSync$a.coverage" NAME="a 覆盖结果" MODIFIED="1693654648779" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/test" />
-    <SUITE FILE_PATH="coverage/ExSync$demo.coverage" NAME="demo 覆盖结果" MODIFIED="1694764476324" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/test" />
+    <SUITE FILE_PATH="coverage/ExSync$demo.coverage" NAME="demo 覆盖结果" MODIFIED="1694955545366" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/test" />
     <SUITE FILE_PATH="coverage/ExSync$run.coverage" NAME="run 覆盖结果" MODIFIED="1694002892630" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/server" />
     <SUITE FILE_PATH="coverage/Sync$sync.coverage" NAME="sync 覆盖结果" MODIFIED="1692332341815" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/server" />
     <SUITE FILE_PATH="coverage/Sync$Sync.coverage" NAME="Sync 覆盖结果" MODIFIED="1692340145642" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$" />
-    <SUITE FILE_PATH="coverage/ExSync$tools.coverage" NAME="tools 覆盖结果" MODIFIED="1694779477756" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/server/tools" />
+    <SUITE FILE_PATH="coverage/ExSync$tools.coverage" NAME="tools 覆盖结果" MODIFIED="1694931076198" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/server/tools" />
     <SUITE FILE_PATH="coverage/Sync$core.coverage" NAME="core 覆盖结果" MODIFIED="1691389885622" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/server" />
     <SUITE FILE_PATH="coverage/ExSync$config.coverage" NAME="config 覆盖结果" MODIFIED="1694520610450" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/server" />
     <SUITE FILE_PATH="coverage/Sync$server.coverage" NAME="server 覆盖结果" MODIFIED="1691833733552" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/test" />
     <SUITE FILE_PATH="coverage/Sync$Flask__app_py_.coverage" NAME="Flask (app.py) 覆盖结果" MODIFIED="1692334215208" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="" />
+    <SUITE FILE_PATH="coverage/ExSync$Sync.coverage" NAME="Sync 覆盖结果" MODIFIED="1694938629510" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$" />
     <SUITE FILE_PATH="coverage/ExSync$2.coverage" NAME="2 覆盖结果" MODIFIED="1693485648620" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/test" />
+    <SUITE FILE_PATH="coverage/ExSync$Flask__app_py_.coverage" NAME="Flask (app.py) 覆盖结果" MODIFIED="1694939065495" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="" />
     <SUITE FILE_PATH="coverage/Sync$config.coverage" NAME="config 覆盖结果" MODIFIED="1691447802842" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/server" />
     <SUITE FILE_PATH="coverage/Sync$client.coverage" NAME="client 覆盖结果" MODIFIED="1691836058691" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/test" />
     <SUITE FILE_PATH="coverage/ExSync$scan.coverage" NAME="scan 覆盖结果" MODIFIED="1694760249295" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/server" />
     <SUITE FILE_PATH="coverage/Sync$test2.coverage" NAME="test2 覆盖结果" MODIFIED="1692244692468" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$" />
-    <SUITE FILE_PATH="coverage/ExSync$demo1.coverage" NAME="demo1 覆盖结果" MODIFIED="1694754525814" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/test" />
+    <SUITE FILE_PATH="coverage/ExSync$demo1.coverage" NAME="demo1 覆盖结果" MODIFIED="1694958156739" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/test" />
   </component>
 </project>

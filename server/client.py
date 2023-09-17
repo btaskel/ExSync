@@ -2,6 +2,7 @@ import logging
 import os
 import shutil
 import socket
+import time
 
 import socks
 import xxhash
@@ -120,21 +121,39 @@ class CommandSend:
         self.command_socket = command_socket
         # 数据包发送分块大小(含filemark)
         self.block = 1024
+        self.encode_type = 'utf-8'
 
-    def recvDate(self):
+        self.close = False
+        self.timedict = TimeDict()
+
+    def _recvData(self):
         """
         持续接收数据等待接下来的方法处理数据，同时遵循TimeDict的元素生命周期
         以mark头来区分数据流，如果接收到发现数据流的标识不存在则丢弃数据流
         EXSync的mark头为数据流的前8位
         """
 
-        def addData():
-            """添加数据，如果不存在则创建数据，"""
-
-        timedict = TimeDict()
         while True:
-            result = self.data_socket.recv(1024)
-            mark, data = result[:8], result[8:]
+            if self.close:
+                self.timedict.close()
+                return
+            else:
+                result = self.data_socket.recv(1024)
+                mark, data = result[:8], result[8:]
+                if self.timedict.hasKey(mark):
+                    self.timedict.set(mark, data)
+
+    def _getRecvData(self, mark):
+        """取出指定mark队列第一个值，并且将其弹出"""
+        return self.timedict.get(mark, pop=True)
+
+    def _createRecvData(self, mark):
+        """创建一个数据流接收队列"""
+        self.timedict.set(mark)
+
+    def closeRecvData(self):
+        """销毁所有数据"""
+        self.close = True
 
     def post_File(self, path, mode=1, output_path=None):
         """
@@ -154,8 +173,8 @@ class CommandSend:
         if not output_path:
             output_path = path
 
-        # 获取6位数长度的文件头标识,用于保证文件的数据唯一性
-        filemark = HashTools.getRandomStr()
+        # 获取8位数长度的文件头标识,用于保证文件的数据唯一性
+        filemark = HashTools.getRandomStr(8)
 
         local_size = os.path.getsize(path)
         hash_value = HashTools.getFileHash(path)
@@ -255,7 +274,9 @@ class CommandSend:
 
         output_path: 写入路径（如果未填写则按path参数写入）
         """
-        filemark = HashTools.getRandomStr()
+        filemark = HashTools.getRandomStr(8)
+        filemark_bytes = bytes(filemark, self.encode_type)
+        self._createRecvData(filemark)
         data_block = self.block - len(filemark)
 
         if os.path.exists(path):
@@ -278,31 +299,34 @@ class CommandSend:
 
         if not output_path:
             output_path = path
+
         if file_size:
-            read_data = 0
-            with open(output_path, mode='ab') as f:
-                f.seek(file_size)
-                while True:
-                    if read_data < remote_file_size:
-                        data = self.data_socket.recv(self.block)
-                    else:
-                        return True
-                    if data[:6] == filemark:
-                        data = data[6:]
+            if remote_file_hash == file_hash:
+                read_data = 0
+                with open(output_path, mode='ab') as f:
+                    f.seek(file_size)
+                    while True:
+                        if read_data < remote_file_size:
+                            data = self._getRecvData(filemark_bytes)
+                        else:
+                            return True
                         f.write(data)
                         read_data += data_block
+            else:
+                return False
         else:
             read_data = 0
             with open(output_path, mode='ab') as f:
                 while True:
                     if read_data < remote_file_size:
-                        data = self.data_socket.recv(self.block)
+                        data = self._getRecvData(filemark_bytes)
                     else:
                         return True
-                    if data[:6] == filemark:
-                        data = data[6:]
+                    if data:
                         f.write(data)
                         read_data += data_block
+                    else:
+                        break
 
     def post_Folder(self, path):
         """输入文件路径，发送文件夹创建指令至服务端"""
