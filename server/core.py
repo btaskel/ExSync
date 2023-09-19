@@ -13,7 +13,7 @@ import xxhash
 
 from server.scan import Scan
 from server.tools.status import Status, PermissionEnum, CommandSet
-from server.tools.tools import SocketTools, HashTools, TimeDict
+from server.tools.tools import SocketTools, HashTools, TimeDictInit
 
 """
 存储答复数据
@@ -109,7 +109,7 @@ class createSocket(Scan):
 
                 if self.uuid == sub_socket.recv(1024).decode(self.encode_type):
                     # 确认会话id
-                    SocketTools.sendCommand(sub_socket, '/_com:comm:sync:post:session|True:_', output=False)
+                    SocketTools.sendCommandNoTimeDict(sub_socket, '/_com:comm:sync:post:session|True:_', output=False)
                     # 如果指令套接字存在
                     if sub_socket.getpeername()[0] in self.socket_info:
                         self.socket_info[sub_socket.getpeername()[0]]["data"] = sub_socket
@@ -121,7 +121,7 @@ class createSocket(Scan):
 
                 else:
                     # 会话id错误
-                    SocketTools.sendCommand(sub_socket, '/_com:comm:sync:post:session|False:_', output=False)
+                    SocketTools.sendCommandNoTimeDict(sub_socket, '/_com:comm:sync:post:session|False:_', output=False)
                     sub_socket.shutdown(socket.SHUT_RDWR)
                     sub_socket.close()
 
@@ -140,8 +140,8 @@ class createSocket(Scan):
 
             def done():
                 # 验证成功
-                SocketTools.sendCommand(sub_socket, 'yes', output=False)
-                SocketTools.sendCommand(sub_socket, str(self.uuid), output=False)
+                SocketTools.sendCommandNoTimeDict(sub_socket, 'yes', output=False)
+                SocketTools.sendCommandNoTimeDict(sub_socket, str(self.uuid), output=False)
                 self.connected.add(addr[0])
 
                 if sub_socket.getpeername()[0] in self.socket_info:
@@ -159,13 +159,13 @@ class createSocket(Scan):
             else:
                 # 验证对方合法性
                 sub_socket.settimeout(2)
-                password_hash = SocketTools.sendCommand(sub_socket, '/_com:comm:sync:get:password_hash')
+                password_hash = SocketTools.sendCommandNoTimeDict(sub_socket, '/_com:comm:sync:get:password_hash')
                 if password_hash == self.local_password_hash:
                     done()
 
                 else:
                     # 验证失败
-                    SocketTools.sendCommand(sub_socket, 'no', output=False)
+                    SocketTools.sendCommandNoTimeDict(sub_socket, 'no', output=False)
                     sub_socket.shutdown(socket.SHUT_RDWR)
                     sub_socket.close()
 
@@ -195,7 +195,7 @@ class createSocket(Scan):
         3.增加至服务端白名单
         """
         # 被动模式，等待连接
-        password_hash = SocketTools.sendCommand(verify_socket, f'/_com:comm:sync:get:password_hash:_')
+        password_hash = SocketTools.sendCommandNoTimeDict(verify_socket, f'/_com:comm:sync:get:password_hash:_')
         if password_hash == self.local_password_hash:
             # 哈希验证成功，ip添加进白名单
             if verify_addr[0] not in self.ip_list:
@@ -269,39 +269,10 @@ class DataSocket(Scan):
         self.data_socket = data_socket
         self.system_encode = locale.getpreferredencoding()
 
+        self.timedict = TimeDictInit(data_socket, command_socket)
         self.closeTimeDict = False
-        self.timedict = TimeDict()
 
-    def _recvData(self):
-        """
-        持续接收数据等待接下来的方法处理数据，同时遵循TimeDict的元素生命周期
-        以mark头来区分数据流，如果接收到发现数据流的标识不存在则丢弃数据流
-        EXSync的mark头为数据流的前8位
-        """
-
-        while True:
-            if self.closeTimeDict:
-                self.timedict.close()
-                return
-            else:
-                result = self.data_socket.recv(1024)
-                mark, data = result[:8], result[8:]
-                if self.timedict.hasKey(mark):
-                    self.timedict.set(mark, data)
-
-    def _getRecvData(self, mark):
-        """取出指定mark队列第一个值，并且将其弹出"""
-        return self.timedict.get(mark, pop=True)
-
-    def _createRecvData(self, mark):
-        """创建一个数据流接收队列"""
-        self.timedict.set(mark)
-
-    def closeRecvData(self):
-        """销毁所有数据"""
-        self.closeTimeDict = True
-
-    def recvFile(self, command):
+    def recvFile(self, command, mark):
         """
         文件操作方法
         文件与文件夹的传输指令:
@@ -321,10 +292,10 @@ class DataSocket(Scan):
         remote_file_size = command[1]
         mode = int(command[3])
 
-        filemark = command[4]
+        filemark = mark
 
         # 接收数据初始化
-        self._createRecvData(filemark)
+        self.timedict.createRecv(filemark)
         # 答复初始化
         reply_manage[filemark] = {
             'count': 0
@@ -358,7 +329,7 @@ class DataSocket(Scan):
                         if file_size > 0:
                             file_size -= data_block
                             # data = self.data_socket.recv(self.block)
-                            data = self._getRecvData(filemark_bytes)
+                            data = self.timedict.getRecvData(filemark_bytes)
                             f.write(data)
                         else:
                             # todo: 将接收完毕的文件状态写入本地索引文件
@@ -372,7 +343,7 @@ class DataSocket(Scan):
                         while True:
                             if read_data > 0:
                                 read_data -= data_block
-                                data = self._getRecvData(filemark_bytes)
+                                data = self.timedict.getRecvData(filemark_bytes)
                                 f.write(data)
                 else:
                     file_size = int(remote_file_size[1])
@@ -380,7 +351,7 @@ class DataSocket(Scan):
                         while True:
                             if file_size > 0:
                                 file_size -= data_block
-                                data = self._getRecvData(filemark_bytes)
+                                data = self.timedict.getRecvData(filemark_bytes)
                                 f.write(data)
                             else:
                                 # todo: 将接收完毕的文件状态写入本地索引文件
@@ -389,7 +360,9 @@ class DataSocket(Scan):
 
             case 2:
                 if exists:
-
+                    SocketTools.sendCommand(self.timedict, self.data_socket,
+                                            f'/_com:data:reply:{filemark}|{exists}|{local_file_size}|{local_file_hash}|{local_file_date}'.encode(),
+                                            mark=mark, output=False)
                     self.command_socket.send(
                         f'/_com:data:reply:{filemark}|{exists}|{local_file_size}|{local_file_hash}|{local_file_date}'.encode())
 
@@ -404,7 +377,7 @@ class DataSocket(Scan):
                             while True:
                                 if read_data <= difference:
                                     try:
-                                        data = self._getRecvData(filemark)
+                                        data = self.timedict.getRecvData(filemark)
                                     except Exception as e:
                                         print(e)
                                         return Status.DATA_RECEIVE_TIMEOUT
@@ -417,7 +390,7 @@ class DataSocket(Scan):
                     # 不存在文件，不予传输
                     return False
 
-    def sendFile(self, command):
+    def sendFile(self, command, mark):
         """
         服务端发送文件至客户端
 
@@ -439,7 +412,8 @@ class DataSocket(Scan):
             local_file_hash = 0
 
         # 向客户端回复/_com:data:reply:filemark:{remote_size}|{hash_value}
-        SocketTools.sendCommand(self.command_socket, f'/_com:data:reply:{filemark}:{local_file_size}|{local_file_hash}',
+        SocketTools.sendCommand(self.timedict, self.data_socket,
+                                f'/_com:data:reply:{filemark}:{local_file_size}|{local_file_hash}', mark=mark,
                                 output=False)
         if local_file_size == 0:
             return
@@ -471,7 +445,8 @@ class DataSocket(Scan):
                         data = bytes(filemark, 'utf-8') + data
                         self.data_socket.send(data)
             else:
-                SocketTools.sendCommand(self.command_socket, '/_com:data:reply:True')
+                SocketTools.sendCommand(self.timedict, self.data_socket, '/_com:data:reply:True', output=False,
+                                        mark=mark)
         else:
             with open(path, mode='rb') as f:
                 while True:
@@ -485,17 +460,11 @@ class DataSocket(Scan):
         """
         接收路径并创建文件夹
         """
-        filemark = command[4]
-        if os.path.exists(command[0]):
-            SocketTools.sendCommand(self.command_socket, f'/_com:data:reply:{filemark}:True:None:None:None',
-                                    output=False)
-        else:
+        if not os.path.exists(command[0]):
             os.makedirs(command[0])
-            SocketTools.sendCommand(self.command_socket, f'/_com:data:reply:{filemark}:False:None:None:None',
-                                    output=False)
         return
 
-    def getFolder(self, command):
+    def getFolder(self, command, mark):
         """
         获取文件夹信息
         如果服务端存在文件夹，以及其索引，则返回索引
@@ -505,7 +474,7 @@ class DataSocket(Scan):
         paths = []
         for home, folders, files in os.walk(command[4]):
             paths.append(folders)
-        SocketTools.sendCommand(self.data_socket, str(paths), output=False)
+        SocketTools.sendCommand(self.timedict, self.data_socket, str(paths), output=False, mark=mark)
         return paths
 
     def postIndex(self, command):
@@ -519,8 +488,8 @@ class DataSocket(Scan):
             folders_index_path = os.path.join(path, '\\.sync\\info\\folders.json')
             for file in [files_index_path, folders_index_path]:
                 if not os.path.exists(file):
-                    SocketTools.sendCommand(self.command_socket, '/_com:data:reply:False:remoteIndexNoExist:_',
-                                            output=False)
+                    SocketTools.sendCommand(self.timedict, self.command_socket,
+                                            '/_com:data:reply:False:remoteIndexNoExist:_', output=False)
                     return False
             try:
                 json_example = json.loads(command[1])
@@ -590,7 +559,7 @@ class DataSocket(Scan):
                 return CommandSet.EXSYNC_INSUFFICIENT_PERMISSION
 
 
-class CommandSocket(Scan):
+class CommandSocket(DataSocket):
     """
     异步收发指令
 
@@ -623,21 +592,21 @@ class CommandSocket(Scan):
 
     """
 
-    def __init__(self):
-        super().__init__()
+    def __init__(self, command_socket, data_socket):
+        super().__init__(command_socket, data_socket)
+        self.command_socket = command_socket
+        self.data_socket = data_socket
 
-    def recvCommand(self, command_socket, data_socket):
+    def recvCommand(self):
         """
         持续倾听并解析指令
         :return:
         """
 
-        command_set = DataSocket(command_socket, data_socket)
-
         while True:
             # 收指令
-            command = command_socket.recv(1024).decode(self.encode_type)
-            if command.startswith('/_com:'):
+            command = self.command_socket.recv(1024).decode(self.encode_type)
+            if ':' in command:
                 command = command.split(':')
 
                 # 数据类型判断
@@ -648,23 +617,28 @@ class CommandSocket(Scan):
                         if command[3] == 'post':
                             # 对方使用post提交文件至本机
                             values = command[4].split('|')
-                            thread = threading.Thread(target=command_set.recvFile, args=(values,))
+                            mark = command[0].split('/_com')[0]
+                            thread = threading.Thread(target=self.recvFile, args=(values, mark))
                             thread.start()
 
                         elif command[3] == 'get':
                             values = command[4].split('|')
-                            thread = threading.Thread(target=command_set.sendFile, args=(values,))
+                            thread = threading.Thread(target=self.sendFile, args=(values,))
                             thread.start()
                     # 文件夹操作
                     elif command[2] == 'folder':
 
                         # 获取服务端文件夹信息
                         if command[3] == 'get':
-                            pass
+                            values = command[4]
+                            mark = command[0].split('/_com')[0]
+                            thread = threading.Thread(target=self.getFolder, args=(values, mark))
+                            thread.start()
+
                         # 创建服务端文件夹
                         elif command[3] == 'post':
                             values = command[4].split('|')
-                            thread = threading.Thread(target=command_set.recvFolder, args=(values,))
+                            thread = threading.Thread(target=self.recvFolder, args=(values,))
                             thread.start()
 
                     elif command[2] == 'reply':
@@ -710,13 +684,15 @@ class CommandSocket(Scan):
                                 # 发送本地密码xxh128哈希
                                 password = self.config['server']['addr']['password']
                                 password_hash = xxhash.xxh3_128(password).hexdigest()
-                                SocketTools.sendCommand(command_socket, password_hash.encode(self.encode_type),
+                                SocketTools.sendCommand(self.timedict, self.command_socket,
+                                                        password_hash.encode(self.encode_type),
                                                         output=False)
                             elif command[4] == 'index':
                                 # 获取索引文件
                                 for userdata in self.config['userdata']:
                                     if command[5] == userdata['spacename']:
-                                        SocketTools.sendCommand(command_socket, userdata['path'])
+                                        SocketTools.sendCommand(self.timedict, self.command_socket, userdata['path'],
+                                                                mark=command[0].split('/_com')[0])
 
                         # 提交EXSync信息
                         elif command[3] == 'post':
@@ -726,20 +702,22 @@ class CommandSocket(Scan):
                                 password = self.config['server']['addr']['password']
                                 password_hash = xxhash.xxh3_128(password).hexdigest()
                                 if command[4].split('|')[1] == password_hash:
-                                    SocketTools.sendCommand(command_socket, 'True'.encode(self.encode_type),
+                                    SocketTools.sendCommand(self.timedict, self.command_socket,
+                                                            'True'.encode(self.encode_type),
                                                             output=False)
 
                                 else:
-                                    SocketTools.sendCommand(command_socket, 'False'.encode(self.encode_type),
+                                    SocketTools.sendCommand(self.timedict, self.command_socket,
+                                                            'False'.encode(self.encode_type),
                                                             output=False)
 
                             # 更新本地索引
                             elif command[4] == 'index':
-                                thread = threading.Thread(target=command_set.postIndex, args=(command[5],))
+                                thread = threading.Thread(target=self.postIndex, args=(command[5],))
                                 thread.start()
 
                             elif command[4] == 'comm':
-                                thread = threading.Thread(target=command_set.executeCommand,
+                                thread = threading.Thread(target=self.executeCommand,
                                                           args=(command['/_com:comm:sync:post:comm:'][1],))
                                 thread.start()
 

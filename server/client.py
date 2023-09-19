@@ -2,14 +2,13 @@ import logging
 import os
 import shutil
 import socket
-import time
 
 import socks
 import xxhash
 
 from server.config import readConfig
 from server.tools.status import Status, CommandSet
-from server.tools.tools import HashTools, SocketTools, TimeDict
+from server.tools.tools import HashTools, SocketTools, TimeDictInit
 
 """
 子Socket管理
@@ -67,7 +66,7 @@ class Client(readConfig):
                     # 开始验证合法性
                     result = self.client_socket.recv(1024).decode(self.encode)
                     if result == '/_com:comm:sync:get:password_hash':
-                        result = SocketTools.sendCommand(self.client_socket, xxhash.xxh3_128(
+                        result = SocketTools.sendCommandNoTimeDict(self.client_socket, xxhash.xxh3_128(
                             self.encode).hexdigest())
 
                         if result == 'yes':
@@ -98,8 +97,8 @@ class Client(readConfig):
                 # 关闭连接
                 self.closeAllSocket()
 
-            session = SocketTools.sendCommand(self.client_data_socket,
-                                              str(self.uuid))
+            session = SocketTools.sendCommandNoTimeDict(self.client_data_socket,
+                                                        str(self.uuid))
             if session.split(':')[4].split('|')[1] == 'True':
                 # 会话验证成功
                 socket_manage['data'] = self.client_socket
@@ -123,37 +122,7 @@ class CommandSend:
         self.block = 1024
         self.encode_type = 'utf-8'
 
-        self.close = False
-        self.timedict = TimeDict()
-
-    def _recvData(self):
-        """
-        持续接收数据等待接下来的方法处理数据，同时遵循TimeDict的元素生命周期
-        以mark头来区分数据流，如果接收到发现数据流的标识不存在则丢弃数据流
-        EXSync的mark头为数据流的前8位
-        """
-
-        while True:
-            if self.close:
-                self.timedict.close()
-                return
-            else:
-                result = self.data_socket.recv(1024)
-                mark, data = result[:8], result[8:]
-                if self.timedict.hasKey(mark):
-                    self.timedict.set(mark, data)
-
-    def _getRecvData(self, mark):
-        """取出指定mark队列第一个值，并且将其弹出"""
-        return self.timedict.get(mark, pop=True)
-
-    def _createRecvData(self, mark):
-        """创建一个数据流接收队列"""
-        self.timedict.set(mark)
-
-    def closeRecvData(self):
-        """销毁所有数据"""
-        self.close = True
+        self.timedict = TimeDictInit(data_socket, command_socket)
 
     def post_File(self, path, mode=1, output_path=None):
         """
@@ -180,7 +149,7 @@ class CommandSend:
         hash_value = HashTools.getFileHash(path)
         data_block = self.block - len(filemark)
         # 远程服务端初始化接收文件
-        result = SocketTools.sendCommand(self.command_socket,
+        result = SocketTools.sendCommand(self.timedict, self.command_socket,
                                          f'/_com:data:file:post:{path}|{local_size}|{hash_value}|{mode}|{filemark}:_')
         result = CommandSend.status(result)
         if result[0]:
@@ -244,9 +213,8 @@ class CommandSend:
 
                     if remote_filehash == file_block_hash:
                         # 文件前段xxhash_128相同，证明为未传输完成文件
-                        SocketTools.sendCommand(self.command_socket,
-                                                f'/_com:data:reply:{filemark}:True:None:None:None',
-                                                output=False)
+                        SocketTools.sendCommand(self.timedict, self.command_socket,
+                                                f'/_com:data:reply:{filemark}:True:None:None:None', output=False)
 
                         with open(output_path, mode='rb') as f:
                             f.seek(remote_size)
@@ -276,7 +244,7 @@ class CommandSend:
         """
         filemark = HashTools.getRandomStr(8)
         filemark_bytes = bytes(filemark, self.encode_type)
-        self._createRecvData(filemark)
+        self.timedict.createRecv(filemark)
         data_block = self.block - len(filemark)
 
         if os.path.exists(path):
@@ -288,7 +256,7 @@ class CommandSend:
 
         # 发送指令，远程服务端准备
         # 服务端return: /_com:data:reply:filemark:{remote_size}|{hash_value}
-        result = SocketTools.sendCommand(self.command_socket,
+        result = SocketTools.sendCommand(self.timedict, self.command_socket,
                                          f'/_com:data:file:get:{path}|{file_hash}|{file_size}|{filemark}:_')
         command = CommandSend.status(result)[1].split(':')
         if not command[4]:
@@ -301,25 +269,22 @@ class CommandSend:
             output_path = path
 
         if file_size:
-            if remote_file_hash == file_hash:
-                read_data = 0
-                with open(output_path, mode='ab') as f:
-                    f.seek(file_size)
-                    while True:
-                        if read_data < remote_file_size:
-                            data = self._getRecvData(filemark_bytes)
-                        else:
-                            return True
-                        f.write(data)
-                        read_data += data_block
-            else:
-                return False
+            read_data = 0
+            with open(output_path, mode='ab') as f:
+                f.seek(file_size)
+                while True:
+                    if read_data < remote_file_size:
+                        data = self.timedict.getRecvData(filemark_bytes)
+                    else:
+                        return True
+                    f.write(data)
+                    read_data += data_block
         else:
             read_data = 0
             with open(output_path, mode='ab') as f:
                 while True:
                     if read_data < remote_file_size:
-                        data = self._getRecvData(filemark_bytes)
+                        data = self.timedict.getRecvData(filemark_bytes)
                     else:
                         return True
                     if data:
@@ -330,8 +295,8 @@ class CommandSend:
 
     def post_Folder(self, path):
         """输入文件路径，发送文件夹创建指令至服务端"""
-        SocketTools.sendCommand(self.command_socket,
-                                f'/_com:data:folder:post:{path}:_', output=False)
+        SocketTools.sendCommandNoTimeDict(self.command_socket,
+                                          f'/_com:data:folder:post:{path}:_', output=False)
         return True
 
     def get_Folder(self, path):
@@ -340,11 +305,12 @@ class CommandSend:
         :param path:
         :return folder_paths:
         """
-        result = SocketTools.sendCommand(self.command_socket, f'/_com:data:folder:get:{path}', output=False)
+        result = SocketTools.sendCommand(self.timedict, self.command_socket, f'/_com:data:folder:get:{path}',
+                                         output=False)
         if result == Status.DATA_RECEIVE_TIMEOUT:
             return False
-        paths = self.data_socket.recv(1024).decode('utf-8')
-        return paths
+        else:
+            return result
 
     def get_Index(self, spacename):
         """
@@ -352,7 +318,7 @@ class CommandSend:
         :param spacename:
         :return Boolean:
         """
-        path = SocketTools.sendCommand(self.command_socket, f'/_com:comm:sync:get:index:{spacename}_')
+        path = SocketTools.sendCommand(self.timedict, self.command_socket, f'/_com:comm:sync:get:index:{spacename}_')
         if path == Status.DATA_RECEIVE_TIMEOUT:
             return False
         else:
@@ -395,7 +361,7 @@ class CommandSend:
         else:
             is_file = 'False'
 
-        if SocketTools.sendCommand(self.command_socket,
+        if SocketTools.sendCommand(self.timedict, self.command_socket,
                                    f'/_com:comm:sync:post:index:{spacename}|{json_example}|{is_file}:_',
                                    output=False):
             return True
@@ -409,7 +375,8 @@ class CommandSend:
         :param command:
         :return:
         """
-        result = SocketTools.sendCommand(self.command_socket, f'/_com:comm:sync:post:comm:{command}_', timeout=timeout)
+        result = SocketTools.sendCommand(self.timedict, self.command_socket, f'/_com:comm:sync:post:comm:{command}_',
+                                         timeout=timeout)
 
         try:
             result = list(result)
@@ -449,5 +416,6 @@ class CommandSend:
         :param args: 返回至服务端的参数
         :return: 超时/正常状态
         """
-        return SocketTools.sendCommand(self.command_socket, f'/_com:data:reply_end:{filemark}:{expect}:{args}',
+        return SocketTools.sendCommand(self.timedict, self.command_socket,
+                                       f'/_com:data:reply_end:{filemark}:{expect}:{args}',
                                        output=False)
