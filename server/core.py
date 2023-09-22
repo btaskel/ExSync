@@ -216,9 +216,9 @@ class createSocket(Scan):
             index = 0
             for key, value in self.socket_info.items():
                 if value['command'] and value['data']:
-                    command = CommandSocket()
                     command_socket, data_socket = self.socket_info.pop(index)
-                    thread = threading.Thread(target=command.recvCommand, args=(command_socket, data_socket))
+                    command = CommandSocket(command_socket, data_socket)
+                    thread = threading.Thread(target=command.recvCommand)
                     thread.start()
                     index += 1
             time.sleep(0.25)
@@ -274,7 +274,7 @@ class DataSocket(Scan):
 
     def recvFile(self, command, mark):
         """
-        文件操作方法
+        客户端发送文件至服务端
         文件与文件夹的传输指令:
         /_com:data:file(folder):get:filepath|size|hash|mode:_
         /_com:data:file(folder):post:filepath|size|hash|mode:_
@@ -291,15 +291,15 @@ class DataSocket(Scan):
         remote_file_path = command[0]
         remote_file_size = command[1]
         mode = int(command[3])
-
-        filemark = mark
+        filemark = command[4]
+        reply_mark = mark
 
         # 接收数据初始化
         self.timedict.createRecv(filemark)
-        # 答复初始化
-        reply_manage[filemark] = {
-            'count': 0
-        }
+        # # 答复初始化
+        # reply_manage[filemark] = {
+        #     'count': 0
+        # }
 
         if os.path.exists(remote_file_path):
             local_file_size = os.path.getsize(remote_file_path)
@@ -310,32 +310,30 @@ class DataSocket(Scan):
             local_file_size, local_file_hash, local_file_date = None, None, None
             exists = False
 
-        # 文件信息
-        # 服务端返回信息格式：/_com : data : reply: filemark: exist | filesize | filehash | filedate
-        self.command_socket.send(
-            f'/_com:data:reply:{filemark}|{exists}|{local_file_size}|{local_file_hash}|{local_file_date}'.encode())
+        # 将所需文件信息返回到客户端
+        SocketTools.sendCommand(self.timedict, self.data_socket,
+                                f'{exists}|{local_file_size}|{local_file_hash}|{local_file_date}',
+                                output=False, mark=reply_mark)
 
         # 文件传输切片
+        if not local_file_size:
+            return
         data_block = self.block - len(filemark)
         filemark_bytes = bytes(filemark, self.encode_type)
         match mode:
             case 0:
+                # 如果不存在文件，则创建文件。否则不执行操作。
                 if exists:
                     return
-
                 file_size = int(remote_file_size[1])
                 with open(remote_file_path, mode='ab') as f:
                     while True:
                         if file_size > 0:
                             file_size -= data_block
-                            # data = self.data_socket.recv(self.block)
                             data = self.timedict.getRecvData(filemark_bytes)
                             f.write(data)
-                        else:
-                            # todo: 将接收完毕的文件状态写入本地索引文件
-
-                            break
             case 1:
+                # 如果不存在文件，则创建文件。否则重写文件。
                 if exists:
                     os.remove(remote_file_path)
                     with open(remote_file_path, mode='ab') as f:
@@ -359,16 +357,14 @@ class DataSocket(Scan):
                                 break
 
             case 2:
+                # 如果存在文件，并且准备发送的文件字节是对方文件字节的超集(xxh3_128相同)，则续写文件。
                 if exists:
-                    SocketTools.sendCommand(self.timedict, self.data_socket,
-                                            f'/_com:data:reply:{filemark}|{exists}|{local_file_size}|{local_file_hash}|{local_file_date}'.encode(),
-                                            mark=mark, output=False)
-                    self.command_socket.send(
-                        f'/_com:data:reply:{filemark}|{exists}|{local_file_size}|{local_file_hash}|{local_file_date}'.encode())
+                    # self.command_socket.send(
+                    #     f'/_com:data:reply:{filemark}|{exists}|{local_file_size}|{local_file_hash}|{local_file_date}'.encode())
 
-                    result = SocketTools.replyCommand(1, reply_manage, filemark)
-
-                    if result['exist']:
+                    # result = SocketTools.replyCommand(1, reply_manage, filemark)
+                    status = self.timedict.getRecvData(reply_mark)
+                    if status == 'True':
                         # 对方客户端确认未传输完成，继续接收文件
                         with open(remote_file_path, mode='ab') as f:
                             difference = remote_file_size - local_file_size
@@ -401,6 +397,7 @@ class DataSocket(Scan):
         根据客户端发送的文件哈希值，判断是否是意外中断传输的文件，如果是则继续传输。
         """
         block = 1024
+        reply_mark = mark
         path, remote_file_hash, remote_size, filemark = command[0], command[1], command[2], command[3]
         data_block = block - len(filemark)
 
@@ -412,8 +409,7 @@ class DataSocket(Scan):
             local_file_hash = 0
 
         # 向客户端回复/_com:data:reply:filemark:{remote_size}|{hash_value}
-        SocketTools.sendCommand(self.timedict, self.data_socket,
-                                f'/_com:data:reply:{filemark}:{local_file_size}|{local_file_hash}', mark=mark,
+        SocketTools.sendCommand(self.timedict, self.data_socket, f'{local_file_size}|{local_file_hash}', mark=mark,
                                 output=False)
         if local_file_size == 0:
             return
@@ -436,6 +432,8 @@ class DataSocket(Scan):
 
             if file_block_hash == remote_file_hash:
                 # 确定为中断文件，开始继续传输
+                SocketTools.sendCommand(self.timedict, self.data_socket, 'True', output=False,
+                                        mark=reply_mark)
                 with open(path, mode='rb') as f:
                     f.seek(remote_size)
                     while True:
@@ -445,8 +443,8 @@ class DataSocket(Scan):
                         data = bytes(filemark, 'utf-8') + data
                         self.data_socket.send(data)
             else:
-                SocketTools.sendCommand(self.timedict, self.data_socket, '/_com:data:reply:True', output=False,
-                                        mark=mark)
+                SocketTools.sendCommand(self.timedict, self.data_socket, 'False', output=False,
+                                        mark=reply_mark)
         else:
             with open(path, mode='rb') as f:
                 while True:
@@ -472,15 +470,21 @@ class DataSocket(Scan):
         """
 
         paths = []
-        for home, folders, files in os.walk(command[4]):
-            paths.append(folders)
-        SocketTools.sendCommand(self.timedict, self.data_socket, str(paths), output=False, mark=mark)
-        return paths
+        path = command[4]
+        if os.path.exists(path):
+            for home, folders, files in os.walk(path):
+                paths.append(folders)
+            SocketTools.sendCommand(self.timedict, self.data_socket, str(paths), output=False, mark=mark)
+            return paths
+        else:
+            SocketTools.sendCommand(self.timedict, self.data_socket, 'pathError', output=False, mark=mark)
+            return
 
-    def postIndex(self, command):
+    def postIndex(self, command, mark):
         """
         根据远程发送过来的索引数据更新本地同步空间的索引
         """
+        reply_mark = mark
         spacename, json_example, isfile = command[0], command[1], command[2]
         if spacename in self.config['userdata']:
             path = self.config['userdata'][spacename]['path']
@@ -489,7 +493,7 @@ class DataSocket(Scan):
             for file in [files_index_path, folders_index_path]:
                 if not os.path.exists(file):
                     SocketTools.sendCommand(self.timedict, self.command_socket,
-                                            '/_com:data:reply:False:remoteIndexNoExist:_', output=False)
+                                            'remoteIndexNoExist', output=False, mark=reply_mark)
                     return False
             try:
                 json_example = json.loads(command[1])
@@ -505,8 +509,9 @@ class DataSocket(Scan):
                     except Exception as error:
                         print(error)
                         logging.warning(f'Failed to load index file: {index_path}')
-                        SocketTools.sendCommand(self.command_socket, '/_com:data:reply:False:remoteIndexError:_',
-                                                output=False)
+                        SocketTools.sendCommand(self.timedict, self.command_socket,
+                                                'remoteIndexError',
+                                                output=False, mark=reply_mark)
                         return False
                     data['data'].update(json_example)
                     f.truncate(0)
@@ -519,11 +524,11 @@ class DataSocket(Scan):
                 # 写入文件索引
                 __updateIndex(folders_index_path)
 
-            SocketTools.sendCommand(self.command_socket, '/_com:data:reply:True:remoteIndexError:_', output=False)
+            SocketTools.sendCommand(self.timedict, self.command_socket, 'remoteIndexUpdated', output=False, mark=reply_mark)
             return True
         else:
-            SocketTools.sendCommand(self.command_socket, '/_com:data:reply:False:remoteSpaceNameNoExist:_',
-                                    output=False)
+            SocketTools.sendCommand(self.timedict, self.command_socket, 'remoteSpaceNameNoExist',
+                                    output=False, mark=reply_mark)
             return False
 
     def executeCommand(self, command):
@@ -641,39 +646,6 @@ class CommandSocket(DataSocket):
                             thread = threading.Thread(target=self.recvFolder, args=(values,))
                             thread.start()
 
-                    elif command[2] == 'reply':
-                        # 将客户端答复存入全局变量
-                        if command[4] == 'True':
-                            exist = True
-                        else:
-                            exist = False
-                        if reply_manage[command[3]]:
-                            if reply_manage[command[3]]['count']:
-                                count = reply_manage[command[3]]['count'] + 1
-                            else:
-                                count = 0
-                        else:
-                            # 判断为答复一个不存在的记录,跳过此答复
-                            continue
-
-                        reply_manage[command[3]] = {
-                            'count': count,
-
-                            'exist': exist,
-                            'filesize': command[5],
-                            'filehash': command[6],
-                            'filedate': command[7]
-                        }
-                    elif command[2] == 'reply_end':
-                        if command[4] == 'True':
-                            # 按预期执行
-                            pass
-                        else:
-                            # 未按预期执行
-                            pass
-
-                        reply_manage.pop(command[3], None)
-
                 # 普通命令判断
                 elif command[1] == 'comm':
                     # EXSync通讯指令
@@ -713,7 +685,8 @@ class CommandSocket(DataSocket):
 
                             # 更新本地索引
                             elif command[4] == 'index':
-                                thread = threading.Thread(target=self.postIndex, args=(command[5],))
+                                mark = command[0].split('/_com')[0]
+                                thread = threading.Thread(target=self.postIndex, args=(command[5],mark))
                                 thread.start()
 
                             elif command[4] == 'comm':

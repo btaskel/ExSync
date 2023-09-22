@@ -72,6 +72,7 @@ class TimeDict:
     """
     可以理解为一个小型的redis
     默认情况下每次扫描间隔(scan)是4秒，如果有元素存在(release)超过4秒则予以删除
+    TimeDict : 在客户端/服务端分别运作一个timedict实例，timedict会一直接收来自dataSocket的数据，并默认保存到自身4秒（超时则遍历删除）。
     """
 
     def __init__(self, release=4, scan=4):
@@ -148,10 +149,6 @@ class TimeDict:
 class TimeDictInit:
     """
     数据/指令持续接收，并分流
-
-    持续接收数据等待接下来的方法处理数据，同时遵循TimeDict的元素生命周期
-    以mark头来区分数据流，如果接收到发现数据流的标识不存在则丢弃数据流
-    EXSync的mark头为数据流的前8位
     """
 
     def __init__(self, data_socket, command_socket):
@@ -160,7 +157,8 @@ class TimeDictInit:
         self.close = False
         self.timedict = TimeDict()
 
-        threads = [self._recvCommand, self._recvData]
+        # 启动数据接收线程
+        threads = [self._recvData]
         for thread in threads:
             t = threading.Thread(target=thread)
             t.start()
@@ -225,22 +223,22 @@ class SocketTools:
     def __init__(self):
         super().__init__()
 
-    # @staticmethod
-    # def recv(socket_, command_, socket_encode):
-    #     """等待接收指令,指令会进行格式验证,通过则返回值"""
-    #     while True:
-    #         result = socket_.recv(1024).decode(socket_encode).split(':')
-    #         # 命令收发验证
-    #         if result[1] == command_[1] and result[2] == command_[2] and result[3] == 'post' and \
-    #                 result[4].split('|')[0] == command_[4].split('|')[0]:
-    #             return result[4].split('|')[1]
-
     @staticmethod
     def sendCommand(timedict, socket_, command, output=True, timeout=2, mark=None):
         """
-        发送指令: 例如”/_com:comm:sync:get:password_hash|local_hash:_“
-        返回值：对方密码哈希值
-        如果 output = True 则sendCommand()将会等待一个返回值，默认超时2s。
+        发送指令和接收返回数据
+
+        例子： 本地客户端发送至对方服务端 获取文件 的指令（对方会返回数据）。
+         timedict : 首先客户端设置timedict的值作为自身接收数据暂存区。
+         socket_ : 客户端选择使用（Command Socket/Data Socket）作为发送套接字（在此例下是主动发起请求方，为Command_socket）。
+         command : 设置发送的指令。
+         output : 设置是否等待接下来的返回值。
+         timeout : 默认超时时间，如果超过则返回DATA_RECEIVE_TIMEOUT。
+         mark : 本次答复所用的标识（主动发起请求的一方默认为None，会自动生成一个8长度的字符串作为答复ID）
+
+        1. 生成 8 长度的字符串作为[答复ID]，并以此在timedict中创建一个接收接下来服务端回复的键值。
+        2. 在发送指令的前方追加[答复ID]，编码发送。
+        3. 从timedict中等待返回值，如果超时，返回DATA_RECEIVE_TIMEOUT。
 
         :param mark:
         :param timedict:
@@ -261,7 +259,7 @@ class SocketTools:
             try:
                 socket_.send((mark + command).encode(socket_encode))
                 with concurrent.futures.ThreadPoolExecutor() as excutor:
-                    future = excutor.submit(timedict.getRecvData(mark))
+                    future = excutor.submit(timedict.getRecvData(mark).decode(socket_encode))
                     try:
                         # 没有超时2000ms则返回接收值
                         result = future.result(timeout=timeout)
@@ -316,27 +314,6 @@ class SocketTools:
             except Exception as e:
                 raise TimeoutError('Socket错误: ', e)
             return True
-
-    @staticmethod
-    def replyCommand(value, global_vars, filemark, sleep=0.1):
-        """
-        等待指定次数的答复内容
-        value: 第value次答复次数的内容
-        global_vars: 答复存储的字典
-        filemark: 标识头
-        返回：
-        """
-        count = global_vars[filemark]['count']
-        result = None
-        if count < value:
-            while count < value:
-                time.sleep(sleep)
-                result = global_vars[filemark]
-        elif count == value:
-            result = global_vars[filemark]
-        else:
-            return Status.REPLY_ERROR
-        return result
 
 
 if __name__ == '__main__':

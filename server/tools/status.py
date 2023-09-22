@@ -22,6 +22,9 @@ class Status(enum.Enum):
 
     SOCKET_OBJECT_ERROR = '套接字对象错误'
 
+    DIFF_FILE = '双方文件数据不存在包含关系'
+    PATH_ERROR = '路径错误'
+
 
 class SyncStatus(enum.Enum):
     """同步状态"""
