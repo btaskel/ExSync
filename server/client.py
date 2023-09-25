@@ -399,8 +399,9 @@ class CommandSend:
         :param command:
         :return:
         """
+        reply_mark = HashTools.getRandomStr(8)
         result = SocketTools.sendCommand(self.timedict, self.command_socket, f'/_com:comm:sync:post:comm:{command}_',
-                                         timeout=timeout)
+                                         timeout=timeout, mark=reply_mark)
 
         try:
             result = list(result)

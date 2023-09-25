@@ -10,8 +10,7 @@ import ntplib
 import xxhash
 
 from server.config import readConfig
-from server.run import Control
-from server.shell import initLogging
+from server.control import Control
 from server.tools.tools import createFile, relToAbs
 
 
@@ -23,7 +22,6 @@ class Index(readConfig):
 
     def __init__(self, path):
         super().__init__()
-        initLogging(logging.DEBUG)
         self.config = self.readJson()
         # 同步目录的路径
         self.path = os.path.abspath(path)
@@ -239,7 +237,6 @@ class SyncData(Index, Control):
 
     def __init__(self):
         super().__init__()
-        initLogging(logging.DEBUG)
         self.devices = Control.getAllDevice()
         self.index_cache = []
 
@@ -361,8 +358,8 @@ class SyncData(Index, Control):
         """
         同步所有设备的文件
 
-        method = 0; 逻辑：本机依次同步所有设备的文件
-        （拟）method = 1; 逻辑：本机首先发送给第一个需要同步设备IP名单，如果名单中的IP也在对方的同步列表中，
+        method = 0; 实现逻辑：本机依次同步所有设备的文件
+        （拟）method = 1; 实现逻辑：本机首先发送给第一个需要同步设备IP名单，如果名单中的IP也在对方的同步列表中，
         那么对方设备会为IP名单中的设备进行文件同步，以此类推。（过程中本机也会继续同步其它设备文件）
         """
         if method:
@@ -371,6 +368,7 @@ class SyncData(Index, Control):
             for device in self.devices:
                 thread = threading.Thread(target=self.syncFiles, args=(device, spacename))
                 thread.start()
+                thread.join()
 
     def syncShell(self, device, Command):
         """

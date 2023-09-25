@@ -12,7 +12,6 @@ class Init:
     """EXSync初始化"""
 
     def __init__(self):
-        initLogging(logging.DEBUG)
         # 初始化服务端/客户端
         server = createSocket()
         socket_ls = [server.createDataSocket, server.createCommandSocket, server.createVerifySocket]

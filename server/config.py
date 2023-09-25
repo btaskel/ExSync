@@ -12,8 +12,6 @@ class ApiConfig:
     }
 
     logs = '/-/refs/master/logs_tree/?format=json&offset=0'
-    # 设置默认缓存文件大小 MB
-    index_cache = 1
 
 
 class readConfig:
@@ -36,12 +34,28 @@ class readConfig:
 
     @staticmethod
     def readJson():
+        config = {}
         with open('.\\config\\config.json', mode='r', encoding='utf-8') as f:
-            config = json.loads(f.read())
+            json_file = json.loads(f.read())
+
+            # log-loglevel
+            if json_file['log']['loglevel'].lower() in ['debug', 'info', 'warning', 'error', 'none']:
+                config['log']['loglevel'] = json_file['log']['loglevel']
+            else:
+                config['log']['loglevel'] = 'info'
+
+            addr = json_file['server']['addr']
+            # server-addr-id
+            if addr['id'] is None or len(addr['id']) < 30:
+                config['server']['addr']['id'] = addr['id']
+
+            # server-addr-ip
+            pass
+
             return config
 
     @staticmethod
-    def createJson():
+    def jsonData():
         json_str = {
             "log": {
                 "loglevel": ""
@@ -79,19 +93,18 @@ class readConfig:
                     "autostart": True,
                     "active": True,
                     "devices": [""]
-
                 }
             ],
 
             "version": 0.01
         }
+        return json_str
 
+    @staticmethod
+    def createJson():
+        json_str = readConfig.jsonData()
         with open('.\\config\\config.json', mode='w', encoding='utf-8') as f:
             json.dump(json_str, f, indent=4)
-
-    # @staticmethod
-    # def getJson(self):
-    #     return
 
 
 if __name__ == '__main__':

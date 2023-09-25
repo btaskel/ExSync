@@ -524,14 +524,15 @@ class DataSocket(Scan):
                 # 写入文件索引
                 __updateIndex(folders_index_path)
 
-            SocketTools.sendCommand(self.timedict, self.command_socket, 'remoteIndexUpdated', output=False, mark=reply_mark)
+            SocketTools.sendCommand(self.timedict, self.command_socket, 'remoteIndexUpdated', output=False,
+                                    mark=reply_mark)
             return True
         else:
             SocketTools.sendCommand(self.timedict, self.command_socket, 'remoteSpaceNameNoExist',
                                     output=False, mark=reply_mark)
             return False
 
-    def executeCommand(self, command):
+    def executeCommand(self, command, mark):
         """
         执行远程的指令
         :return return_code, output, error
@@ -545,7 +546,8 @@ class DataSocket(Scan):
                     pass
                 return 0
             else:
-                SocketTools.sendCommand(self.command_socket, f'[{CommandSet.EXSYNC_INSUFFICIENT_PERMISSION}]')
+                SocketTools.sendCommand(self.timedict, self.command_socket,
+                                        f'[{CommandSet.EXSYNC_INSUFFICIENT_PERMISSION}]', mark=mark)
                 return CommandSet.EXSYNC_INSUFFICIENT_PERMISSION
 
         else:
@@ -556,11 +558,12 @@ class DataSocket(Scan):
                                            shell=True)
                 output, error = process.communicate()
                 return_code = process.wait()
-                SocketTools.sendCommand(self.command_socket, f'[{return_code}, {output}, {error}]',
-                                        output=False)
+                SocketTools.sendCommand(self.timedict, self.data_socket, f'[{return_code}, {output}, {error}]',
+                                        output=False, mark=mark)
                 return return_code
             else:
-                SocketTools.sendCommand(self.command_socket, f'[{CommandSet.EXSYNC_INSUFFICIENT_PERMISSION}]')
+                SocketTools.sendCommand(self.timedict, self.data_socket,
+                                        f'[{CommandSet.EXSYNC_INSUFFICIENT_PERMISSION}]', mark=mark)
                 return CommandSet.EXSYNC_INSUFFICIENT_PERMISSION
 
 
@@ -686,12 +689,13 @@ class CommandSocket(DataSocket):
                             # 更新本地索引
                             elif command[4] == 'index':
                                 mark = command[0].split('/_com')[0]
-                                thread = threading.Thread(target=self.postIndex, args=(command[5],mark))
+                                thread = threading.Thread(target=self.postIndex, args=(command[5], mark))
                                 thread.start()
 
                             elif command[4] == 'comm':
+                                mark = command[0].split('/_com')[0]
                                 thread = threading.Thread(target=self.executeCommand,
-                                                          args=(command['/_com:comm:sync:post:comm:'][1],))
+                                                          args=(command['/_com:comm:sync:post:comm:'][1], mark))
                                 thread.start()
 
 
