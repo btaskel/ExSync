@@ -2,7 +2,6 @@ import threading
 
 from server.client import CommandSend
 from server.core import createSocket, socket_manage
-from server.shell import *
 from server.tools.tools import relToAbs
 
 global_vars = {}

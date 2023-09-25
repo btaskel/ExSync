@@ -376,8 +376,8 @@ class CommandSend:
         else:
             is_file = 'False'
         result = SocketTools.sendCommand(self.timedict, self.command_socket,
-                                   f'/_com:comm:sync:post:index:{spacename}|{json_example}|{is_file}:_',
-                                   output=False)
+                                         f'/_com:comm:sync:post:index:{spacename}|{json_example}|{is_file}:_',
+                                         output=False)
         match result:
             case 'remoteIndexNoExist':
                 # 远程索引文件不存在

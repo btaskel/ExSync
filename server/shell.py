@@ -1,7 +1,9 @@
 import argparse
 import logging
 import sys
+
 from server.config import readConfig
+
 
 class Init:
     def __init__(self):
@@ -16,7 +18,7 @@ class Init:
 
         self.initLogging(args.log_level)
         if args.version:
-            self.printVersion(built_in_config.get('version','Unknown'))
+            self.printVersion(built_in_config.get('version', 'Unknown'))
         self.checkPython()
 
     @staticmethod
