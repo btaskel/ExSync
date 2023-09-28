@@ -5,6 +5,7 @@ import random
 import string
 import threading
 import time
+import uuid
 
 import xxhash
 
@@ -29,6 +30,15 @@ def relToAbs(file_path):
     except Exception as e:
         print(e)
         logging.error(f'File path error: {file_path}')
+
+
+def is_uuid(uuid_str):
+    """判断一个字符串是否为UUID"""
+    try:
+        uuid.UUID(uuid_str)
+        return True
+    except ValueError:
+        return False
 
 
 class HashTools:
@@ -226,7 +236,7 @@ class SocketTools:
     @staticmethod
     def sendCommand(timedict, socket_, command, output=True, timeout=2, mark=None):
         """
-        发送指令和接收返回数据
+        发送指令并准确接收返回数据
 
         例子： 本地客户端发送至对方服务端 获取文件 的指令（对方会返回数据）。
          timedict : 首先客户端设置timedict的值作为自身接收数据暂存区。

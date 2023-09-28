@@ -139,7 +139,7 @@ class readConfig:
                     "id": None,
                     "ip": "127.0.0.1",
                     "port": 5002,
-                    "password": getRandomString(8)
+                    "password": getRandomString(10)
                 },
                 "setting": {
                     "encode": "utf-8",

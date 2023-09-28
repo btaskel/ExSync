@@ -8,22 +8,11 @@ import xxhash
 
 from server.config import readConfig
 from server.tools.status import Status, CommandSet
-from server.tools.tools import HashTools, SocketTools, TimeDictInit
-
-"""
-子Socket管理
-当客户端与服务端建立连接后, 用于管理指令与数据传输Socket的存储
-
-ip: {
-    command: 指令Socket
-    data: 数据传输Socket
-}
-"""
-socket_manage = {}
+from server.tools.tools import HashTools, SocketTools, TimeDictInit, is_uuid
 
 
 class Client(readConfig):
-    def __init__(self):
+    def __init__(self, ip, port):
         super().__init__()
         self.client_socket = None
         self.client_data_socket = None
@@ -35,65 +24,82 @@ class Client(readConfig):
         # 会话id
         self.uuid = None
 
-        self.data_port = self.config['server']['addr']['port']
-        self.command_port = self.config['server']['addr']['port'] + 1
-        self.listen_port = self.config['server']['addr']['port'] + 2
-        self.encode = self.config['server']['setting']['encode']
-        self.createSocket()
+        """
+        子Socket管理
+        当客户端与服务端建立连接后, 用于管理指令与数据传输Socket的存储
 
-    def createSocket(self):
-        """创建客户端的指令套接字，并且初始化代理设置"""
+        ip: {
+            command: 指令Socket
+            data: 数据传输Socket
+        }
+        """
+        self.socket_manage = {}
+
+        self.ip = ip
+        self.data_port = port
+        self.command_port = port + 1
+        self.listen_port = port + 2
+        self.encode = self.config['server']['setting']['encode']
+        # 并且初始化代理设置
         proxy_host, proxy_port = self.config['server']['proxy']['hostname'], self.config['server']['proxy']['port']
         socks.set_default_proxy(socks.SOCKS5, proxy_host, proxy_port)
         socket.socket = socks.socksocket
-        # 创建套接字
+        self.createSocket()
+
+    def createSocket(self):
+        """创建客户端的指令套接字"""
         client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         client_socket.bind((self.config['server']['addr']['ip'], 0))
 
         self.client_socket = client_socket
+        return self.client_socket
 
-    def connectCommandSocket(self, ip):
+    def connectCommandSocket(self):
         """
         尝试连接ip_list,连接成功返回连接的ip，并且增加进connected列表
         连接至对方的server-command_socket
         """
 
-        if not socket_manage['command'] and ip not in self.connected:
+        if not self.socket_manage['command'] and self.ip not in self.connected:
             for i in range(3):
                 self.client_socket.settimeout(2)
-                if self.client_socket.connect_ex((ip, self.command_port)) == 0:
+                if self.client_socket.connect_ex((self.ip, self.command_port)) == 0:
 
                     # 开始验证合法性
                     result = self.client_socket.recv(1024).decode(self.encode)
                     if result == '/_com:comm:sync:get:password_hash':
                         result = SocketTools.sendCommandNoTimeDict(self.client_socket, xxhash.xxh3_128(
-                            self.encode).hexdigest())
+                            self.config['server']['password']).hexdigest())
 
-                        if result == 'yes':
-                            # 通过验证，接收会话id
-                            self.uuid = self.client_socket.recv(1024).decode(
-                                self.encode)
-
-                            self.connected.append(ip)
-                            socket_manage['command'] = self.client_socket
+                        if result == self.config['server']['password']:
+                            # 服务端身份验证与服务端身份验证通过
+                            device_uuid = self.client_socket.recv(1024).decode(self.encode)
+                            if not is_uuid(device_uuid):
+                                return
+                            self.uuid = device_uuid
+                            self.connected.append(self.ip)
+                            self.socket_manage['command'] = self.client_socket
                             return self.client_socket
 
+                        elif result == 'passwordError':
+                            # 本地客户端所持密码错误
+                            return Status.KEY_ERROR
                         else:
-                            # 验证失败
+                            # 服务端所持密匙与本地客户端不同
                             return Status.CONFIRMATION_FAILED
                     else:
-                        return Status.KEY_ERROR
+                        return Status.REPLY_ERROR
                 return Status.CONNECT_TIMEOUT
             return Status.CONNECTED
 
-    def createClientDataSocket(self, ip):
+    def createClientDataSocket(self):
         """
         创建并连接client_data_socket - server_command_socket
         """
-        if not socket_manage['data']:
+        if not self.socket_manage['data']:
             self.client_data_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             self.client_data_socket.bind((self.config['server']['addr']['ip'], 0))
-            if self.client_data_socket.connect_ex((ip, self.data_port)) != 0:
+            if self.client_data_socket.connect_ex((self.ip, self.data_port)) != 0:
                 # 关闭连接
                 self.closeAllSocket()
 
@@ -101,15 +107,55 @@ class Client(readConfig):
                                                         str(self.uuid))
             if session.split(':')[4].split('|')[1] == 'True':
                 # 会话验证成功
-                socket_manage['data'] = self.client_socket
+                self.socket_manage['data'] = self.client_socket
                 return self.client_data_socket
             else:
                 # 会话验证失败
                 return Status.SESSION_FALSE
 
+    def createListenSocket(self):
+        listen_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        listen_socket.listen(128)
+        while True:
+            if self.uuid:
+                listen_socket.close()
+                return
+            sub_socket, addr = listen_socket.accept()
+            if self.uuid:
+                listen_socket.close()
+                return
+            result = sub_socket.recv(1024).decode(self.encode)
+            if result == '/_com:comm:sync:get:version:_':
+                com_password_hash = SocketTools.sendCommandNoTimeDict(sub_socket, self.config['version'])
+                if com_password_hash == '/_com:comm:sync:get:password|hash:_':
+                    password = self.config['server']['password']
+                    com_password = SocketTools.sendCommandNoTimeDict(sub_socket, xxhash.xxh3_128(password).hexdigest())
+                    if com_password == self.config['server']['password']:
+                        # 验证通过
+                        SocketTools.sendCommandNoTimeDict(sub_socket, 'True', output=False)
+                        sub_socket.shutdown(socket.SHUT_RDWR)
+                        sub_socket.close()
+                        listen_socket.close()
+                        break
+                    elif com_password == Status.DATA_RECEIVE_TIMEOUT:
+                        # todo: 服务端密码验证失败
+                        continue
+                    else:
+                        # todo: 服务端密码验证得到错误参数
+                        continue
+
+                elif com_password_hash == Status.DATA_RECEIVE_TIMEOUT:
+                    # todo: 客户端密码哈希验证失败
+                    continue
+                else:
+                    # todo: 客户端密码哈希验证得到错误参数
+                    continue
+
+
     def closeAllSocket(self):
         """结束与服务端的所有会话"""
-        pass
+        self.client_data_socket.close()
+        self.client_socket.close()
 
 
 class CommandSend:
