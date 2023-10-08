@@ -3,8 +3,6 @@ import logging
 import os
 import random
 import string
-import threading
-import time
 import uuid
 
 import xxhash
@@ -78,167 +76,15 @@ class HashTools:
         return "".join(random.sample(characters, number))
 
 
-class TimeDict:
-    """
-    可以理解为一个小型的redis
-    默认情况下每次扫描间隔(scan)是4秒，如果有元素存在(release)超过4秒则予以删除
-    TimeDict : 在客户端/服务端分别运作一个timedict实例，timedict会一直接收来自dataSocket的数据，并默认保存到自身4秒（超时则遍历删除）。
-    """
-
-    def __init__(self, release=4, scan=4):
-        self.dict = {}
-        self.lock = threading.Lock()
-        try:
-            self.release_time = int(release)
-            self.scan = float(scan)
-        except Exception as e:
-            print(e)
-            self.release_time = 4
-            self.scan = 4
-
-        self.close_flag = False
-        thread = threading.Thread(target=self.__release)
-        thread.start()
-
-    def set(self, key, value=None):
-        """设置键值对"""
-        with self.lock:
-            if key in self.dict:
-                self.dict[key].insert(-1, value)
-                self.dict[key][-1] = time.time()
-            elif key in self.dict and value is not None:
-                self.dict[key] = [value, time.time()]
-            else:
-                self.dict[key] = [time.time()]
-
-    def get(self, key, pop=True, timeout=2):
-        """
-        获取键值对
-        如果pop=True则获取完元素立即弹出该元素(如果元素内容被读取完毕，则返回False)
-        如果无法获取到则会阻塞到有数据再继续返回, 如果超过2000ms则解除阻塞
-        """
-        with self.lock:
-            if pop:
-                tic = time.time()
-                while True:
-                    if time.time() - tic > timeout:
-                        return
-                    result = self.dict[key]
-                    if len(result) > 1:
-                        return result.pop(0)
-                    time.sleep(0.002)
-            else:
-                return self.dict.get(key, False)[0:-1]
-
-    def hasKey(self, key):
-        with self.lock:
-            if key in self.dict:
-                result = True
-            else:
-                result = False
-            return result
-
-    def close(self):
-        self.close_flag = True
-
-    def __release(self):
-        """周期性扫描过期键值对并删除"""
-        while True:
-            if self.close_flag:
-                return
-            time.sleep(self.scan)
-            keys_to_delete = []
-            with self.lock:
-                for key, value in self.dict.items():
-                    if time.time() - value[-1] > self.release_time:
-                        keys_to_delete.append(key)
-                for key in keys_to_delete:
-                    del self.dict[key]
-
-
-class TimeDictInit:
-    """
-    数据/指令持续接收，并分流
-    """
-
-    def __init__(self, data_socket, command_socket):
-        self.data_socket = data_socket
-        self.command_socket = command_socket
-        self.close = False
-        self.timedict = TimeDict()
-
-        # 启动数据接收线程
-        threads = [self._recvData]
-        for thread in threads:
-            t = threading.Thread(target=thread)
-            t.start()
-
-    def _recvData(self):
-        """
-        持续接收数据等待接下来的方法处理数据，同时遵循TimeDict的元素生命周期
-        以mark头来区分数据流，如果接收到发现数据流的标识不存在则丢弃数据流
-        EXSync的mark头为数据流的前8位
-        """
-
-        while True:
-            if self.close:
-                self.timedict.close()
-                return
-            else:
-                result = self.data_socket.recv(1024)
-                try:
-                    mark, data = result[:8], result[8:]
-                    if self.timedict.hasKey(mark):
-                        self.timedict.set(mark, data)
-                except:
-                    pass
-
-    # def _recvCommand(self):
-    #     """
-    #     接收远程指令
-    #     持续接收数据等待接下来的方法处理指令，同时遵循TimeDict的元素生命周期
-    #     以mark头来区分数据流，如果接收到发现数据流的标识不存在则丢弃数据流
-    #     EXSync的mark头为数据流的前8位
-    #     """
-    #
-    #     while True:
-    #         if self.close:
-    #             self.timedict.close()
-    #             return
-    #         else:
-    #             result = self.command_socket.recv(1024)
-    #             try:
-    #                 mark, data = result[:8], result[8:]
-    #                 if self.timedict.hasKey(mark):
-    #                     self.timedict.set(mark, data)
-    #             except:
-    #                 pass
-
-    def getRecvData(self, mark):
-        """取出指定mark队列第一个值，并且将其弹出"""
-        return self.timedict.get(mark, pop=True)
-
-    def createRecv(self, mark):
-        """创建一个数据流接收队列"""
-        self.timedict.set(mark)
-
-    def closeRecv(self):
-        """销毁所有数据"""
-        self.close = True
-
-
 class SocketTools:
     """工具包：发送指令，接收指令"""
-
-    def __init__(self):
-        super().__init__()
 
     @staticmethod
     def sendCommand(timedict, socket_, command, output=True, timeout=2, mark=None):
         """
         发送指令并准确接收返回数据
 
-        例子： 本地客户端发送至对方服务端 获取文件 的指令（对方会返回数据）。
+        例： 本地客户端发送至对方服务端 获取文件 的指令（对方会返回数据）。
          timedict : 首先客户端设置timedict的值作为自身接收数据暂存区。
          socket_ : 客户端选择使用（Command Socket/Data Socket）作为发送套接字（在此例下是主动发起请求方，为Command_socket）。
          command : 设置发送的指令。
@@ -259,7 +105,13 @@ class SocketTools:
         :return:
         """
         if not mark:
-            mark = HashTools.getRandomStr(8)
+            while True:
+                characters = string.ascii_letters + '1234567890'
+                mark = "".join(random.sample(characters, 8))
+                if timedict.hasKey(mark):
+                    continue
+                else:
+                    break
         timedict.createRecv(mark)
         try:
             socket_encode = readConfig.readJson()['server']['addr']['encode']
@@ -326,9 +178,85 @@ class SocketTools:
             return True
 
 
+class SocketSession(SocketTools):
+    """
+    使用with快速创建一个会话, 可以省去每次填写部分参数的时间
+    mark: 如果指定mark值则会按照当前mark继续会话；否则自动生成mark值创建会话
+
+    """
+
+    def __init__(self, timedict, data_socket=None, command_socket=None, timeout=2, mark=None, ):
+        self.__timedict = timedict
+
+        self.__data_socket = data_socket
+        self.__command_socket = command_socket
+
+        if not self.__data_socket and self.__command_socket:
+            # Error
+            raise ValueError('SocketSession: data_socket和command_socket未传入')
+
+        elif self.__command_socket and self.__data_socket:
+            # 从command_socket 发送指令(此后的所有数据从data_socket发送和接收)
+            self.method = 0
+
+        elif not self.__command_socket and self.__data_socket:
+            # 从data_socket发送与接收数据(经过timedict标识收发)
+            self.method = 1
+
+        else:
+            # 从command_socket 发送与接收数据(不经过timedict 保存数据)
+            self.method = 2
+
+        self.__timeout = timeout
+        self.mark = mark
+
+        self.count = 0
+
+        if not self.mark:
+            while True:
+                characters = string.ascii_letters + '1234567890'
+                self.mark = "".join(random.sample(characters, 8))
+                if timedict.hasKey(mark):
+                    continue
+                else:
+                    break
+
+    def send(self, command, output=True):
+        """发送命令"""
+        match self.method:
+            case 0:
+                if self.count == 0:
+                    _socket = self.__command_socket
+                else:
+                    _socket = self.__data_socket
+
+                self.sendCommand(timedict=self.__timedict, socket_=_socket, command=command, mark=self.mark,
+                                 output=output, timeout=self.__timeout)
+
+            case 1:
+                self.sendCommand(timedict=self.__timedict, socket_=self.__data_socket, command=command, mark=self.mark,output=output, timeout=self.__timeout)
+
+            case 2:
+                self.sendCommandNoTimeDict(self.__command_socket, command, output, timeout=self.__timeout)
+        self.count += 1
+
+    def recv(self):
+        """接收数据"""
+        return self.__timedict.getRecvData(mark=self.mark)
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self):
+        # 清理会话
+        self.__timedict.delKey(self.mark)
+
+
 if __name__ == '__main__':
     # timedict = TimeDict()
     # timedict.set('a', 10)
     # time.sleep(10)
     # print(timedict.get('a'))
     print(HashTools.getRandomStr())
+    with SocketSession(1,2,3,4) as session:
+        session.send()

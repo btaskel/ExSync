@@ -1,3 +1,4 @@
+import hashlib
 import json
 import locale
 import logging
@@ -15,7 +16,8 @@ import xxhash
 from server.client import Client
 from server.config import readConfig
 from server.tools.status import Status, PermissionEnum, CommandSet
-from server.tools.tools import SocketTools, HashTools, TimeDictInit
+from server.tools.timedict import TimeDictInit, TimeDictTools
+from server.tools.tools import SocketTools, HashTools
 
 """
 客户端实例管理
@@ -46,6 +48,8 @@ class Scan(readConfig):
             self.encode_type = self.config['server']['setting']['encode']
         else:
             self.encode_type = 'utf-8'
+
+        #
 
     def start(self):
         """
@@ -113,20 +117,23 @@ class Scan(readConfig):
 
     def testDevice(self):
         """
-        主动嗅探并验证ip列表是否存在活动的设备
+        主动验证：主动嗅探并验证ip列表是否存在活动的设备
         如果存在活动的设备判断密码是否相同
         :return: devices
         """
         self.g['devices'] = []
         ip_list = self.start()
 
+        def close():
+            test.shutdown(socket.SHUT_RDWR)
+            test.close()
+
         for ip in ip_list:
             test = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             test.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             test.settimeout(1)
             # 连接设备的指定端口
-            if test.connect_ex((ip, self.listen_port)) == 0:
-
+            if test.connect_ex((ip, self.command_port)) == 0:
                 # 如果密码为空，则任何客户端均可以连接
                 if self.password == "":
                     version = SocketTools.sendCommandNoTimeDict(test, '/_com:comm:sync:get:version:_')
@@ -134,36 +141,40 @@ class Scan(readConfig):
                         self.g['devices'].append(ip)
                 else:
                     # 密码不为空，则开始验证
-                    version = SocketTools.sendCommandNoTimeDict(test, '/_com:comm:sync:get:version:_')
-                    if version == self.config['version']:
-                        password_hash = SocketTools.sendCommandNoTimeDict(test, '/_com:comm:sync:get:password|hash:_')
-                        # 如果 远程密码哈希=本地密码哈希 则验证成功
-                        if password_hash == xxhash.xxh3_128(self.password).hexdigest():
-                            # 如果密码哈希值验证成功，则验证密码是否相同
-                            password = SocketTools.sendCommandNoTimeDict(test, self.config['server']['password'])
-                            if password == 'True':
-                                # 验证成功
-                                self.g['devices'].append(ip)
-                                continue
-                            elif password == 'False':
-                                # todo: 验证服务端密码失败
-                                continue
-                            elif password == Status.DATA_RECEIVE_TIMEOUT:
-                                # todo: 验证服务端密码超时
-                                continue
-                            else:
-                                # todo: 验证服务端密码时得到未知参数
-                                continue
-
-                        elif password_hash == Status.DATA_RECEIVE_TIMEOUT:
-                            # todo: 验证客户端密码哈希超时
+                    version = self.config['version']
+                    remote_password_sha256 = SocketTools.sendCommandNoTimeDict(test,
+                                                                               f'/_com:comm:sync:post:verifyConnect:{version}')
+                    # 验证sha256值是否匹配
+                    if remote_password_sha256 == hashlib.sha256(self.password.encode('utf-8')).hexdigest():
+                        # 发送xxh3_128的密码值
+                        result = SocketTools.sendCommandNoTimeDict(test, xxhash.xxh3_128(self.password).hexdigest())
+                        if result == 'success':
+                            # 验证成功
+                            self.g['devices'].append(ip)
+                            continue
+                        elif result == 'fail':
+                            # todo: 验证服务端密码失败
+                            close()
+                            continue
+                        elif result == Status.DATA_RECEIVE_TIMEOUT:
+                            # todo: 验证服务端密码超时
+                            close()
                             continue
                         else:
-                            # todo: 验证客户端密码哈希得到未知参数
+                            # todo: 验证服务端密码时得到未知参数
+                            close()
                             continue
 
-                test.shutdown(socket.SHUT_RDWR)
-            test.close()
+                    elif remote_password_sha256 == Status.DATA_RECEIVE_TIMEOUT:
+                        # todo: 验证客户端密码哈希超时
+                        close()
+                        continue
+                    else:
+                        # todo: 验证客户端密码哈希得到未知参数
+                        close()
+                        continue
+
+
         return self.g['devices']
 
 
@@ -328,8 +339,6 @@ class createSocket(Scan):
         本地客户端主动连接远程服务端
         """
         client_mark = HashTools.getRandomStr(8)
-
-
         client = Client(ip, self.data_port)
         # 连接指令Socket
         client.connectCommandSocket()
@@ -376,6 +385,7 @@ class DataSocket(Scan):
         self.system_encode = locale.getpreferredencoding()
 
         self.timedict = TimeDictInit(data_socket, command_socket)
+        self.timeDictTools = TimeDictTools(self.timedict)
         self.closeTimeDict = False
 
     def recvFile(self, command, mark):
@@ -706,6 +716,37 @@ class CommandSocket(DataSocket):
         self.command_socket = command_socket
         self.data_socket = data_socket
 
+    def verifyConnect(self, version, mark):
+        """
+        被验证：验证对方服务端TestSocket发送至本地服务端CommandSocket的连接是否合法
+        如果合法则加入可信任设备列表
+        """
+        if self.config['version'] == version:
+            password_sha256 = hashlib.sha256(self.password.encode('utf-8')).hexdigest()
+            password_xxhash = xxhash.xxh3_128(self.password).hexdigest()
+            # 验证xxh3_128值是否匹配
+            remote_password_xxhash = SocketTools.sendCommand(timedict=self.timedict, socket_=self.command_socket,
+                                                             command=password_sha256, mark=mark)
+            if remote_password_xxhash == password_xxhash:
+                # 验证通过
+                SocketTools.sendCommandNoTimeDict(self.command_socket, 'success', output=False)
+
+            elif remote_password_xxhash == Status.DATA_RECEIVE_TIMEOUT:
+                # todo: 服务端密码验证失败(超时)
+                pass
+
+            else:
+                # todo: 服务端密码验证失败(或得到错误参数)
+                SocketTools.sendCommandNoTimeDict(self.command_socket, 'fail', output=False)
+
+            self.command_socket.shutdown(socket.SHUT_RDWR)
+            self.command_socket.close()
+            return
+
+        else:
+            # todo: 客户方与服务端验证版本不一致
+            return
+
     def recvCommand(self):
         """
         持续倾听并解析指令
@@ -718,6 +759,12 @@ class CommandSocket(DataSocket):
             if ':' in command:
                 command = command.split(':')
 
+                try:
+                    mark = command[0].split('/_com')[0]
+                except Exception as e:
+                    print(e)
+                    continue
+
                 # 数据类型判断
                 if command[1] == 'data':
                     # 文件操作
@@ -726,13 +773,12 @@ class CommandSocket(DataSocket):
                         if command[3] == 'post':
                             # 对方使用post提交文件至本机
                             values = command[4].split('|')
-                            mark = command[0].split('/_com')[0]
                             thread = threading.Thread(target=self.recvFile, args=(values, mark))
                             thread.start()
 
                         elif command[3] == 'get':
                             values = command[4].split('|')
-                            thread = threading.Thread(target=self.sendFile, args=(values,))
+                            thread = threading.Thread(target=self.sendFile, args=(values, mark))
                             thread.start()
                     # 文件夹操作
                     elif command[2] == 'folder':
@@ -740,7 +786,6 @@ class CommandSocket(DataSocket):
                         # 获取服务端文件夹信息
                         if command[3] == 'get':
                             values = command[4]
-                            mark = command[0].split('/_com')[0]
                             thread = threading.Thread(target=self.getFolder, args=(values, mark))
                             thread.start()
 
@@ -762,13 +807,13 @@ class CommandSocket(DataSocket):
                                 password_hash = xxhash.xxh3_128(password).hexdigest()
                                 SocketTools.sendCommand(self.timedict, self.command_socket,
                                                         password_hash.encode(self.encode_type),
-                                                        output=False)
+                                                        output=False, mark=mark)
                             elif command[4] == 'index':
                                 # 获取索引文件
                                 for userdata in self.config['userdata']:
                                     if command[5] == userdata['spacename']:
                                         SocketTools.sendCommand(self.timedict, self.command_socket, userdata['path'],
-                                                                mark=command[0].split('/_com')[0])
+                                                                mark=mark)
 
                         # 提交EXSync信息
                         elif command[3] == 'post':
@@ -779,22 +824,29 @@ class CommandSocket(DataSocket):
                                 password_hash = xxhash.xxh3_128(password).hexdigest()
                                 if command[4].split('|')[1] == password_hash:
                                     SocketTools.sendCommand(self.timedict, self.command_socket,
-                                                            'True'.encode(self.encode_type),
-                                                            output=False)
+                                                            'True'.encode(self.encode_type), output=False, mark=mark)
 
                                 else:
                                     SocketTools.sendCommand(self.timedict, self.command_socket,
-                                                            'False'.encode(self.encode_type),
-                                                            output=False)
+                                                            'False'.encode(self.encode_type), output=False, mark=mark)
+                            elif command[4] == 'verifyConnect':
+                                # 验证对方连接合法性
+                                # 对方发送：[8bytes_mark]/_com:comm:sync:post:verifyConnect:password_hash
+                                try:
+                                    values = command[5].split('|')
+                                except Exception as e:
+                                    print(e)
+                                    continue
+                                thread = threading.Thread(target=self.verifyConnect, args=(values[0], mark))
+                                thread.start()
+
 
                             # 更新本地索引
                             elif command[4] == 'index':
-                                mark = command[0].split('/_com')[0]
                                 thread = threading.Thread(target=self.postIndex, args=(command[5], mark))
                                 thread.start()
 
                             elif command[4] == 'comm':
-                                mark = command[0].split('/_com')[0]
                                 thread = threading.Thread(target=self.executeCommand,
                                                           args=(command['/_com:comm:sync:post:comm:'][1], mark))
                                 thread.start()

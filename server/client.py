@@ -12,11 +12,12 @@ from server.tools.tools import HashTools, SocketTools, TimeDictInit, is_uuid
 
 
 class Client(readConfig):
-    def __init__(self, ip, port):
+    def __init__(self, ip, port, verified=False):
         super().__init__()
         self.client_socket = None
         self.client_data_socket = None
         self.config = readConfig.readJson()
+        self.verified = verified
 
         # 已连接列表
         self.connected = []
