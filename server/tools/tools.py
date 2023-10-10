@@ -134,7 +134,7 @@ class SocketTools:
                 return False
         else:
             try:
-                socket_.send(command.encode(socket_encode))
+                socket_.send((mark + command).encode(socket_encode))
             except Exception as e:
                 raise TimeoutError('Socket错误: ', e)
             return True
@@ -142,7 +142,7 @@ class SocketTools:
     @staticmethod
     def sendCommandNoTimeDict(socket_, command, output=True, timeout=2):
         """
-        取消使用TimeDict收发数据
+        取消使用TimeDict收发数据(用于非异步数据传输)
         如果 output = True 则sendCommand()将会等待一个返回值，默认超时2s。
         :param timeout:
         :param output:

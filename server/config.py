@@ -13,8 +13,8 @@ class ApiConfig:
     """
     # 设置请求头
     headers = {
-        'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/'
-                      '537.36 (KHTML, like Gecko) Chrome/112.0.0.0 Safari/537.36'
+        'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+                      ' (KHTML, like Gecko) Chrome/117.0.0.0 Safari/537.36'
     }
 
     logs = '/-/refs/master/logs_tree/?format=json&offset=0'
@@ -57,22 +57,28 @@ class readConfig:
             addr = json_file['server']['addr']
             # server-addr-id
             if addr['id'] is None:
-                logging.warning('The device ID is already random, which will hide your device.')
-                config['server']['addr']['id'] = ''.join(random.sample(string.ascii_letters, 10))
+                logging.info('The device ID is already random, which will hide your device.')
+                # config['server']['addr']['id'] = ''.join(random.sample(string.ascii_letters, 10))
+                config['server']['addr']['id'] = None
 
             # server-addr-ip
             if addr['ip']:
                 try:
+                    # 判断是否为ipv4
                     socket.inet_pton(socket.AF_INET, addr['ip'])
+                    config['server']['addr']['ip_type'] = 'ipv4'
                 except socket.error:
                     try:
+                        # 判断是否为ipv6
                         socket.inet_pton(socket.AF_INET6, addr['ip'])
+                        config['server']['addr']['ip_type'] = 'ipv6'
                     except socket.error:
                         logging.error('The host IP address is not ipv4 or ipv6!')
                         sys.exit(1)
             else:
                 logging.error('The host IP address is not filled in and has been defaulted to 0.0.0.0!')
                 config['server']['addr']['ip'] = '0.0.0.0'
+                config['server']['addr']['ip_type'] = 'ipv4'
 
             # server-addr-port
             if not isinstance(addr['port'], int) and 65536 < addr['port'] < 1024:
@@ -81,7 +87,14 @@ class readConfig:
 
             # server-addr-password
             if not addr['password']:
-                logging.warning('Password not set! Your device may be in a dangerous state!')
+                logging.error('Password not set! Your device may be in a dangerous state!')
+                sys.exit(1)
+            elif len(addr['password']) < 4:
+                logging.error('Password length is less than 4! Should be between 4 and 48 characters!')
+                sys.exit(1)
+            elif len(addr['password']) > 48:
+                logging.error('The password length is greater than 48! Should be between 4 and 48 characters!')
+                sys.exit(1)
 
             setting = json_file['server']['setting']
             # server-setting-encode
@@ -125,15 +138,22 @@ class readConfig:
 
             # userdata
             count = 1
+            dc = {}
             for userdata in config['userdata']:
                 spacename = userdata.get('spacename', '')
                 if spacename == '':
-                    logging.warning(f'The {count} th sync space is named empty! This space will not start.')
+                    logging.error(f'The {count} th sync space is named empty! This space will not start!')
+                    sys.exit(1)
+                if spacename in dc:
+                    logging.error(f'Duplicate naming of synchronization space {spacename}!')
+                    sys.exit(1)
+                dc[spacename] = dc.get(spacename, 0) + 1
                 if not os.path.exists(userdata.get('path', '')):
-                    logging.warning(f'The sync space path named {spacename} is invalid, it will not work!')
+                    logging.error(f'The sync space path named {spacename} is invalid, it will not work!')
                 if not isinstance(userdata.get('interval'), int):
                     config['userdata'][userdata]['interval'] = 30
-                    logging.warning(f'')
+                    logging.error(
+                        f'The time interval setting for {spacename} is incorrect and has been reset to 30 seconds!')
                 if not isinstance(userdata.get('autostart'), bool):
                     config['userdata'][userdata]['autostart'] = True
                 count += 1
