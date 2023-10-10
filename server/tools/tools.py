@@ -187,13 +187,16 @@ class SocketSession(SocketTools):
 
     def __init__(self, timedict, data_socket=None, command_socket=None, timeout=2, mark=None, ):
         self.__timedict = timedict
-
         self.__data_socket = data_socket
         self.__command_socket = command_socket
+        self.__timeout = timeout
+        self.mark = mark
+        self.count = 0
 
-        if not self.__data_socket and self.__command_socket:
+        if not self.__data_socket and not self.__command_socket:
             # Error
             raise ValueError('SocketSession: data_socket和command_socket未传入')
+
 
         elif self.__command_socket and self.__data_socket:
             # 从command_socket 发送指令(此后的所有数据从data_socket发送和接收)
@@ -207,16 +210,11 @@ class SocketSession(SocketTools):
             # 从command_socket 发送与接收数据(不经过timedict 保存数据)
             self.method = 2
 
-        self.__timeout = timeout
-        self.mark = mark
-
-        self.count = 0
-
-        if not self.mark:
+        if self.mark is None:
             while True:
                 characters = string.ascii_letters + '1234567890'
                 self.mark = "".join(random.sample(characters, 8))
-                if timedict.hasKey(mark):
+                if timedict.hasKey(self.mark):
                     continue
                 else:
                     break
@@ -225,16 +223,14 @@ class SocketSession(SocketTools):
         """发送命令"""
         match self.method:
             case 0:
-                if self.count == 0:
-                    _socket = self.__command_socket
-                else:
-                    _socket = self.__data_socket
+                _socket = self.__command_socket if self.count == 0 else self.__data_socket
 
                 self.sendCommand(timedict=self.__timedict, socket_=_socket, command=command, mark=self.mark,
                                  output=output, timeout=self.__timeout)
 
             case 1:
-                self.sendCommand(timedict=self.__timedict, socket_=self.__data_socket, command=command, mark=self.mark,output=output, timeout=self.__timeout)
+                self.sendCommand(timedict=self.__timedict, socket_=self.__data_socket, command=command, mark=self.mark,
+                                 output=output, timeout=self.__timeout)
 
             case 2:
                 self.sendCommandNoTimeDict(self.__command_socket, command, output, timeout=self.__timeout)
@@ -258,5 +254,5 @@ if __name__ == '__main__':
     # time.sleep(10)
     # print(timedict.get('a'))
     print(HashTools.getRandomStr())
-    with SocketSession(1,2,3,4) as session:
+    with SocketSession(1, 2, 3, 4) as session:
         session.send()

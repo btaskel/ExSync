@@ -2,7 +2,9 @@ import json
 import logging
 import os
 import random
+import socket
 import string
+import sys
 
 
 class ApiConfig:
@@ -59,7 +61,18 @@ class readConfig:
                 config['server']['addr']['id'] = ''.join(random.sample(string.ascii_letters, 10))
 
             # server-addr-ip
-            pass
+            if addr['ip']:
+                try:
+                    socket.inet_pton(socket.AF_INET, addr['ip'])
+                except socket.error:
+                    try:
+                        socket.inet_pton(socket.AF_INET6, addr['ip'])
+                    except socket.error:
+                        logging.error('The host IP address is not ipv4 or ipv6!')
+                        sys.exit(1)
+            else:
+                logging.error('The host IP address is not filled in and has been defaulted to 0.0.0.0!')
+                config['server']['addr']['ip'] = '0.0.0.0'
 
             # server-addr-port
             if not isinstance(addr['port'], int) and 65536 < addr['port'] < 1024:
