@@ -152,7 +152,6 @@ class Client(readConfig):
                     # todo: 客户端密码哈希验证得到错误参数
                     continue
 
-
     def closeAllSocket(self):
         """结束与服务端的所有会话"""
         self.client_data_socket.close()

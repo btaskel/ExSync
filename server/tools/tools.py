@@ -104,27 +104,31 @@ class SocketTools:
         :param command:
         :return:
         """
-        if not mark:
+        mark_value = mark
+        if not mark_value:
             while True:
                 characters = string.ascii_letters + '1234567890'
-                mark = "".join(random.sample(characters, 8))
-                if timedict.hasKey(mark):
+                mark_value = "".join(random.sample(characters, 8))
+                if timedict.hasKey(mark_value):
                     continue
                 else:
                     break
-        timedict.createRecv(mark)
+
+        timedict.createRecv(mark_value)
         try:
             socket_encode = readConfig.readJson()['server']['addr']['encode']
         except Exception as e:
             raise KeyError('读取Config时错误：', e)
         if output:
             try:
-                socket_.send((mark + command).encode(socket_encode))
+                socket_.send((mark_value + command).encode(socket_encode))
                 with concurrent.futures.ThreadPoolExecutor() as excutor:
-                    future = excutor.submit(timedict.getRecvData(mark).decode(socket_encode))
+                    future = excutor.submit(timedict.getRecvData(mark_value).decode(socket_encode))
                     try:
                         # 没有超时2000ms则返回接收值
                         result = future.result(timeout=timeout)
+                        if mark is None:
+                            return mark_value, result
                         return result
                     except concurrent.futures.TimeoutError:
                         # 超时返回错误
@@ -134,15 +138,18 @@ class SocketTools:
                 return False
         else:
             try:
-                socket_.send((mark + command).encode(socket_encode))
+                socket_.send((mark_value + command).encode(socket_encode))
+                if mark is None:
+                    return mark_value
             except Exception as e:
                 raise TimeoutError('Socket错误: ', e)
             return True
 
     @staticmethod
-    def sendCommandNoTimeDict(socket_, command, output=True, timeout=2):
+    def sendCommandNoTimeDict(socket_, command: str, output: bool = True, timeout: int = 2):
         """
-        取消使用TimeDict收发数据(用于非异步数据传输)
+        取消使用TimeDict收发数据, 用于非异步数据传输. 如无必要建议使用sendCommand()
+
         如果 output = True 则sendCommand()将会等待一个返回值，默认超时2s。
         :param timeout:
         :param output:
@@ -155,11 +162,10 @@ class SocketTools:
         except Exception as e:
             raise KeyError('读取Config时错误：', e)
         if output:
-            command_ = command.split(':')
             try:
                 socket_.send(command.encode(socket_encode))
                 with concurrent.futures.ThreadPoolExecutor() as excutor:
-                    future = excutor.submit(socket_.recv(command_.decode(socket_encode)))
+                    future = excutor.submit(socket_.recv(1024))
                     try:
                         # 没有超时2000ms则返回接收值
                         result = future.result(timeout=timeout)
@@ -180,12 +186,19 @@ class SocketTools:
 
 class SocketSession(SocketTools):
     """
-    使用with快速创建一个会话, 可以省去每次填写部分参数的时间
+    使用with快速创建一个会话, 可以省去每次填写sendCommand()部分形参的时间
     mark: 如果指定mark值则会按照当前mark继续会话；否则自动生成mark值创建会话
+    data_socket & command_socket:
+        SocketSession会根据传入了哪些形参而确定会话方法
+        1: 当data, command都未传入, 将抛出异常;
+        2: 当data传入, command为空, 将会只按data_socket进行收发，不会经过对方的指令处理;
+        3: 当command传入, data为空，将会按照sendCommandNoTimedict()进行对话(特殊用途);
+        4: 当data, command都传入, 第一条会通过command_socket发送至对方的指令处理,
+            接下来的会话将会使用data_socket进行处理(适用于指令环境下);
 
     """
 
-    def __init__(self, timedict, data_socket=None, command_socket=None, timeout=2, mark=None, ):
+    def __init__(self, timedict, data_socket=None, command_socket=None, timeout: int = 2, mark: str = None):
         self.__timedict = timedict
         self.__data_socket = data_socket
         self.__command_socket = command_socket
@@ -196,7 +209,6 @@ class SocketSession(SocketTools):
         if not self.__data_socket and not self.__command_socket:
             # Error
             raise ValueError('SocketSession: data_socket和command_socket未传入')
-
 
         elif self.__command_socket and self.__data_socket:
             # 从command_socket 发送指令(此后的所有数据从data_socket发送和接收)
@@ -254,5 +266,6 @@ if __name__ == '__main__':
     # time.sleep(10)
     # print(timedict.get('a'))
     print(HashTools.getRandomStr())
-    with SocketSession(1, 2, 3, 4) as session:
-        session.send()
+    with SocketSession(None, None, None, 1) as session:
+        session.send(1)
+    print(session)

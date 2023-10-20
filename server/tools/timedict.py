@@ -145,11 +145,11 @@ class TimeDictInit(TimeDict):
     #             except:
     #                 pass
 
-    def getRecvData(self, mark):
+    def getRecvData(self, mark: str):
         """取出指定mark队列第一个值，并且将其弹出"""
         return self.get(mark, pop=True)
 
-    def createRecv(self, mark):
+    def createRecv(self, mark: str):
         """创建一个数据流接收队列"""
         self.set(mark)
 

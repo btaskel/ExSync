@@ -9,6 +9,7 @@ import subprocess
 import threading
 import time
 import uuid
+from Crypto.Cipher import AES
 
 import socks
 import xxhash
@@ -129,46 +130,42 @@ class Scan(readConfig):
             test.settimeout(1)
             # 连接设备的指定端口
             if test.connect_ex((ip, self.command_port)) == 0:
-                # 如果密码为空，则任何客户端均可以连接
-                if self.password == "":
-                    version = SocketTools.sendCommandNoTimeDict(test, '/_com:comm:sync:get:version:_')
-                    if version == self.config['version']:
+                version = self.g['verify_version']
+                remote_password_sha256 = SocketTools.sendCommandNoTimeDict(test,
+                                                                           f'/_com:comm:sync:post:verifyConnect:{version}')
+                # 验证sha256值是否匹配
+                if remote_password_sha256 == hashlib.sha256(self.password.encode('utf-8')).hexdigest():
+                    if remote_password_sha256 == 'None':
+                        # 对方密码为空，示意任何设备均可连接
                         self.g['devices'].append(ip)
-                else:
-                    # 密码不为空，则开始验证
-                    version = self.config['version']
-                    remote_password_sha256 = SocketTools.sendCommandNoTimeDict(test,
-                                                                               f'/_com:comm:sync:post:verifyConnect:{version}')
-                    # 验证sha256值是否匹配
-                    if remote_password_sha256 == hashlib.sha256(self.password.encode('utf-8')).hexdigest():
-                        # 发送xxh3_128的密码值
-                        result = SocketTools.sendCommandNoTimeDict(test, xxhash.xxh3_128(self.password).hexdigest())
-                        if result == 'success':
-                            # 验证成功
-                            self.g['devices'].append(ip)
-                        elif result == 'fail':
-                            # todo: 验证服务端密码失败
-                            pass
-                        elif result == Status.DATA_RECEIVE_TIMEOUT:
-                            # todo: 验证服务端密码超时
-                            pass
-                        else:
-                            # todo: 验证服务端密码时得到未知参数
-                            pass
-
-                        test.shutdown(socket.SHUT_RDWR)
-                        test.close()
-                        continue
-
-                    elif remote_password_sha256 == Status.DATA_RECEIVE_TIMEOUT:
-                        # todo: 验证客户端密码哈希超时
+                    # 发送xxh3_128的密码值
+                    result = SocketTools.sendCommandNoTimeDict(test, xxhash.xxh3_128(self.password).hexdigest())
+                    if result == 'success':
+                        # 验证成功
+                        self.g['devices'].append(ip)
+                    elif result == 'fail':
+                        # todo: 验证服务端密码失败
+                        pass
+                    elif result == Status.DATA_RECEIVE_TIMEOUT:
+                        # todo: 验证服务端密码超时
                         pass
                     else:
-                        # todo: 验证客户端密码哈希得到未知参数
+                        # todo: 验证服务端密码时得到未知参数
                         pass
+
                     test.shutdown(socket.SHUT_RDWR)
                     test.close()
                     continue
+
+                elif remote_password_sha256 == Status.DATA_RECEIVE_TIMEOUT:
+                    # todo: 验证客户端密码哈希超时
+                    pass
+                else:
+                    # todo: 验证客户端密码哈希得到未知参数
+                    pass
+                test.shutdown(socket.SHUT_RDWR)
+                test.close()
+                continue
 
         return self.g['devices']
 
@@ -250,6 +247,7 @@ class createSocket(Scan):
                 # 关闭连接
                 sub_socket.shutdown(socket.SHUT_RDWR)
                 sub_socket.close()
+
     def verifyDataSocket(self, data_socket, address):
         """
         验证数据套接字；
@@ -754,27 +752,40 @@ class CommandSocket(DataSocket):
         被验证：验证对方服务端TestSocket发送至本地服务端CommandSocket的连接是否合法
         如果合法则加入可信任设备列表
         """
-        if self.config['version'] == version:
-            password_sha256 = hashlib.sha256(self.password.encode('utf-8')).hexdigest()
-            password_xxhash = xxhash.xxh3_128(self.password).hexdigest()
-            # 验证xxh3_128值是否匹配
-            remote_password_xxhash = SocketTools.sendCommand(timedict=self.timedict, socket_=self.command_socket,
-                                                             command=password_sha256, mark=mark)
-            if remote_password_xxhash == password_xxhash:
-                # 验证通过
-                SocketTools.sendCommandNoTimeDict(self.command_socket, 'success', output=False)
+        if self.g['verify_version'] == version:
+            if self.password == '' or self.password is None:
+                # 如果密码为空则任何设备都可以连接本地服务端
+                session_id = HashTools.getRandomStr(8)
+                aes = AES.new(self.password, AES.MODE_ECB)
+                session_id_aes = aes.encrypt(session_id)
 
-            elif remote_password_xxhash == Status.DATA_RECEIVE_TIMEOUT:
-                # todo: 服务端密码验证失败(超时)
-                pass
 
+                result = SocketTools.sendCommand(timedict=self.timedict, socket_=self.command_socket,
+                                                 command=f'None|{session_id_aes}', mark=mark)
             else:
-                # todo: 服务端密码验证失败(或得到错误参数)
-                SocketTools.sendCommandNoTimeDict(self.command_socket, 'fail', output=False)
+                password_sha256 = hashlib.sha256(self.password.encode('utf-8')).hexdigest()
+                password_xxhash = xxhash.xxh3_128(self.password).hexdigest()
+                # 验证xxh3_128值是否匹配
+                remote_password_xxhash = SocketTools.sendCommand(timedict=self.timedict, socket_=self.data_socket,
+                                                                 command=password_sha256, mark=mark)
+                if remote_password_xxhash == password_xxhash:
+                    # 验证通过
+                    SocketTools.sendCommand(timedict=self.timedict, socket_=self.data_socket, command='success',
+                                            output=False)
+                    # todo: 使用
 
-            self.command_socket.shutdown(socket.SHUT_RDWR)
-            self.command_socket.close()
-            return
+                elif remote_password_xxhash == Status.DATA_RECEIVE_TIMEOUT:
+                    # todo: 服务端密码验证失败(超时)
+                    pass
+
+                else:
+                    # todo: 服务端密码验证失败(或得到错误参数)
+                    SocketTools.sendCommand(timedict=self.timedict, socket_=self.data_socket, command='fail',
+                                            output=False)
+
+                self.command_socket.shutdown(socket.SHUT_RDWR)
+                self.command_socket.close()
+                return
 
         else:
             # todo: 客户方与服务端验证版本不一致

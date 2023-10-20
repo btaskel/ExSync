@@ -30,7 +30,9 @@ class readConfig:
     """
 
     def __init__(self):
-        self.g = {}
+        self.g = {
+            'verify_version': 0.1
+        }
 
     # 全局变量管理
     def __setitem__(self, key, value):
@@ -176,7 +178,8 @@ class readConfig:
                 },
                 "setting": {
                     "encode": "utf-8",
-                    "iobalance": False
+                    "iobalance": False,
+                    "encryption": "AES_ECB"
                 },
                 "scan": {
                     "enabled": True,

@@ -40,7 +40,7 @@ class Control(Init):
         if device_ip in socket_manage:
             client_example = socket_manage[device_ip]  # ip映射为唯一的客户端实例
             data_socket = client_example['data_socket']  # data Socket
-            command_socket = client_example['command_socket'] # command Socket
+            command_socket = client_example['command_socket']  # command Socket
             return CommandSend(data_socket, command_socket)
         else:
             return False
