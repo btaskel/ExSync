@@ -8,7 +8,8 @@ import xxhash
 
 from server.config import readConfig
 from server.tools.status import Status, CommandSet
-from server.tools.tools import HashTools, SocketTools, TimeDictInit, is_uuid
+from server.tools.timedict import TimeDictInit
+from server.tools.tools import HashTools, SocketTools, is_uuid
 
 
 class Client(readConfig):

@@ -9,10 +9,10 @@ import subprocess
 import threading
 import time
 import uuid
-from Crypto.Cipher import AES
 
 import socks
 import xxhash
+from Crypto.Cipher import AES
 
 from server.client import Client
 from server.config import readConfig
@@ -438,7 +438,9 @@ class DataSocket(Scan):
         remote_file_path = command[0]
         remote_file_size = command[1]
         mode = int(command[3])
+        # 用于文件传输
         filemark = command[4]
+        # 用于信息的交换答复
         reply_mark = mark
 
         # 接收数据初始化
@@ -462,7 +464,6 @@ class DataSocket(Scan):
         if not local_file_size:
             return
         data_block = self.block - len(filemark)
-        filemark_bytes = bytes(filemark, self.encode_type)
         match mode:
             case 0:
                 # 如果不存在文件，则创建文件。否则不执行操作。
@@ -473,7 +474,7 @@ class DataSocket(Scan):
                     while True:
                         if file_size > 0:
                             file_size -= data_block
-                            data = self.timedict.getRecvData(filemark_bytes)
+                            data = self.timedict.getRecvData(filemark)
                             f.write(data)
             case 1:
                 # 如果不存在文件，则创建文件。否则重写文件。
@@ -484,7 +485,7 @@ class DataSocket(Scan):
                         while True:
                             if read_data > 0:
                                 read_data -= data_block
-                                data = self.timedict.getRecvData(filemark_bytes)
+                                data = self.timedict.getRecvData(filemark)
                                 f.write(data)
                 else:
                     file_size = int(remote_file_size[1])
@@ -492,7 +493,7 @@ class DataSocket(Scan):
                         while True:
                             if file_size > 0:
                                 file_size -= data_block
-                                data = self.timedict.getRecvData(filemark_bytes)
+                                data = self.timedict.getRecvData(filemark)
                                 f.write(data)
                             else:
                                 # todo: 将接收完毕的文件状态写入本地索引文件

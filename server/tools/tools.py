@@ -8,6 +8,7 @@ import uuid
 import xxhash
 
 from server.config import readConfig
+from server.tools.encryption import CryptoTools
 from server.tools.status import Status
 
 
@@ -41,7 +42,7 @@ def is_uuid(uuid_str):
 
 class HashTools:
     @staticmethod
-    def getFileHash(path, block=65536):
+    def getFileHash(path: str, block: int = 65536):
         """获取文件的128位 xxhash值"""
         hasher = xxhash.xxh3_128()
 
@@ -54,7 +55,7 @@ class HashTools:
         return hasher.hexdigest()
 
     @staticmethod
-    def getFileHash_32(path, block=65536):
+    def getFileHash_32(path: str, block: int = 65536):
         """获取文件的32位 xxhash值"""
         hasher = xxhash.xxh32()
 
@@ -80,7 +81,8 @@ class SocketTools:
     """工具包：发送指令，接收指令"""
 
     @staticmethod
-    def sendCommand(timedict, socket_, command, output=True, timeout=2, mark=None):
+    def sendCommand(timedict, socket_, command: str, output: bool = True, timeout: int = 2, mark: str = None,
+                    encrypt_password: str = None):
         """
         发送指令并准确接收返回数据
 
@@ -91,11 +93,13 @@ class SocketTools:
          output : 设置是否等待接下来的返回值。
          timeout : 默认超时时间，如果超过则返回DATA_RECEIVE_TIMEOUT。
          mark : 本次答复所用的标识（主动发起请求的一方默认为None，会自动生成一个8长度的字符串作为答复ID）
+         encrypt_password : 如果此项填写, 则发送数据时会对数据进行加密, 否则为明文(安全的局域网下可以不填写以提高传输性能)。
 
         1. 生成 8 长度的字符串作为[答复ID]，并以此在timedict中创建一个接收接下来服务端回复的键值。
         2. 在发送指令的前方追加[答复ID]，编码发送。
         3. 从timedict中等待返回值，如果超时，返回DATA_RECEIVE_TIMEOUT。
 
+        :param encrypt_password:
         :param mark:
         :param timedict:
         :param timeout:
@@ -121,7 +125,13 @@ class SocketTools:
             raise KeyError('读取Config时错误：', e)
         if output:
             try:
-                socket_.send((mark_value + command).encode(socket_encode))
+                data = mark_value + command
+                if encrypt_password:
+                    cry = CryptoTools(encrypt_password)
+                    data = cry.aes_ctr_encrypt(data)
+                else:
+                    data = data.encode(socket_encode)
+                socket_.send(data)
                 with concurrent.futures.ThreadPoolExecutor() as excutor:
                     future = excutor.submit(timedict.getRecvData(mark_value).decode(socket_encode))
                     try:
@@ -265,7 +275,7 @@ if __name__ == '__main__':
     # timedict.set('a', 10)
     # time.sleep(10)
     # print(timedict.get('a'))
-    print(HashTools.getRandomStr())
+    # print(HashTools.getRandomStr())
     with SocketSession(None, None, None, 1) as session:
         session.send(1)
     print(session)

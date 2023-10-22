@@ -3,6 +3,8 @@ import string
 import threading
 import time
 
+from server.tools.encryption import CryptoTools
+
 
 class TimeDict:
     """
@@ -145,9 +147,17 @@ class TimeDictInit(TimeDict):
     #             except:
     #                 pass
 
-    def getRecvData(self, mark: str):
-        """取出指定mark队列第一个值，并且将其弹出"""
-        return self.get(mark, pop=True)
+    def getRecvData(self, mark: str, decrypt_password: str = None) -> str:
+        """
+        mark: 取出指定mark队列第一个值，并且将其弹出
+        decrypt_password: 如果此项填写，则取出时将进行解密
+        """
+        result = self.get(mark, pop=True)
+        if decrypt_password:
+            cry = CryptoTools(decrypt_password)
+            return cry.aes_ctr_decrypt(result)
+        else:
+            return result
 
     def createRecv(self, mark: str):
         """创建一个数据流接收队列"""
