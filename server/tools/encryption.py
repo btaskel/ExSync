@@ -7,7 +7,7 @@ class CryptoTools:
     """加解密套件"""
 
     def __init__(self, key: str, method: str = 'aes-ctr'):
-        if method == 'aes-ctr':
+        if method.lower() == 'aes-ctr':
             self.key = sha256(key.encode('utf-8')).hexdigest()[:16]
         else:
             raise ValueError(f'Unsupported password suite: {method}')
@@ -16,6 +16,7 @@ class CryptoTools:
         """aes-128-ctr 加密"""
         cipher = AES.new(self.key.encode('utf-8'), AES.MODE_CTR)
         ciphertext = cipher.encrypt(message.encode('utf-8'))
+        print(ciphertext)
         return cipher.nonce + ciphertext
 
     def aes_ctr_decrypt(self, ciphertext: bytes) -> str:
@@ -29,5 +30,6 @@ class CryptoTools:
 if __name__ == '__main__':
     cry = CryptoTools('123')
     encry = cry.aes_ctr_encrypt('message test')
+    print(encry)
     decry = cry.aes_ctr_decrypt(encry)
     print(decry)

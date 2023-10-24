@@ -208,11 +208,13 @@ class SocketSession(SocketTools):
 
     """
 
-    def __init__(self, timedict, data_socket=None, command_socket=None, timeout: int = 2, mark: str = None):
+    def __init__(self, timedict, data_socket=None, command_socket=None, timeout: int = 2, mark: str = None,
+                 encrypt_password: str = None):
         self.__timedict = timedict
         self.__data_socket = data_socket
         self.__command_socket = command_socket
         self.__timeout = timeout
+        self.__encrypt_password = encrypt_password
         self.mark = mark
         self.count = 0
 
@@ -241,24 +243,38 @@ class SocketSession(SocketTools):
                 else:
                     break
 
-    def send(self, command, output=True):
+    def send(self, command: str, output: bool = True):
         """发送命令"""
         match self.method:
             case 0:
                 _socket = self.__command_socket if self.count == 0 else self.__data_socket
-
-                self.sendCommand(timedict=self.__timedict, socket_=_socket, command=command, mark=self.mark,
-                                 output=output, timeout=self.__timeout)
+                if output:
+                    self.sendCommand(timedict=self.__timedict, socket_=_socket, command=command, mark=self.mark,
+                                     output=output, timeout=self.__timeout, encrypt_password=self.__encrypt_password)
+                else:
+                    return self.sendCommand(timedict=self.__timedict, socket_=_socket, command=command, mark=self.mark,
+                                            output=output, timeout=self.__timeout,
+                                            encrypt_password=self.__encrypt_password)
 
             case 1:
-                self.sendCommand(timedict=self.__timedict, socket_=self.__data_socket, command=command, mark=self.mark,
-                                 output=output, timeout=self.__timeout)
+                if output:
+                    self.sendCommand(timedict=self.__timedict, socket_=self.__data_socket, command=command,
+                                     mark=self.mark,
+                                     output=output, timeout=self.__timeout, encrypt_password=self.__encrypt_password)
+                else:
+                    return self.sendCommand(timedict=self.__timedict, socket_=self.__data_socket, command=command,
+                                            mark=self.mark, output=output, timeout=self.__timeout,
+                                            encrypt_password=self.__encrypt_password)
 
             case 2:
-                self.sendCommandNoTimeDict(self.__command_socket, command, output, timeout=self.__timeout)
+                if output:
+                    self.sendCommandNoTimeDict(self.__command_socket, command, output, timeout=self.__timeout)
+                else:
+                    return self.sendCommandNoTimeDict(self.__command_socket, command, output, timeout=self.__timeout)
+
         self.count += 1
 
-    def recv(self):
+    def recv(self) -> str:
         """接收数据"""
         return self.__timedict.getRecvData(mark=self.mark)
 

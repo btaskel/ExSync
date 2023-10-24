@@ -12,12 +12,20 @@ from server.tools.timedict import TimeDictInit
 from server.tools.tools import HashTools, SocketTools, is_uuid
 
 
-class Client(readConfig):
+class Config(readConfig):
+    def __init__(self):
+        super().__init__()
+        self.config = readConfig.readJson()
+
+        self.encode_type = self.config['server']['setting']['encode']
+        self.password = self.config['server']['addr']['password']
+
+
+class Client(Config):
     def __init__(self, ip, port, verified=False):
         super().__init__()
         self.client_socket = None
         self.client_data_socket = None
-        self.config = readConfig.readJson()
         self.verified = verified
 
         # 已连接列表
@@ -159,15 +167,15 @@ class Client(readConfig):
         self.client_socket.close()
 
 
-class CommandSend:
+class CommandSend(Config):
     """客户端指令发送类"""
 
     def __init__(self, data_socket, command_socket):
+        super().__init__()
         self.data_socket = data_socket
         self.command_socket = command_socket
         # 数据包发送分块大小(含filemark)
         self.block = 1024
-        self.encode_type = 'utf-8'
 
         self.timedict = TimeDictInit(data_socket, command_socket)
 
@@ -292,7 +300,6 @@ class CommandSend:
         filemark = HashTools.getRandomStr(8)
         reply_mark = HashTools.getRandomStr(8)
 
-        filemark_bytes = bytes(filemark, self.encode_type)
         self.timedict.createRecv(filemark)
         data_block = self.block - len(filemark)
 
@@ -329,7 +336,7 @@ class CommandSend:
                     f.seek(file_size)
                     while True:
                         if read_data < remote_file_size:
-                            data = self.timedict.getRecvData(filemark_bytes)
+                            data = self.timedict.getRecvData(filemark, decrypt_password=self.password)
                         else:
                             return True
                         f.write(data)
@@ -341,7 +348,7 @@ class CommandSend:
             with open(output_path, mode='ab') as f:
                 while True:
                     if read_data < remote_file_size:
-                        data = self.timedict.getRecvData(filemark_bytes)
+                        data = self.timedict.getRecvData(filemark, decrypt_password=self.password)
                     else:
                         return True
                     if data:
@@ -351,7 +358,7 @@ class CommandSend:
                         break
 
     def post_Folder(self, path):
-        """输入文件路径，发送文件夹创建指令至服务端"""
+        """发送文件夹创建指令至服务端"""
         SocketTools.sendCommandNoTimeDict(self.command_socket,
                                           f'/_com:data:folder:post:{path}:_', output=False)
         return True

@@ -12,19 +12,25 @@ import uuid
 
 import socks
 import xxhash
-from Crypto.Cipher import AES
+from Crypto.Cipher import AES, PKCS1_OAEP
+from Crypto.PublicKey import RSA
 
 from server.client import Client
 from server.config import readConfig
+from server.tools.encryption import CryptoTools
 from server.tools.status import Status, PermissionEnum, CommandSet
 from server.tools.timedict import TimeDictInit, TimeDictTools
-from server.tools.tools import SocketTools, HashTools
+from server.tools.tools import SocketTools, HashTools, SocketSession
 
 """
 客户端实例管理
-ip : client_server
 """
 socket_manage = {}
+
+"""
+验证结果管理
+"""
+verify_manage = {}
 
 
 class Scan(readConfig):
@@ -50,7 +56,8 @@ class Scan(readConfig):
         else:
             self.encode_type = 'utf-8'
 
-        #
+        self.verified_devices = set()
+
 
     def scanStart(self):
         """
@@ -70,7 +77,6 @@ class Scan(readConfig):
                 # 获取局域网所在的网段
                 result = os.popen('ipconfig /all').read()
                 pattern = re.compile(r'IPv4.*?(\d+\.\d+\.\d+)\.\d+')
-                print(pattern)
                 match = pattern.search(result)
                 if not match:
                     print('无法获取局域网所在的网段')
@@ -122,7 +128,6 @@ class Scan(readConfig):
         如果存在活动的设备判断密码是否相同
         :return: devices
         """
-        self.g['devices'] = []
 
         for ip in ip_list:
             test = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -137,12 +142,12 @@ class Scan(readConfig):
                 if remote_password_sha256 == hashlib.sha256(self.password.encode('utf-8')).hexdigest():
                     if remote_password_sha256 == 'None':
                         # 对方密码为空，示意任何设备均可连接
-                        self.g['devices'].append(ip)
+                        self.verified_devices.add(ip)
                     # 发送xxh3_128的密码值
                     result = SocketTools.sendCommandNoTimeDict(test, xxhash.xxh3_128(self.password).hexdigest())
                     if result == 'success':
                         # 验证成功
-                        self.g['devices'].append(ip)
+                        self.verified_devices.add(ip)
                     elif result == 'fail':
                         # todo: 验证服务端密码失败
                         pass
@@ -167,7 +172,7 @@ class Scan(readConfig):
                 test.close()
                 continue
 
-        return self.g['devices']
+        return self.verified_devices
 
 
 class createSocket(Scan):
@@ -380,7 +385,8 @@ class createSocket(Scan):
             socket_manage[client_mark] = {
                 'ip': ip,
                 'command_socket': client,
-                'data_socket': client_data
+                'data_socket': client_data,
+                'AES_KEY': verify_manage[ip]['AES_KEY']
             }
 
     def updateIplist(self):
@@ -474,7 +480,7 @@ class DataSocket(Scan):
                     while True:
                         if file_size > 0:
                             file_size -= data_block
-                            data = self.timedict.getRecvData(filemark)
+                            data = self.timedict.getRecvData(filemark, decrypt_password=self.password)
                             f.write(data)
             case 1:
                 # 如果不存在文件，则创建文件。否则重写文件。
@@ -485,7 +491,7 @@ class DataSocket(Scan):
                         while True:
                             if read_data > 0:
                                 read_data -= data_block
-                                data = self.timedict.getRecvData(filemark)
+                                data = self.timedict.getRecvData(filemark, decrypt_password=self.password)
                                 f.write(data)
                 else:
                     file_size = int(remote_file_size[1])
@@ -493,7 +499,7 @@ class DataSocket(Scan):
                         while True:
                             if file_size > 0:
                                 file_size -= data_block
-                                data = self.timedict.getRecvData(filemark)
+                                data = self.timedict.getRecvData(filemark, decrypt_password=self.password)
                                 f.write(data)
                             else:
                                 # todo: 将接收完毕的文件状态写入本地索引文件
@@ -516,7 +522,7 @@ class DataSocket(Scan):
                             while True:
                                 if read_data <= difference:
                                     try:
-                                        data = self.timedict.getRecvData(filemark)
+                                        data = self.timedict.getRecvData(filemark, decrypt_password=self.password)
                                     except Exception as e:
                                         print(e)
                                         return Status.DATA_RECEIVE_TIMEOUT
@@ -748,21 +754,56 @@ class CommandSocket(DataSocket):
         self.command_socket = command_socket
         self.data_socket = data_socket
 
-    def verifyConnect(self, version, mark):
+    def verifyConnect(self, version: str, mark: str):
         """
         被验证：验证对方服务端TestSocket发送至本地服务端CommandSocket的连接是否合法
         如果合法则加入可信任设备列表
+
+        密码为空:
+            1. 如果使用加密, 则任何设备都可以连接本地服务端, 会使用AES、RSA进行密钥交换, 进行私密通讯。
+            2. 如果不使用加密, 则任何设备都可以连接本地服务端，且通讯为明文.
+        密码存在:
+            1. 如果使用加密, 则信任连接双方使用AES进行加密通讯.
+            2. 如果不使用加密, 则信任连接双方为明文.
         """
         if self.g['verify_version'] == version:
             if self.password == '' or self.password is None:
-                # 如果密码为空则任何设备都可以连接本地服务端
                 session_id = HashTools.getRandomStr(8)
-                aes = AES.new(self.password, AES.MODE_ECB)
-                session_id_aes = aes.encrypt(session_id)
 
+                # 生成一个新的RSA密钥对
+                key = RSA.generate(2048)
 
-                result = SocketTools.sendCommand(timedict=self.timedict, socket_=self.command_socket,
-                                                 command=f'None|{session_id_aes}', mark=mark)
+                # 导出公钥和私钥
+                private_key = key.export_key()
+                public_key = key.publickey().export_key()
+
+                # 发送公钥, 等待对方使用公钥加密随机密码
+                result_1 = SocketTools.sendCommand(timedict=self.timedict, socket_=self.command_socket,
+                                                 command=f'{public_key}', mark=mark)
+                if result_1 == Status.DATA_RECEIVE_TIMEOUT:
+                    self.command_socket.shutdown(socket.SHUT_RDWR)
+                    self.command_socket.close()
+                    return
+
+                # 加载公钥和私钥
+                private_key = RSA.import_key(private_key)
+                public_key = RSA.import_key(public_key)
+
+                # 创建一个新的cipher实例
+                cipher_pub = PKCS1_OAEP.new(public_key)
+                cipher_priv = PKCS1_OAEP.new(private_key)
+
+                # # 加密一条消息
+                # message = b'This is a secret message'
+                # ciphertext = cipher_pub.encrypt(message)
+
+                # 解密这条消息
+                key = cipher_priv.decrypt(result_1).decode('utf-8')
+
+                verify_manage[self.command_socket.getpeername()[0]] = {
+                    "AES_KEY": key
+                }
+
             else:
                 password_sha256 = hashlib.sha256(self.password.encode('utf-8')).hexdigest()
                 password_xxhash = xxhash.xxh3_128(self.password).hexdigest()
@@ -851,7 +892,7 @@ class CommandSocket(DataSocket):
                                 password = self.config['server']['addr']['password']
                                 password_hash = xxhash.xxh3_128(password).hexdigest()
                                 SocketTools.sendCommand(self.timedict, self.command_socket,
-                                                        password_hash.encode(self.encode_type),
+                                                        password_hash,
                                                         output=False, mark=mark)
                             elif command[4] == 'index':
                                 # 获取索引文件
@@ -869,11 +910,11 @@ class CommandSocket(DataSocket):
                                 password_hash = xxhash.xxh3_128(password).hexdigest()
                                 if command[4].split('|')[1] == password_hash:
                                     SocketTools.sendCommand(self.timedict, self.command_socket,
-                                                            'True'.encode(self.encode_type), output=False, mark=mark)
+                                                            'True', output=False, mark=mark)
 
                                 else:
                                     SocketTools.sendCommand(self.timedict, self.command_socket,
-                                                            'False'.encode(self.encode_type), output=False, mark=mark)
+                                                            'False', output=False, mark=mark)
                             elif command[4] == 'verifyConnect':
                                 # 验证对方连接合法性
                                 # 对方发送：[8bytes_mark]/_com:comm:sync:post:verifyConnect:password_hash

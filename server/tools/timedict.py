@@ -147,7 +147,7 @@ class TimeDictInit(TimeDict):
     #             except:
     #                 pass
 
-    def getRecvData(self, mark: str, decrypt_password: str = None) -> str:
+    def getRecvData(self, mark: str, decrypt_password: str = None):
         """
         mark: 取出指定mark队列第一个值，并且将其弹出
         decrypt_password: 如果此项填写，则取出时将进行解密
