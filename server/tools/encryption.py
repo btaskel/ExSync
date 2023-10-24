@@ -12,11 +12,13 @@ class CryptoTools:
         else:
             raise ValueError(f'Unsupported password suite: {method}')
 
-    def aes_ctr_encrypt(self, message: str) -> bytes:
+    def aes_ctr_encrypt(self, message: str or bytes) -> bytes:
         """aes-128-ctr 加密"""
         cipher = AES.new(self.key.encode('utf-8'), AES.MODE_CTR)
-        ciphertext = cipher.encrypt(message.encode('utf-8'))
-        print(ciphertext)
+        if type(message) is bytes:
+            ciphertext = cipher.encrypt(message)
+        else:
+            ciphertext = cipher.encrypt(message.encode('utf-8'))
         return cipher.nonce + ciphertext
 
     def aes_ctr_decrypt(self, ciphertext: bytes) -> str:
@@ -29,7 +31,7 @@ class CryptoTools:
 
 if __name__ == '__main__':
     cry = CryptoTools('123')
-    encry = cry.aes_ctr_encrypt('message test')
+    encry = cry.aes_ctr_encrypt('awdhawdihawdoiw')
     print(encry)
     decry = cry.aes_ctr_decrypt(encry)
     print(decry)

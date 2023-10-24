@@ -1,3 +1,4 @@
+import logging
 import random
 import string
 import threading
@@ -14,7 +15,7 @@ class TimeDict:
     """
 
     def __init__(self, release=4, scan=4):
-        self.dict = {}
+        self.__dict = {}
         self.lock = threading.Lock()
         try:
             self.release_time = int(release)
@@ -28,44 +29,50 @@ class TimeDict:
         thread = threading.Thread(target=self.__release)
         thread.start()
 
-    def set(self, key, value=None):
+    def set(self, key: str, value: str = None, encryption: str = None):
         """设置键值对"""
         with self.lock:
-            if key in self.dict:
-                self.dict[key].insert(-1, value)
-                self.dict[key][-1] = time.time()
-            elif key in self.dict and value is not None:
-                self.dict[key] = [value, time.time()]
+            if key in self.__dict:
+                self.__dict[key].append(value)
+                self.__dict[key][0] = time.time()
+                # self.dict[key].insert(-1, value)
+                # self.dict[key][-1] = time.time()
             else:
-                self.dict[key] = [time.time()]
+                self.__dict[key] = [time.time(), encryption]
 
     def get(self, key, pop=True, timeout=2):
         """
         获取键值对
         如果pop=True则获取完元素立即弹出该元素(如果元素内容被读取完毕，则返回False)
         如果无法获取到则会阻塞到有数据再继续返回, 如果超过2000ms则解除阻塞
+
+        key: [数据流修改时间刻, 加密方式, 数据流...]
+
         """
         with self.lock:
             if pop:
                 tic = time.time()
                 while True:
+                    result = self.__dict[key]
+                    if len(result) > 2:
+                        return result.pop(2)
+                    time.sleep(0.0005)
                     if time.time() - tic > timeout:
-                        return
-                    result = self.dict[key]
-                    if len(result) > 1:
-                        return result.pop(0)
-                    time.sleep(0.002)
+                        return []
             else:
-                return self.dict.get(key, False)[0:-1]
+                if len(self.__dict[key]) > 2:
+                    return self.__dict.get(key)[2:]
+                else:
+                    return []
 
     def delKey(self, key):
         """删除键"""
-        return self.dict.pop(key)
+        return self.__dict.pop(key)
 
     def hasKey(self, key):
         """判断键是否已经存在"""
         with self.lock:
-            if key in self.dict:
+            if key in self.__dict:
                 return True
             else:
                 return False
@@ -77,16 +84,20 @@ class TimeDict:
         """周期性扫描过期键值对并删除"""
         while True:
             if self.close_flag:
-                del self.dict
+                del self.__dict
                 return
             time.sleep(self.scan)
             keys_to_delete = []
             with self.lock:
-                for key, value in self.dict.items():
-                    if time.time() - value[-1] > self.release_time:
-                        keys_to_delete.append(key)
+                for key, value in self.__dict.items():
+                    try:
+                        if time.time() - value[0] > self.release_time:
+                            keys_to_delete.append(key)
+                    except Exception as e:
+                        print(e)
+                        logging.warning(f'TimeDict: release key {key} error!')
                 for key in keys_to_delete:
-                    self.dict.pop(key)
+                    self.__dict.pop(key)
 
 
 class TimeDictInit(TimeDict):
@@ -98,7 +109,9 @@ class TimeDictInit(TimeDict):
         super().__init__()
         self.data_socket = data_socket
         self.command_socket = command_socket
+        self.password = None
         self.close_all = False
+        self.encry = False
 
         # 启动数据接收线程
         threads = [self._recvData]
@@ -111,20 +124,30 @@ class TimeDictInit(TimeDict):
         持续接收数据等待接下来的方法处理数据，同时遵循TimeDict的元素生命周期
         以mark头来区分数据流，如果接收到发现数据流的标识不存在则丢弃数据流
         EXSync的mark头为数据流的前8位
-        """
 
+        如果在开启加密时, 发送方累计超过十次发送无效数据, 则停止接收数据
+        """
+        count = 0
+        # todo
         while True:
-            if self.close_all:
-                self.close()
-                return
-            else:
+            if not self.close_all:
                 result = self.data_socket.recv(1024)
                 try:
+                    if self.encry:
+                        cry = CryptoTools(self.password)
+                        cry.aes_ctr_decrypt(result)
                     mark, data = result[:8], result[8:]
                     if self.hasKey(mark):
                         self.set(mark, data)
-                except:
-                    pass
+                except Exception as e:
+                    print(e)
+                    count += 1
+                    if count >= 10:
+                        # 获取到十次的, 连续的未知数据, 断开连接
+                        self.close_all = True
+            else:
+                self.close()
+                return
 
     # def _recvCommand(self):
     #     """
@@ -155,7 +178,12 @@ class TimeDictInit(TimeDict):
         result = self.get(mark, pop=True)
         if decrypt_password:
             cry = CryptoTools(decrypt_password)
-            return cry.aes_ctr_decrypt(result)
+            try:
+                result = cry.aes_ctr_decrypt(result)
+            except Exception as e:
+                print(e)
+                return
+            return result
         else:
             return result
 
@@ -166,6 +194,15 @@ class TimeDictInit(TimeDict):
     def closeRecv(self):
         """销毁所有数据并停止持续接收数据"""
         self.close_all = True
+
+    def enableEncry(self, password: str):
+        """开启加密"""
+        self.encry = True
+        self.password = password
+
+    def disableEncry(self):
+        """关闭加密"""
+        self.encry = False
 
 
 class TimeDictTools:
