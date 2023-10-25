@@ -77,37 +77,51 @@ class Client(Config):
         尝试连接ip_list,连接成功返回连接的ip，并且增加进connected列表
         连接至对方的server-command_socket
         """
+        if self.host_info.get('AES_KEY'):
+            # 如果AES_KEY为空, 则进行主动连接
+            if not self.socket_manage['command'] and self.ip not in self.connected:
+                for i in range(3):
+                    self.client_socket.settimeout(2)
+                    if self.client_socket.connect_ex((self.ip, self.command_port)) == 0:
+                        # 开始验证合法性
+                        result = self.client_socket.recv(1024).decode(self.encode)
+                        if result == '/_com:comm:sync:get:password_hash':
+                            result = SocketTools.sendCommandNoTimeDict(self.client_socket, xxhash.xxh3_128(
+                                self.config['server']['password']).hexdigest())
 
-        if not self.socket_manage['command'] and self.ip not in self.connected:
-            for i in range(3):
-                self.client_socket.settimeout(2)
-                if self.client_socket.connect_ex((self.ip, self.command_port)) == 0:
-                    # 开始验证合法性
-                    result = self.client_socket.recv(1024).decode(self.encode)
-                    if result == '/_com:comm:sync:get:password_hash':
-                        result = SocketTools.sendCommandNoTimeDict(self.client_socket, xxhash.xxh3_128(
-                            self.config['server']['password']).hexdigest())
+                            if result == self.config['server']['password']:
+                                # 服务端身份验证与服务端身份验证通过
+                                device_uuid = self.client_socket.recv(1024).decode(self.encode)
+                                if not is_uuid(device_uuid):
+                                    return
+                                self.uuid = device_uuid
+                                self.connected.append(self.ip)
+                                self.socket_manage['command'] = self.client_socket
+                                return self.client_socket
 
-                        if result == self.config['server']['password']:
-                            # 服务端身份验证与服务端身份验证通过
-                            device_uuid = self.client_socket.recv(1024).decode(self.encode)
-                            if not is_uuid(device_uuid):
-                                return
-                            self.uuid = device_uuid
-                            self.connected.append(self.ip)
-                            self.socket_manage['command'] = self.client_socket
-                            return self.client_socket
-
-                        elif result == 'passwordError':
-                            # 本地客户端所持密码错误
-                            return Status.KEY_ERROR
+                            elif result == 'passwordError':
+                                # 本地客户端所持密码错误
+                                return Status.KEY_ERROR
+                            else:
+                                # 服务端所持密匙与本地客户端不同
+                                return Status.CONFIRMATION_FAILED
                         else:
-                            # 服务端所持密匙与本地客户端不同
-                            return Status.CONFIRMATION_FAILED
-                    else:
-                        return Status.REPLY_ERROR
-                return Status.CONNECT_TIMEOUT
-            return Status.CONNECTED
+                            return Status.REPLY_ERROR
+                    return Status.CONNECT_TIMEOUT
+                return Status.CONNECTED
+        else:
+            # todo: AES_KEY不为空, 则验证通过, 直接进行连接
+            self.client_socket.settimeout(2)
+            status = self.client_socket.connect_ex((self.ip, self.command_port))
+            if status == 0:
+                # 连接成功
+                pass
+            elif status == 10061:
+                # 超时
+                pass
+            else:
+                # 其它错误
+                pass
 
     def createClientDataSocket(self):
         """

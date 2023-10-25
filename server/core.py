@@ -275,38 +275,30 @@ class createSocket(Scan):
         while True:
             # 等待客户端连接服务端
             sub_socket, addr = data_socket.accept()
-            if addr[0] in self.connected:
+            thread = threading.Thread(target=self.verifyDataSocket, args=(sub_socket, addr))
+            thread.start()
 
-                # 如果指令套接字存在
-                if sub_socket.getpeername()[0] in self.socket_info:
-                    self.socket_info[sub_socket.getpeername()[0]]["data"] = sub_socket
-                else:
-                    self.socket_info[sub_socket.getpeername()[0]] = {
-                        "command": None,
-                        "data": sub_socket
-                    }
-
-            else:
-                # 关闭连接
-                sub_socket.shutdown(socket.SHUT_RDWR)
-                sub_socket.close()
-
-    def verifyDataSocket(self, data_socket, address):
+    def verifyDataSocket(self, sub_socket, addr):
         """
         验证数据套接字；
         验证连接对象是否已经通过验证
         :return:
         """
-        if address[0] in self.whitelist:
-            # 通过验证
-            data_socket.permission = PermissionEnum.SYNC
-            self.socket_info[address[0]] = {
-                "command": None,
-                "data": data_socket
-            }
+        if addr[0] in verify_manage and verify_manage[addr[0]]['AES_KEY']:
+
+            # 如果指令套接字存在则添加
+            if addr[0] in self.socket_info:
+                self.socket_info[sub_socket.getpeername()[0]]["data"] = sub_socket
+            else:
+                self.socket_info[sub_socket.getpeername()[0]] = {
+                    "command": None,
+                    "data": sub_socket
+                }
+
         else:
-            data_socket.shutdown(socket.SHUT_RDWR)
-            data_socket.close()
+            # 关闭连接
+            sub_socket.shutdown(socket.SHUT_RDWR)
+            sub_socket.close()
 
     def createCommandSocket(self):
         """创建指令传输套接字"""
@@ -317,6 +309,26 @@ class createSocket(Scan):
             sub_socket, addr = command_socket.accept()
             thread = threading.Thread(target=self.verifyCommandSocket, args=(sub_socket, addr))
             thread.start()
+
+    def verifyCommandSocket(self, command_socket, address):
+        """
+        验证指令套接字；
+        验证连接对象是否已经通过验证
+        :return:
+        """
+        if address[0] in verify_manage and verify_manage[address[0]]['AES_KEY']:
+            command_socket.permission = PermissionEnum.SYNC
+
+            if address[0] in self.socket_info:
+                self.socket_info[address[0]]['command'] = command_socket
+            else:
+                self.socket_info[address[0]] = {
+                    "command": command_socket,
+                    "data": None
+                }
+        else:
+            command_socket.shutdown(socket.SHUT_RDWR)
+            command_socket.close()
 
     # def createVerifySocket(self):
     #     """
@@ -370,26 +382,6 @@ class createSocket(Scan):
     #             self.ip_list.add(verify_addr)
     #     verify_socket.shutdown(socket.SHUT_RDWR)
     #     verify_socket.close()
-
-    def verifyCommandSocket(self, command_socket, address):
-        """
-        验证指令套接字；
-        验证连接对象是否已经通过验证
-        :return:
-        """
-        if address[0] in self.whitelist:
-            # 通过验证
-            command_socket.permission = PermissionEnum.SYNC
-            if address[0] in self.socket_info:
-                self.socket_info[address[0]]['command'] = command_socket
-            else:
-                self.socket_info[address[0]] = {
-                    "command": command_socket,
-                    "data": None
-                }
-        else:
-            command_socket.shutdown(socket.SHUT_RDWR)
-            command_socket.close()
 
     def mergeSocket(self):
         """
@@ -828,7 +820,7 @@ class CommandSocket(DataSocket):
 
                 # 发送公钥, 等待对方使用公钥加密随机密码
                 aes_Key = SocketTools.sendCommand(timedict=self.timedict, socket_=self.command_socket,
-                                                   command=f'None:{public_key}', mark=mark)
+                                                  command=f'None:{public_key}', mark=mark)
                 if aes_Key == Status.DATA_RECEIVE_TIMEOUT:
                     self.command_socket.shutdown(socket.SHUT_RDWR)
                     self.command_socket.close()
