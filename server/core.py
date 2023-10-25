@@ -191,7 +191,7 @@ class Scan(readConfig):
 
                         ciphertext = cipher_pub.encrypt(message)
 
-                        SocketTools.sendCommandNoTimeDict(test, ciphertext)
+                        SocketTools.sendCommandNoTimeDict(test, ciphertext, output=False)
 
                         self.verified_devices.add(ip)
                         verify_manage[test.getpeername()[0]] = {
@@ -201,9 +201,11 @@ class Scan(readConfig):
                     elif remote_password_sha256 == Status.DATA_RECEIVE_TIMEOUT:
                         # todo: 验证客户端密码哈希超时
                         pass
+
                     else:
                         # todo: 验证客户端密码哈希得到未知参数
                         pass
+
                     test.shutdown(socket.SHUT_RDWR)
                     test.close()
                     continue
@@ -816,9 +818,9 @@ class CommandSocket(DataSocket):
                 public_key = key.publickey().export_key()
 
                 # 发送公钥, 等待对方使用公钥加密随机密码
-                result_1 = SocketTools.sendCommand(timedict=self.timedict, socket_=self.command_socket,
+                aes_Key = SocketTools.sendCommand(timedict=self.timedict, socket_=self.command_socket,
                                                    command=f'None:{public_key}', mark=mark)
-                if result_1 == Status.DATA_RECEIVE_TIMEOUT:
+                if aes_Key == Status.DATA_RECEIVE_TIMEOUT:
                     self.command_socket.shutdown(socket.SHUT_RDWR)
                     self.command_socket.close()
                     return
@@ -836,7 +838,7 @@ class CommandSocket(DataSocket):
                 # ciphertext = cipher_pub.encrypt(message)
 
                 # 解密这条消息
-                key = cipher_priv.decrypt(result_1).decode('utf-8')
+                aes_Key = cipher_priv.decrypt(aes_Key).decode('utf-8')
 
                 address = self.command_socket.getpeername()[0]
                 verify_manage[address] = {
