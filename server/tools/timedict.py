@@ -103,6 +103,10 @@ class TimeDict:
 class TimeDictInit(TimeDict):
     """
     数据/指令持续接收，并分流
+
+    closeRecv : 关闭当前看客户端与服务端的timedict
+    enableEncry : 开启当前服务端timedict的即时解密
+    disableEncry : 关闭当前服务端timedict即时解密
     """
 
     def __init__(self, data_socket, command_socket):

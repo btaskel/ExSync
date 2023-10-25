@@ -12,15 +12,14 @@ import uuid
 
 import socks
 import xxhash
-from Crypto.Cipher import AES, PKCS1_OAEP
+from Crypto.Cipher import PKCS1_OAEP
 from Crypto.PublicKey import RSA
 
 from server.client import Client
 from server.config import readConfig
-from server.tools.encryption import CryptoTools
 from server.tools.status import Status, PermissionEnum, CommandSet
 from server.tools.timedict import TimeDictInit, TimeDictTools
-from server.tools.tools import SocketTools, HashTools, SocketSession
+from server.tools.tools import SocketTools, HashTools
 
 """
 客户端实例管理
@@ -29,6 +28,16 @@ socket_manage = {}
 
 """
 验证结果管理
+
+在等待客户端和服务端连接后，会保存验证信息和Key,
+TestSocket关闭, 并等待客户端与服务端的连接建立, 
+会与socket_manage产生关联
+
+verify_manage = {
+    "1.1.1.1": {
+        "AES_KEY": "123456"
+    }
+}
 """
 verify_manage = {}
 
@@ -57,7 +66,6 @@ class Scan(readConfig):
             self.encode_type = 'utf-8'
 
         self.verified_devices = set()
-
 
     def scanStart(self):
         """
@@ -779,7 +787,7 @@ class CommandSocket(DataSocket):
 
                 # 发送公钥, 等待对方使用公钥加密随机密码
                 result_1 = SocketTools.sendCommand(timedict=self.timedict, socket_=self.command_socket,
-                                                 command=f'{public_key}', mark=mark)
+                                                   command=f'{public_key}', mark=mark)
                 if result_1 == Status.DATA_RECEIVE_TIMEOUT:
                     self.command_socket.shutdown(socket.SHUT_RDWR)
                     self.command_socket.close()
@@ -800,7 +808,8 @@ class CommandSocket(DataSocket):
                 # 解密这条消息
                 key = cipher_priv.decrypt(result_1).decode('utf-8')
 
-                verify_manage[self.command_socket.getpeername()[0]] = {
+                address = self.command_socket.getpeername()[0]
+                verify_manage[address] = {
                     "AES_KEY": key
                 }
 
@@ -814,7 +823,12 @@ class CommandSocket(DataSocket):
                     # 验证通过
                     SocketTools.sendCommand(timedict=self.timedict, socket_=self.data_socket, command='success',
                                             output=False)
-                    # todo: 使用
+                    self.command_socket.verify_status, self.data_socket.verify = True
+
+                    address = self.command_socket.getpeername()[0]
+                    verify_manage[address] = {
+                        "AES_KEY": None
+                    }
 
                 elif remote_password_xxhash == Status.DATA_RECEIVE_TIMEOUT:
                     # todo: 服务端密码验证失败(超时)
