@@ -405,15 +405,24 @@ class createSocket(Scan):
                     thread = threading.Thread(target=command.recvCommand)
                     thread.start()
                     index += 1
-            time.sleep(0.25)
+            time.sleep(0.05)
 
     def createClientCommandSocket(self, ip):
         """
         本地客户端主动连接远程服务端
         """
         client_mark = HashTools.getRandomStr(8)
+        aes_key = verify_manage[ip].get('aes_key', None)
+
         client = Client(ip, self.data_port)
         # 连接指令Socket
+        client.host_info(
+            {
+                'client_mark': client_mark,
+                'ip': ip,
+                'AES_KEY': aes_key
+            }
+        )
         client.connectCommandSocket()
         # 连接数据Socket
         client_data = client.createClientDataSocket()
@@ -424,7 +433,7 @@ class createSocket(Scan):
                 'ip': ip,
                 'command_socket': client,
                 'data_socket': client_data,
-                'AES_KEY': verify_manage[ip]['AES_KEY']
+                'AES_KEY': aes_key
             }
 
     def updateIplist(self):

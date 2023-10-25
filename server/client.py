@@ -24,6 +24,7 @@ class Config(readConfig):
 class Client(Config):
     def __init__(self, ip, port, verified=False):
         super().__init__()
+        self.host_info = None
         self.client_socket = None
         self.client_data_socket = None
         self.verified = verified
@@ -64,6 +65,13 @@ class Client(Config):
         self.client_socket = client_socket
         return self.client_socket
 
+    def host_info(self, host_info):
+        """输入与主机联系的属性资料, 用于确认连接状态"""
+        if type(host_info) is dict and len(host_info) >= 1:
+            self.host_info = host_info
+            return True
+        return False
+
     def connectCommandSocket(self):
         """
         尝试连接ip_list,连接成功返回连接的ip，并且增加进connected列表
@@ -74,7 +82,6 @@ class Client(Config):
             for i in range(3):
                 self.client_socket.settimeout(2)
                 if self.client_socket.connect_ex((self.ip, self.command_port)) == 0:
-
                     # 开始验证合法性
                     result = self.client_socket.recv(1024).decode(self.encode)
                     if result == '/_com:comm:sync:get:password_hash':
