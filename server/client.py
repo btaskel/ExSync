@@ -174,7 +174,7 @@ class CommandSend(Config):
         super().__init__()
         self.data_socket = data_socket
         self.command_socket = command_socket
-        # 数据包发送分块大小(含filemark)
+        # 数据包发送分块大小(含filemark, AES_)
         self.block = 1024
 
         self.timedict = TimeDictInit(data_socket, command_socket)
@@ -300,7 +300,7 @@ class CommandSend(Config):
         filemark = HashTools.getRandomStr(8)
         reply_mark = HashTools.getRandomStr(8)
 
-        self.timedict.createRecv(filemark)
+        self.timedict.createRecv(filemark, self.password) # 接下来的文件数据将会加密
         data_block = self.block - len(filemark)
 
         if os.path.exists(path):
@@ -314,7 +314,7 @@ class CommandSend(Config):
         # 服务端return: /_com:data:reply:filemark:{remote_size}|{hash_value}
         result = SocketTools.sendCommand(self.timedict, self.command_socket,
                                          f'/_com:data:file:get:{path}|{file_hash}|{file_size}|{filemark}:_',
-                                         mark=reply_mark)
+                                         mark=reply_mark, encrypt_password=self.password)
         try:
             values = result.split('|')
         except Exception as e:

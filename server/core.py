@@ -138,49 +138,77 @@ class Scan(readConfig):
         """
 
         for ip in ip_list:
-            test = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            test.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-            test.settimeout(1)
-            # 连接设备的指定端口
-            if test.connect_ex((ip, self.command_port)) == 0:
-                version = self.g['verify_version']
-                remote_password_sha256 = SocketTools.sendCommandNoTimeDict(test,
-                                                                           f'/_com:comm:sync:post:verifyConnect:{version}')
-                # 验证sha256值是否匹配
-                if remote_password_sha256 == hashlib.sha256(self.password.encode('utf-8')).hexdigest():
-                    if remote_password_sha256 == 'None':
+            if ip not in verify_manage:
+                test = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                test.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+                test.settimeout(1)
+                # 连接设备的指定端口
+                if test.connect_ex((ip, self.command_port)) == 0:
+                    version = self.g['verify_version']
+                    remote_password_sha256 = SocketTools.sendCommandNoTimeDict(test,
+                                                                               f'/_com:comm:sync:post:verifyConnect:{version}')
+                    # 验证sha256值是否匹配
+                    try:
+                        remote_password_sha256, rsa_publickey = remote_password_sha256.split(':')
+                    except Exception as e:
+                        print(e)
+                        test.shutdown(socket.SHUT_RDWR)
+                        test.close()
+                        continue
+
+                    if remote_password_sha256 == hashlib.sha256(self.password.encode('utf-8')).hexdigest():
+
+                        # 发送xxh3_128的密码值
+                        result = SocketTools.sendCommandNoTimeDict(test, xxhash.xxh3_128(self.password).hexdigest())
+                        if result == 'success':
+                            # 验证成功
+                            self.verified_devices.add(ip)
+                            verify_manage[test.getpeername()[0]] = {
+                                "AES_KEY": self.password
+                            }
+                        elif result == 'fail':
+                            # todo: 验证服务端密码失败
+                            pass
+                        elif result == Status.DATA_RECEIVE_TIMEOUT:
+                            # todo: 验证服务端密码超时
+                            pass
+                        else:
+                            # todo: 验证服务端密码时得到未知参数
+                            pass
+
+                        test.shutdown(socket.SHUT_RDWR)
+                        test.close()
+                        continue
+
+                    elif remote_password_sha256 == 'None' and rsa_publickey:
                         # 对方密码为空，示意任何设备均可连接
+                        # 首先使用RSA发送一个随机字符串给予对方
+                        RSA.import_key(rsa_publickey)
+
+                        cipher_pub = PKCS1_OAEP.new(rsa_publickey)
+
+                        message = HashTools.getRandomStr(8).encode('utf-8')
+
+                        ciphertext = cipher_pub.encrypt(message)
+
+                        SocketTools.sendCommandNoTimeDict(test, ciphertext)
+
                         self.verified_devices.add(ip)
-                    # 发送xxh3_128的密码值
-                    result = SocketTools.sendCommandNoTimeDict(test, xxhash.xxh3_128(self.password).hexdigest())
-                    if result == 'success':
-                        # 验证成功
-                        self.verified_devices.add(ip)
-                    elif result == 'fail':
-                        # todo: 验证服务端密码失败
-                        pass
-                    elif result == Status.DATA_RECEIVE_TIMEOUT:
-                        # todo: 验证服务端密码超时
+                        verify_manage[test.getpeername()[0]] = {
+                            "AES_KEY": self.password
+                        }
+
+                    elif remote_password_sha256 == Status.DATA_RECEIVE_TIMEOUT:
+                        # todo: 验证客户端密码哈希超时
                         pass
                     else:
-                        # todo: 验证服务端密码时得到未知参数
+                        # todo: 验证客户端密码哈希得到未知参数
                         pass
-
                     test.shutdown(socket.SHUT_RDWR)
                     test.close()
                     continue
 
-                elif remote_password_sha256 == Status.DATA_RECEIVE_TIMEOUT:
-                    # todo: 验证客户端密码哈希超时
-                    pass
-                else:
-                    # todo: 验证客户端密码哈希得到未知参数
-                    pass
-                test.shutdown(socket.SHUT_RDWR)
-                test.close()
-                continue
-
-        return self.verified_devices
+            return self.verified_devices
 
 
 class createSocket(Scan):
@@ -566,7 +594,9 @@ class DataSocket(Scan):
             local_file_hash = 0
 
         # 向客户端回复/_com:data:reply:filemark:{remote_size}|{hash_value}
-        SocketTools.sendCommand(self.timedict, self.data_socket, f'{local_file_size}|{local_file_hash}', mark=mark,
+
+        SocketTools.sendCommand(self.timedict, self.data_socket, f'{local_file_size}|{local_file_hash}',
+                                mark=reply_mark,
                                 output=False)
         if local_file_size == 0:
             return
@@ -776,7 +806,7 @@ class CommandSocket(DataSocket):
         """
         if self.g['verify_version'] == version:
             if self.password == '' or self.password is None:
-                session_id = HashTools.getRandomStr(8)
+                # 如果密码为空, 则与客户端交换AES密钥
 
                 # 生成一个新的RSA密钥对
                 key = RSA.generate(2048)
@@ -787,7 +817,7 @@ class CommandSocket(DataSocket):
 
                 # 发送公钥, 等待对方使用公钥加密随机密码
                 result_1 = SocketTools.sendCommand(timedict=self.timedict, socket_=self.command_socket,
-                                                   command=f'{public_key}', mark=mark)
+                                                   command=f'None:{public_key}', mark=mark)
                 if result_1 == Status.DATA_RECEIVE_TIMEOUT:
                     self.command_socket.shutdown(socket.SHUT_RDWR)
                     self.command_socket.close()
@@ -814,20 +844,22 @@ class CommandSocket(DataSocket):
                 }
 
             else:
+                # 如果密码不为空, 则无需进行密钥交换, 只需验证密钥即可
                 password_sha256 = hashlib.sha256(self.password.encode('utf-8')).hexdigest()
                 password_xxhash = xxhash.xxh3_128(self.password).hexdigest()
                 # 验证xxh3_128值是否匹配
                 remote_password_xxhash = SocketTools.sendCommand(timedict=self.timedict, socket_=self.data_socket,
-                                                                 command=password_sha256, mark=mark)
+                                                                 command=f'{password_sha256}:None',
+                                                                 mark=mark)  # password_sha256, RSA_publicKey
                 if remote_password_xxhash == password_xxhash:
                     # 验证通过
                     SocketTools.sendCommand(timedict=self.timedict, socket_=self.data_socket, command='success',
                                             output=False)
-                    self.command_socket.verify_status, self.data_socket.verify = True
+                    self.command_socket.verify_status, self.data_socket.verify_status = True
 
                     address = self.command_socket.getpeername()[0]
                     verify_manage[address] = {
-                        "AES_KEY": None
+                        "AES_KEY": self.password
                     }
 
                 elif remote_password_xxhash == Status.DATA_RECEIVE_TIMEOUT:

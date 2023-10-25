@@ -156,7 +156,7 @@ class SocketTools:
             return True
 
     @staticmethod
-    def sendCommandNoTimeDict(socket_, command: str, output: bool = True, timeout: int = 2):
+    def sendCommandNoTimeDict(socket_, command: str or bytes, output: bool = True, timeout: int = 2):
         """
         取消使用TimeDict收发数据, 用于非异步数据传输. 如无必要建议使用sendCommand()
 
@@ -173,7 +173,10 @@ class SocketTools:
             raise KeyError('读取Config时错误：', e)
         if output:
             try:
-                socket_.send(command.encode(socket_encode))
+                if type(command) is str:
+                    socket_.send(command.encode(socket_encode))
+                else:
+                    socket_.send(command)
                 with concurrent.futures.ThreadPoolExecutor() as excutor:
                     future = excutor.submit(socket_.recv(1024))
                     try:

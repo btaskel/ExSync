@@ -191,9 +191,12 @@ class TimeDictInit(TimeDict):
         else:
             return result
 
-    def createRecv(self, mark: str):
+    def createRecv(self, mark: str, encryption: str = None):
         """创建一个数据流接收队列"""
-        self.set(mark)
+        if 4 < len(mark) < 8:
+            self.set(mark, encryption)
+        else:
+            raise ValueError(f'Mark: {mark} set error!!')
 
     def closeRecv(self):
         """销毁所有数据并停止持续接收数据"""
