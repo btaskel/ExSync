@@ -1,3 +1,5 @@
+import logging
+import os
 import threading
 
 from server.client import CommandSend
@@ -157,6 +159,40 @@ class Control(Init):
         """
         command_send = Control._get_command_send(Control._idToIp(device_id))
         return command_send.send_Command(command)
+
+
+class Plugin:
+    """插件初始化载入"""
+
+    def __init__(self, path: str):
+        self.path = path
+
+    def read_plugins(self):
+        for file in os.listdir('plugins'):
+            file_path = os.path.join(self.path, file)
+            if os.path.isdir(file_path):
+                self.load(file_path, method=0)
+                logging.info(f'Plugin {file} loaded successfully.')
+            elif os.path.isfile(file_path):
+                self.load(file_path, method=1)
+                logging.info(f'Plugin {file} loaded successfully.')
+            else:
+                # 读取插件失败
+                logging.error(f'Plugin read failed!: {file}')
+                continue
+
+    def load(self, path: str, method: int):
+        """
+        method = 0;
+        按文件加载插件
+        method = 1;
+        按文件夹加载插件
+
+        :param path:
+        :param method:
+        :return:
+        """
+        file_path = os.path.join(self.path, path)
 
 
 if __name__ == '__main__':
