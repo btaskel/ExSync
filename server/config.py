@@ -121,8 +121,8 @@ class readConfig:
                 config['server']['scan']['max'] = 5
 
             # server-scan-device
-            if not isinstance(scan['device'], list):
-                config['server']['scan']['device'] = []
+            if not isinstance(scan['devices'], list):
+                config['server']['scan']['devices'] = []
 
             proxy = config['server']['proxy']
             # server-proxy-enabled
@@ -185,7 +185,7 @@ class readConfig:
                     "enabled": True,
                     "type": "lan",
                     "max": 5,
-                    "device": [
+                    "devices": [
                         "127.0.0.1:5001"
                     ]
                 },

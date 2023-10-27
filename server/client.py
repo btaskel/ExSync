@@ -2,6 +2,7 @@ import logging
 import os
 import shutil
 import socket
+import sys
 
 import socks
 import xxhash
@@ -10,7 +11,8 @@ from server.config import readConfig
 from server.tools.status import Status, CommandSet
 from server.tools.timedict import TimeDictInit
 from server.tools.tools import HashTools, SocketTools, is_uuid
-
+from server.tools.encryption import AESSession
+client_manage = {}
 
 class Config(readConfig):
     def __init__(self):
@@ -34,17 +36,6 @@ class Client(Config):
 
         # 会话id
         self.uuid = None
-
-        """
-        子Socket管理
-        当客户端与服务端建立连接后, 用于管理指令与数据传输Socket的存储
-
-        ip: {
-            command: 指令Socket
-            data: 数据传输Socket
-        }
-        """
-        self.socket_manage = {}
 
         self.ip = ip
         self.data_port = port
@@ -77,9 +68,10 @@ class Client(Config):
         尝试连接ip_list,连接成功返回连接的ip，并且增加进connected列表
         连接至对方的server-command_socket
         """
-        if self.host_info.get('AES_KEY'):
+        aes_key = self.host_info.get('AES_KEY')
+        if not aes_key:
             # 如果AES_KEY为空, 则进行主动连接
-            if not self.socket_manage['command'] and self.ip not in self.connected:
+            if self.client_socket:
                 for i in range(3):
                     self.client_socket.settimeout(2)
                     if self.client_socket.connect_ex((self.ip, self.command_port)) == 0:
@@ -96,7 +88,6 @@ class Client(Config):
                                     return
                                 self.uuid = device_uuid
                                 self.connected.append(self.ip)
-                                self.socket_manage['command'] = self.client_socket
                                 return self.client_socket
 
                             elif result == 'passwordError':
@@ -115,19 +106,22 @@ class Client(Config):
             status = self.client_socket.connect_ex((self.ip, self.command_port))
             if status == 0:
                 # 连接成功
-                pass
+                # with AESSession(aes_key) as aes:
+                #     aes_message = aes.aes_ctr_encrypt('hello')
+                #     SocketTools.sendCommandNoTimeDict(self.client_socket, )
+
             elif status == 10061:
                 # 超时
-                pass
+                self.closeAllSocket(1)
             else:
                 # 其它错误
-                pass
+                self.closeAllSocket(2)
 
     def createClientDataSocket(self):
         """
         创建并连接client_data_socket - server_command_socket
         """
-        if not self.socket_manage['data']:
+        if self.client_socket:
             self.client_data_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             self.client_data_socket.bind((self.config['server']['addr']['ip'], 0))
             if self.client_data_socket.connect_ex((self.ip, self.data_port)) != 0:
@@ -138,7 +132,6 @@ class Client(Config):
                                                         str(self.uuid))
             if session.split(':')[4].split('|')[1] == 'True':
                 # 会话验证成功
-                self.socket_manage['data'] = self.client_socket
                 return self.client_data_socket
             else:
                 # 会话验证失败
@@ -182,10 +175,13 @@ class Client(Config):
                     # todo: 客户端密码哈希验证得到错误参数
                     continue
 
-    def closeAllSocket(self):
+    def closeAllSocket(self, err=0):
         """结束与服务端的所有会话"""
+        self.client_data_socket.shutdown(socket.SHUT_RDWR)
         self.client_data_socket.close()
+        self.client_socket.shutdown(socket.SHUT_RDWR)
         self.client_socket.close()
+        sys.exit(err)
 
 
 class CommandSend(Config):
