@@ -25,6 +25,8 @@ class Status(enum.Enum):
     DIFF_FILE = '双方文件数据不存在包含关系'
     PATH_ERROR = '路径错误'
 
+    UNKNOWN_ERROR = '未知错误'
+
 
 class SyncStatus(enum.Enum):
     """同步状态"""

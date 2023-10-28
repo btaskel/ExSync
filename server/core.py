@@ -15,7 +15,7 @@ import xxhash
 from Crypto.Cipher import PKCS1_OAEP
 from Crypto.PublicKey import RSA
 
-from server.client import Client
+from server.client import CommandSend as Client
 from server.config import readConfig
 from server.tools.status import Status, PermissionEnum, CommandSet
 from server.tools.timedict import TimeDictInit, TimeDictTools
@@ -285,7 +285,6 @@ class createSocket(Scan):
         :return:
         """
         if addr[0] in verify_manage and verify_manage[addr[0]]['AES_KEY']:
-
             # 如果指令套接字存在则添加
             if addr[0] in self.socket_info:
                 self.socket_info[sub_socket.getpeername()[0]]["data"] = sub_socket
@@ -407,23 +406,34 @@ class createSocket(Scan):
         aes_key = verify_manage[ip].get('aes_key', None)
 
         client = Client(ip, self.data_port)
-        # 连接指令Socket
-        client.host_info(
-            {
+        client_info = {
                 'client_mark': client_mark,
                 'ip': ip,
                 'AES_KEY': aes_key
             }
-        )
-        client.connectCommandSocket()
-        # 连接数据Socket
-        client_data = client.createClientDataSocket()
-        if client_data == Status.SESSION_FALSE:
-            client.closeAllSocket()
+        client.host_info(client_info)
+        client_command = client.createCommandSocket()
+
+        match client.connectRemoteCommandSocket():  # 连接指令Socket
+            case Status.CONNECT_TIMEOUT:
+                if client.closeAllSocket():
+                    client = None  # 超时退出：
+            case _:
+                if client.closeAllSocket():
+                    client = None  # 意外退出：
+
+        client_data = client.createClientDataSocket()  # 连接数据Socket
+        if client_data == Status.CONNECT_TIMEOUT:
+            client.closeAllSocket() # 连接超时, 关闭客户端连接
+
+        elif client_data == Status.SESSION_FALSE:
+            client.closeAllSocket() # 会话验证失败, 关闭客户端连接
+
         else:
             socket_manage[client_mark] = {
                 'ip': ip,
-                'command_socket': client,
+                'client': client,
+                'command_socket': client_command,
                 'data_socket': client_data,
                 'AES_KEY': aes_key
             }

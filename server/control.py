@@ -15,7 +15,7 @@ class Init:
     def __init__(self):
         # 初始化服务端/客户端
         server = createSocket()
-        socket_ls = [server.createDataSocket, server.createCommandSocket, server.createVerifySocket]
+        socket_ls = [server.createDataSocket, server.createCommandSocket]
         for thread in socket_ls:
             thread = threading.Thread(target=thread)
             thread.start()
