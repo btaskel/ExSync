@@ -26,21 +26,6 @@ from server.tools.tools import SocketTools, HashTools
 """
 socket_manage = {}
 
-"""
-验证结果管理
-
-在等待客户端和服务端连接后，会保存验证信息和Key,
-TestSocket关闭, 并等待客户端与服务端的连接建立, 
-会与socket_manage产生关联
-
-verify_manage = {
-    "1.1.1.1": {
-        "AES_KEY": "123456"
-    }
-}
-"""
-verify_manage = {}
-
 
 class Scan(readConfig):
     """
@@ -51,21 +36,31 @@ class Scan(readConfig):
         super().__init__()
         self.config = readConfig.readJson()
         self.ip_list = []
-
-        # 端口类型
         self.data_port = self.config['server']['addr']['port']
         self.command_port = self.config['server']['addr']['port'] + 1
         self.listen_port = self.config['server']['addr']['port'] + 2
-
         self.password = self.config["server"]["addr"]["password"]
-
         # 读取编码类型
         if self.config['server']['setting']['encode']:
             self.encode_type = self.config['server']['setting']['encode']
         else:
             self.encode_type = 'utf-8'
-
         self.verified_devices = set()
+
+        """
+        验证结果管理
+
+        在等待客户端和服务端连接后，会保存验证信息和Key,
+        TestSocket关闭, 并等待客户端与服务端的连接建立, 
+        会与socket_manage产生关联
+
+        verify_manage = {
+            "1.1.1.1": {
+                "AES_KEY": "123456"
+            }
+        }
+        """
+        self.verify_manage = {}
 
     def scanStart(self):
         """
@@ -138,7 +133,7 @@ class Scan(readConfig):
         """
 
         for ip in ip_list:
-            if ip not in verify_manage:
+            if ip not in self.verify_manage:
                 test = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
                 test.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
                 test.settimeout(1)
@@ -163,7 +158,7 @@ class Scan(readConfig):
                         if result == 'success':
                             # 验证成功
                             self.verified_devices.add(ip)
-                            verify_manage[test.getpeername()[0]] = {
+                            self.verify_manage[test.getpeername()[0]] = {
                                 "AES_KEY": self.password
                             }
                         elif result == 'fail':
@@ -183,9 +178,9 @@ class Scan(readConfig):
                     elif remote_password_sha256 == 'None' and rsa_publickey:
                         # 对方密码为空，示意任何设备均可连接
                         # 首先使用RSA发送一个随机字符串给予对方
-                        RSA.import_key(rsa_publickey)
+                        rsa_pub = RSA.import_key(rsa_publickey)
 
-                        cipher_pub = PKCS1_OAEP.new(rsa_publickey)
+                        cipher_pub = PKCS1_OAEP.new(rsa_pub)
 
                         message = HashTools.getRandomStr(8).encode('utf-8')
 
@@ -194,7 +189,7 @@ class Scan(readConfig):
                         SocketTools.sendCommandNoTimeDict(test, ciphertext, output=False)
 
                         self.verified_devices.add(ip)
-                        verify_manage[test.getpeername()[0]] = {
+                        self.verify_manage[test.getpeername()[0]] = {
                             "AES_KEY": self.password
                         }
 
@@ -284,7 +279,7 @@ class createSocket(Scan):
         验证连接对象是否已经通过验证
         :return:
         """
-        if addr[0] in verify_manage and verify_manage[addr[0]]['AES_KEY']:
+        if addr[0] in self.verify_manage and self.verify_manage[addr[0]]['AES_KEY']:
             # 如果指令套接字存在则添加
             if addr[0] in self.socket_info:
                 self.socket_info[sub_socket.getpeername()[0]]["data"] = sub_socket
@@ -311,13 +306,14 @@ class createSocket(Scan):
 
     def verifyCommandSocket(self, command_socket, address):
         """
-        验证指令套接字；
-        验证连接对象是否已经通过验证
-        :return:
+        验证指令套接字，验证连接对象是否已经通过验证
+        主动验证：当对方客户端主动连接，但本机并未扫描验证对方，就会触发此模式。
+        被动验证：当本机已经扫描验证对方连接，当对方再次连接时就会按白名单内容予以通过验证。
         """
-        if address[0] in verify_manage and verify_manage[address[0]]['AES_KEY']:
-            command_socket.permission = PermissionEnum.SYNC
+        if address[0] in self.verify_manage and self.verify_manage[address[0]]['AES_KEY']:
+            # 被动验证
 
+            command_socket.permission = PermissionEnum.SYNC
             if address[0] in self.socket_info:
                 self.socket_info[address[0]]['command'] = command_socket
             else:
@@ -326,6 +322,10 @@ class createSocket(Scan):
                     "data": None
                 }
         else:
+            # 主动验证
+
+
+
             command_socket.shutdown(socket.SHUT_RDWR)
             command_socket.close()
 
@@ -403,14 +403,14 @@ class createSocket(Scan):
         本地客户端主动连接远程服务端
         """
         client_mark = HashTools.getRandomStr(8)
-        aes_key = verify_manage[ip].get('aes_key', None)
+        aes_key = self.verify_manage[ip].get('aes_key', None)
 
         client = Client(ip, self.data_port)
         client_info = {
-                'client_mark': client_mark,
-                'ip': ip,
-                'AES_KEY': aes_key
-            }
+            'client_mark': client_mark,
+            'ip': ip,
+            'AES_KEY': aes_key
+        }
         client.host_info(client_info)
         client_command = client.createCommandSocket()
 
@@ -424,10 +424,10 @@ class createSocket(Scan):
 
         client_data = client.createClientDataSocket()  # 连接数据Socket
         if client_data == Status.CONNECT_TIMEOUT:
-            client.closeAllSocket() # 连接超时, 关闭客户端连接
+            client.closeAllSocket()  # 连接超时, 关闭客户端连接
 
         elif client_data == Status.SESSION_FALSE:
-            client.closeAllSocket() # 会话验证失败, 关闭客户端连接
+            client.closeAllSocket()  # 会话验证失败, 关闭客户端连接
 
         else:
             socket_manage[client_mark] = {
@@ -814,6 +814,7 @@ class CommandSocket(DataSocket):
             1. 如果使用加密, 则任何设备都可以连接本地服务端, 会使用AES、RSA进行密钥交换, 进行私密通讯。
             2. 如果不使用加密, 则任何设备都可以连接本地服务端，且通讯为明文.
         密码存在:
+            RSA: 初始化RSA密钥对象——导出公钥私钥——加载公钥和私钥——创建cipher实例——开始加密/解密
             1. 如果使用加密, 则信任连接双方使用AES进行加密通讯.
             2. 如果不使用加密, 则信任连接双方为明文.
         """
@@ -852,8 +853,8 @@ class CommandSocket(DataSocket):
                 aes_Key = cipher_priv.decrypt(aes_Key).decode('utf-8')
 
                 address = self.command_socket.getpeername()[0]
-                verify_manage[address] = {
-                    "AES_KEY": key
+                self.verify_manage[address] = {
+                    "AES_KEY": aes_Key
                 }
 
             else:
@@ -871,7 +872,7 @@ class CommandSocket(DataSocket):
                     self.command_socket.verify_status, self.data_socket.verify_status = True
 
                     address = self.command_socket.getpeername()[0]
-                    verify_manage[address] = {
+                    self.verify_manage[address] = {
                         "AES_KEY": self.password
                     }
 

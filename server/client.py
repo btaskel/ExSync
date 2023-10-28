@@ -1,3 +1,4 @@
+import hashlib
 import logging
 import os
 import shutil
@@ -5,11 +6,13 @@ import socket
 
 import socks
 import xxhash
+from Crypto.Cipher import PKCS1_OAEP
+from Crypto.PublicKey import RSA
 
 from server.config import readConfig
 from server.tools.status import Status, CommandSet
 from server.tools.timedict import TimeDictInit
-from server.tools.tools import HashTools, SocketTools, is_uuid
+from server.tools.tools import HashTools, SocketTools
 
 
 class Config(readConfig):
@@ -25,7 +28,7 @@ class Client(Config):
     def __init__(self, ip, port, verified=False):
         super().__init__()
         self.host_info = None
-        self.client_socket = None
+        self.client_command_socket = None
         self.client_data_socket = None
         self.verified = verified
 
@@ -48,8 +51,8 @@ class Client(Config):
 
     def createCommandSocket(self):
         """创建客户端的指令套接字"""
-        self.client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        return self.client_socket
+        self.client_command_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        return self.client_command_socket
 
     def host_info(self, host_info):
         """输入与主机联系的属性资料, 用于确认连接状态"""
@@ -58,70 +61,143 @@ class Client(Config):
             return True
         return False
 
+    def connectVerify(self):
+        # 发送xxh3_128的密码值
+        result = SocketTools.sendCommandNoTimeDict(self.client_command_socket,
+                                                   xxhash.xxh3_128(self.password).hexdigest())
+        if result == 'success':
+            # 验证成功
+            self.verify_manage[self.client_command_socket.getpeername()[0]] = {
+                "AES_KEY": self.password
+            }
+            return True
+        elif result == 'fail':
+            # todo: 验证服务端密码失败
+            pass
+        elif result == Status.DATA_RECEIVE_TIMEOUT:
+            # todo: 验证服务端密码超时
+            pass
+        else:
+            # todo: 验证服务端密码时得到未知参数
+            pass
+
+        self.client_command_socket.shutdown(socket.SHUT_RDWR)
+        self.client_command_socket.close()
+        return False
+
+    def connectVerifyNoPassword(self, rsa_publickey: str):
+        rsa_pub = RSA.import_key(rsa_publickey)
+        cipher_pub = PKCS1_OAEP.new(rsa_pub)
+        message = HashTools.getRandomStr(8).encode('utf-8')
+        ciphertext = cipher_pub.encrypt(message)
+        SocketTools.sendCommandNoTimeDict(self.client_command_socket, ciphertext, output=False)
+
+
     def connectRemoteCommandSocket(self):
         """
         尝试连接ip_list,连接成功返回连接的ip，并且增加进connected列表
         连接至对方的server-command_socket
         """
-        if not self.client_socket:
+        if not self.client_command_socket:
             logging.debug('Client_Command_Socket not created.')
             return Status.UNKNOWN_ERROR
 
         aes_key = self.host_info.get('AES_KEY')
-        if not aes_key:
+        if aes_key:
+            pass
             # 如果AES_KEY为空, 则进行主动连接
-            for i in range(3):
-                self.client_socket.settimeout(2)
-                if self.client_socket.connect_ex((self.ip, self.command_port)) == 0:
-                    # 开始验证合法性
-                    result = self.client_socket.recv(1024).decode(self.encode)
-                    if result == '/_com:comm:sync:get:password_hash':
-                        result = SocketTools.sendCommandNoTimeDict(self.client_socket, xxhash.xxh3_128(
-                            self.config['server']['password']).hexdigest())
 
-                        if result == self.config['server']['password']:
-                            # 服务端身份验证与服务端身份验证通过
-                            device_uuid = self.client_socket.recv(1024).decode(self.encode)
-                            if not is_uuid(device_uuid):
-                                return
-                            self.uuid = device_uuid
-                            self.connected.append(self.ip)
-                            return self.client_socket
-
-                        elif result == 'passwordError':
-                            # 本地客户端所持密码错误
-                            return Status.KEY_ERROR
-                        else:
-                            # 服务端所持密匙与本地客户端不同
-                            return Status.CONFIRMATION_FAILED
-                    else:
-                        return Status.REPLY_ERROR
-                return Status.CONNECT_TIMEOUT
-            return Status.CONNECTED
+            # if self.client_socket.connect_ex((self.ip, self.command_port)) == 0:
+            #     # 开始验证合法性
+            #     result = self.client_socket.recv(1024).decode(self.encode)
+            #     if result == '/_com:comm:sync:get:password_hash':
+            #         result = SocketTools.sendCommandNoTimeDict(self.client_socket, xxhash.xxh3_128(
+            #             self.config['server']['password']).hexdigest())
+            #
+            #         if result == self.config['server']['password']:
+            #             # 服务端身份验证与服务端身份验证通过
+            #             device_uuid = self.client_socket.recv(1024).decode(self.encode)
+            #             if not is_uuid(device_uuid):
+            #                 return
+            #             self.uuid = device_uuid
+            #             self.connected.append(self.ip)
+            #             return self.client_socket
+            #
+            #         elif result == 'passwordError':
+            #             # 本地客户端所持密码错误
+            #             return Status.KEY_ERROR
+            #         else:
+            #             # 服务端所持密匙与本地客户端不同
+            #             return Status.CONFIRMATION_FAILED
+            #     else:
+            #         return Status.REPLY_ERROR
+            # return Status.CONNECT_TIMEOUT
+            # 连接设备的指定端口
         else:
-            # todo: AES_KEY不为空, 则验证通过, 直接进行连接
-            self.client_socket.settimeout(2)
-            status = self.client_socket.connect_ex((self.ip, self.command_port))
-            if status == 0:
-                # 连接成功
-                # with AESSession(aes_key) as aes:
-                #     aes_message = aes.aes_ctr_encrypt('hello')
-                #     SocketTools.sendCommandNoTimeDict(self.client_socket, )
-                # todo:
-                pass
+            self.client_command_socket.settimeout(2)
+            for i in range(3):
+                if self.client_command_socket.connect_ex((self.ip_addr, self.command_port)) != 0:
+                    continue
+                version = self.config['version']
+                result = SocketTools.sendCommandNoTimeDict(self.client_command_socket,
+                                                           f'/_com:comm:sync:post:verifyConnect:{version}')
+                # 验证sha256值是否匹配
+                try:
+                    remote_password_sha256, rsa_publickey = result.split(':')
+                except Exception as e:
+                    print(e)
+                    self.client_command_socket.shutdown(socket.SHUT_RDWR)
+                    self.client_command_socket.close()
+                    continue
 
-            elif status == 10061:
-                # 超时
-                return Status.CONNECT_TIMEOUT
+                if remote_password_sha256 == hashlib.sha256(self.password.encode('utf-8')).hexdigest():
+                    # todo: 有密码
+                    if not self.connectVerify():
+                        continue
+
+                elif remote_password_sha256 == 'None' and rsa_publickey:
+                    # 对方密码为空，示意任何设备均可连接
+                    # 首先使用RSA发送一个随机字符串给予对方
+                    # todo: 无密码
+                    if not self.connectVerifyNoPassword(rsa_publickey):
+                        continue
+
+                elif remote_password_sha256 == Status.DATA_RECEIVE_TIMEOUT:
+                    # todo: 验证客户端密码哈希超时
+                    pass
+
+                else:
+                    # todo: 验证客户端密码哈希得到未知参数
+                    pass
+
+                self.client_command_socket.shutdown(socket.SHUT_RDWR)
+                self.client_command_socket.close()
+                continue
+
             else:
-                # 其它错误
-                return Status.UNKNOWN_ERROR
+                # todo: AES_KEY不为空, 则验证通过, 直接进行连接
+                self.client_command_socket.settimeout(2)
+                status = self.client_command_socket.connect_ex((self.ip, self.command_port))
+                if status == 0:
+                    # 连接成功
+                    # with AESSession(aes_key) as aes:
+                    #     aes_message = aes.aes_ctr_encrypt('hello')
+                    #     SocketTools.sendCommandNoTimeDict(self.client_socket, )
+                    # todo:
+                    pass
+
+                elif status == 10061:
+                    # 超时
+                    return Status.CONNECT_TIMEOUT
+                else:
+                    # 其它错误
+                    return Status.UNKNOWN_ERROR
 
     def createClientDataSocket(self):
         """
         创建并连接client_data_socket - server_command_socket
         """
-        if self.client_socket:
+        if self.client_command_socket:
             self.client_data_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             self.client_data_socket.bind((self.ip_addr, 0))
             status = self.client_data_socket.connect_ex((self.ip, self.data_port))
@@ -179,8 +255,8 @@ class Client(Config):
         """结束与服务端的所有会话"""
         self.client_data_socket.shutdown(socket.SHUT_RDWR)
         self.client_data_socket.close()
-        self.client_socket.shutdown(socket.SHUT_RDWR)
-        self.client_socket.close()
+        self.client_command_socket.shutdown(socket.SHUT_RDWR)
+        self.client_command_socket.close()
         return True
 
 
