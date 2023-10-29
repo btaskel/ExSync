@@ -61,7 +61,7 @@ class Client(Config):
             return True
         return False
 
-    def connectVerify(self):
+    def connectVerify(self, debug=False):
         # 发送xxh3_128的密码值
         result = SocketTools.sendCommandNoTimeDict(self.client_command_socket,
                                                    xxhash.xxh3_128(self.password).hexdigest())
@@ -71,27 +71,35 @@ class Client(Config):
                 "AES_KEY": self.password
             }
             return True
+
         elif result == 'fail':
             # todo: 验证服务端密码失败
-            pass
+            debug and logging.error(f'Failed to verify server {self.ip_addr} password!')
+            return False
+
         elif result == Status.DATA_RECEIVE_TIMEOUT:
             # todo: 验证服务端密码超时
-            pass
+            debug and logging.error(f'Verifying server {self.ip_addr} password timeout!')
+            return False
+
         else:
             # todo: 验证服务端密码时得到未知参数
-            pass
+            debug and logging.error(f'Unknown parameter obtained while verifying server {self.ip_addr} password!')
+            return False
 
-        self.client_command_socket.shutdown(socket.SHUT_RDWR)
-        self.client_command_socket.close()
-        return False
-
-    def connectVerifyNoPassword(self, rsa_publickey: str):
-        rsa_pub = RSA.import_key(rsa_publickey)
+    def connectVerifyNoPassword(self, rsa_publickey: str, debug=False):
+        try:
+            rsa_pub = RSA.import_key(rsa_publickey)
+        except Exception as e:
+            print(e)
+            logging.error(
+                f'''When connecting to server {self.ip_addr}, the other party's RSA public key is incorrect''')
+            return False
         cipher_pub = PKCS1_OAEP.new(rsa_pub)
         message = HashTools.getRandomStr(8).encode('utf-8')
         ciphertext = cipher_pub.encrypt(message)
         SocketTools.sendCommandNoTimeDict(self.client_command_socket, ciphertext, output=False)
-
+        return True
 
     def connectRemoteCommandSocket(self):
         """
@@ -133,9 +141,29 @@ class Client(Config):
             #         return Status.REPLY_ERROR
             # return Status.CONNECT_TIMEOUT
             # 连接设备的指定端口
+
+            # todo: AES_KEY不为空, 则验证通过, 直接进行连接
+            self.client_command_socket.settimeout(2)
+            status = self.client_command_socket.connect_ex((self.ip, self.command_port))
+            if status == 0:
+                # 连接成功
+                # with AESSession(aes_key) as aes:
+                #     aes_message = aes.aes_ctr_encrypt('hello')
+                #     SocketTools.sendCommandNoTimeDict(self.client_socket, )
+                # todo:
+                pass
+
+            elif status == 10061:
+                # 超时
+                return Status.CONNECT_TIMEOUT
+            else:
+                # 其它错误
+                return Status.UNKNOWN_ERROR
         else:
             self.client_command_socket.settimeout(2)
-            for i in range(3):
+
+            count = 3
+            for i in range(count):
                 if self.client_command_socket.connect_ex((self.ip_addr, self.command_port)) != 0:
                     continue
                 version = self.config['version']
@@ -151,47 +179,51 @@ class Client(Config):
                     continue
 
                 if remote_password_sha256 == hashlib.sha256(self.password.encode('utf-8')).hexdigest():
-                    # todo: 有密码
-                    if not self.connectVerify():
+                    # todo: 有密码验证
+                    if i == count:
+                        debug = True
+                    else:
+                        debug = False
+
+                    if self.connectVerify(debug):
+                        pass
+                    else:
                         continue
 
                 elif remote_password_sha256 == 'None' and rsa_publickey:
                     # 对方密码为空，示意任何设备均可连接
                     # 首先使用RSA发送一个随机字符串给予对方
-                    # todo: 无密码
-                    if not self.connectVerifyNoPassword(rsa_publickey):
+                    # todo: 无密码验证
+                    logging.info(f'Target server {self.ip_addr} has no password set.')
+                    if i == count:
+                        debug = True
+                    else:
+                        debug = False
+                    if self.connectVerifyNoPassword(rsa_publickey, debug):
+                        pass
+                    else:
                         continue
 
                 elif remote_password_sha256 == Status.DATA_RECEIVE_TIMEOUT:
-                    # todo: 验证客户端密码哈希超时
-                    pass
+                    # 验证客户端密码哈希超时
+                    if i == count:
+                        logging.error(f'Connection to server {self.ip_addr} timed out!')
+                        return Status.CONNECT_TIMEOUT
+                    else:
+                        continue
 
                 else:
-                    # todo: 验证客户端密码哈希得到未知参数
-                    pass
+                    # 验证客户端密码哈希得到未知参数
+                    if i == count:
+                        logging.error(
+                            f'Unknown parameter obtained while verifying server {self.ip_addr} password hash value!')
+                        return Status.PARAMETER_ERROR
+                    else:
+                        continue
 
                 self.client_command_socket.shutdown(socket.SHUT_RDWR)
                 self.client_command_socket.close()
                 continue
-
-            else:
-                # todo: AES_KEY不为空, 则验证通过, 直接进行连接
-                self.client_command_socket.settimeout(2)
-                status = self.client_command_socket.connect_ex((self.ip, self.command_port))
-                if status == 0:
-                    # 连接成功
-                    # with AESSession(aes_key) as aes:
-                    #     aes_message = aes.aes_ctr_encrypt('hello')
-                    #     SocketTools.sendCommandNoTimeDict(self.client_socket, )
-                    # todo:
-                    pass
-
-                elif status == 10061:
-                    # 超时
-                    return Status.CONNECT_TIMEOUT
-                else:
-                    # 其它错误
-                    return Status.UNKNOWN_ERROR
 
     def createClientDataSocket(self):
         """
