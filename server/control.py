@@ -30,7 +30,7 @@ class Control(Init):
         super().__init__()
 
     @staticmethod
-    def _idToIp(device_id):
+    def _idToIp(device_id: str):
         """
         :param device_id:
         :return device_ip:
@@ -38,7 +38,7 @@ class Control(Init):
         return socket_manage[device_id]['ip']
 
     @staticmethod
-    def _get_command_send(device_ip):
+    def _get_command_send(device_ip: str):
         if device_ip in socket_manage:
             client_example = socket_manage[device_ip]  # ip映射为唯一的客户端实例
             data_socket = client_example['data_socket']  # data Socket
@@ -58,7 +58,7 @@ class Control(Init):
         return ipList
 
     @staticmethod
-    def postFile(device_id, path, mode=1):
+    def postFile(device_id: str, path: str, mode: int = 1):
         """
         输入文件路径，发送文件至服务端
         data_socket: 与服务端连接的socket
@@ -81,7 +81,7 @@ class Control(Init):
         return command_send.post_File(relToAbs(path), mode)
 
     @staticmethod
-    def getFile(device_id, path, output_path=None):
+    def getFile(device_id: str, path: str, output_path: str = None):
         """
         获取远程文件
         传入获取文件的路径，如果本地文件已经存在则会检查是否为意外中断文件，如果是则继续传输；
@@ -95,7 +95,7 @@ class Control(Init):
         return command_send.get_File(relToAbs(path), output_path)
 
     @staticmethod
-    def postFolder(device_id, path):
+    def postFolder(device_id: str, path: str):
         """
         创建远程文件夹路径
         :param device_id:
@@ -106,7 +106,7 @@ class Control(Init):
         command_send.post_Folder(relToAbs(path))
 
     @staticmethod
-    def getFolder(device_id, path):
+    def getFolder(device_id: str, path: str):
         """
         遍历远程path路径下的所有文件夹路径并返回
         :param device_id:
@@ -117,7 +117,7 @@ class Control(Init):
         command_send.get_Folder(relToAbs(path))
 
     @staticmethod
-    def getIndex(device_id, spacename):
+    def getIndex(device_id: str, spacename: str):
         """
         获取指定设备的同步目录的索引文件
         :param device_id:
@@ -128,7 +128,7 @@ class Control(Init):
         return command_send.get_Index(spacename)
 
     @staticmethod
-    def postIndex(device_id, spacename, json_object, is_file=True):
+    def postIndex(device_id: str, spacename: str, json_object, is_file: bool = True):
         """
         接收同步空间名，将dict_example更新到远程索引中
         :param is_file:
@@ -146,7 +146,7 @@ class Control(Init):
         return command_send.post_Index(spacename, json_object, is_file)
 
     @staticmethod
-    def sendCommand(device_id, command):
+    def sendCommand(device_id: str, command: str):
         """
         客户端向指定设备id发送指令
         如果当前设备没有权限操作对方系统级指令则只能执行EXSync指令

@@ -8,7 +8,6 @@ import socket
 import subprocess
 import threading
 import time
-import uuid
 
 import socks
 import xxhash
@@ -247,12 +246,6 @@ class createSocket(Scan):
         """
         self.socket_info = {}
 
-        """
-        本机会话随机数
-        用于表示本次会话的id
-        """
-        self.uuid = uuid.uuid4()
-
         # 已验证标识的计算机
         self.whitelist = set()
 
@@ -323,8 +316,6 @@ class createSocket(Scan):
                 }
         else:
             # 主动验证
-
-
 
             command_socket.shutdown(socket.SHUT_RDWR)
             command_socket.close()
@@ -398,7 +389,7 @@ class createSocket(Scan):
                     index += 1
             time.sleep(0.05)
 
-    def createClientCommandSocket(self, ip):
+    def createClientCommandSocket(self, ip: str):
         """
         本地客户端主动连接远程服务端
         """
@@ -421,6 +412,7 @@ class createSocket(Scan):
             case _:
                 if client.closeAllSocket():
                     client = None  # 意外退出：
+
 
         client_data = client.createClientDataSocket()  # 连接数据Socket
         if client_data == Status.CONNECT_TIMEOUT:
@@ -474,7 +466,7 @@ class DataSocket(Scan):
         self.timeDictTools = TimeDictTools(self.timedict)
         self.closeTimeDict = False
 
-    def recvFile(self, command, mark):
+    def recvFile(self, command: list, mark: str):
         """
         客户端发送文件至服务端
         文件与文件夹的传输指令:
@@ -584,7 +576,7 @@ class DataSocket(Scan):
                     # 不存在文件，不予传输
                     return False
 
-    def sendFile(self, command, mark):
+    def sendFile(self, command: list, mark: str):
         """
         服务端发送文件至客户端
 
@@ -654,7 +646,7 @@ class DataSocket(Scan):
                     data = bytes(filemark, 'utf-8') + data
                     self.data_socket.send(data)
 
-    def recvFolder(self, command):
+    def recvFolder(self, command: list):
         """
         接收路径并创建文件夹
         """
@@ -662,7 +654,7 @@ class DataSocket(Scan):
             os.makedirs(command[0])
         return
 
-    def getFolder(self, command, mark):
+    def getFolder(self, command: list, mark: str):
         """
         获取文件夹信息
         如果服务端存在文件夹，以及其索引，则返回索引

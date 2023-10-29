@@ -14,7 +14,7 @@ class TimeDict:
     TimeDict : 在客户端/服务端分别运作一个timedict实例，timedict会一直接收来自dataSocket的数据，并默认保存到自身4秒（超时则遍历删除）。
     """
 
-    def __init__(self, release=4, scan=4):
+    def __init__(self, release: int = 4, scan: int = 4):
         self.__dict = {}
         self.lock = threading.Lock()
         try:
@@ -40,7 +40,7 @@ class TimeDict:
             else:
                 self.__dict[key] = [time.time(), encryption]
 
-    def get(self, key, pop=True, timeout=2):
+    def get(self, key: str, pop=True, timeout: int = 2):
         """
         获取键值对
         如果pop=True则获取完元素立即弹出该元素(如果元素内容被读取完毕，则返回False)
@@ -65,11 +65,11 @@ class TimeDict:
                 else:
                     return []
 
-    def delKey(self, key):
+    def delKey(self, key: str):
         """删除键"""
         return self.__dict.pop(key)
 
-    def hasKey(self, key):
+    def hasKey(self, key: str):
         """判断键是否已经存在"""
         with self.lock:
             if key in self.__dict:
@@ -220,7 +220,7 @@ class TimeDictTools:
     def __init__(self, timedict):
         self.timedict = timedict
 
-    def getMark(self, length=8):
+    def getMark(self, length: int = 8):
         """
         随机获取N个 26个大小写字母，并检查是否已经在timedict中存在
         用于减少数据传输分流误差

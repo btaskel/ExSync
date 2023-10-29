@@ -61,7 +61,7 @@ class Client(Config):
             return True
         return False
 
-    def connectVerify(self, debug=False):
+    def connectVerify(self, debug: bool=False):
         # 发送xxh3_128的密码值
         result = SocketTools.sendCommandNoTimeDict(self.client_command_socket,
                                                    xxhash.xxh3_128(self.password).hexdigest())
@@ -87,13 +87,15 @@ class Client(Config):
             debug and logging.error(f'Unknown parameter obtained while verifying server {self.ip_addr} password!')
             return False
 
-    def connectVerifyNoPassword(self, rsa_publickey: str, debug=False):
+    def connectVerifyNoPassword(self, rsa_publickey: str, debug: bool = False):
         try:
             rsa_pub = RSA.import_key(rsa_publickey)
         except Exception as e:
             print(e)
-            logging.error(
-                f'''When connecting to server {self.ip_addr}, the other party's RSA public key is incorrect''')
+            if debug:
+                logging.error(
+                    f'''When connecting to server {self.ip_addr}, the other party's RSA public key is incorrect''')
+                return False
             return False
         cipher_pub = PKCS1_OAEP.new(rsa_pub)
         message = HashTools.getRandomStr(8).encode('utf-8')
@@ -180,10 +182,7 @@ class Client(Config):
 
                 if remote_password_sha256 == hashlib.sha256(self.password.encode('utf-8')).hexdigest():
                     # todo: 有密码验证
-                    if i == count:
-                        debug = True
-                    else:
-                        debug = False
+                    debug = (i == count)
 
                     if self.connectVerify(debug):
                         pass
@@ -195,10 +194,7 @@ class Client(Config):
                     # 首先使用RSA发送一个随机字符串给予对方
                     # todo: 无密码验证
                     logging.info(f'Target server {self.ip_addr} has no password set.')
-                    if i == count:
-                        debug = True
-                    else:
-                        debug = False
+                    debug = (i == count)
                     if self.connectVerifyNoPassword(rsa_publickey, debug):
                         pass
                     else:
@@ -245,43 +241,43 @@ class Client(Config):
                 # 会话验证失败
                 return Status.SESSION_FALSE
 
-    def createListenSocket(self):
-        listen_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        listen_socket.listen(128)
-        while True:
-            if self.uuid:
-                listen_socket.close()
-                return
-            sub_socket, addr = listen_socket.accept()
-            if self.uuid:
-                listen_socket.close()
-                return
-            result = sub_socket.recv(1024).decode(self.encode)
-            if result == '/_com:comm:sync:get:version:_':
-                com_password_hash = SocketTools.sendCommandNoTimeDict(sub_socket, self.config['version'])
-                if com_password_hash == '/_com:comm:sync:get:password|hash:_':
-                    password = self.config['server']['password']
-                    com_password = SocketTools.sendCommandNoTimeDict(sub_socket, xxhash.xxh3_128(password).hexdigest())
-                    if com_password == self.config['server']['password']:
-                        # 验证通过
-                        SocketTools.sendCommandNoTimeDict(sub_socket, 'True', output=False)
-                        sub_socket.shutdown(socket.SHUT_RDWR)
-                        sub_socket.close()
-                        listen_socket.close()
-                        break
-                    elif com_password == Status.DATA_RECEIVE_TIMEOUT:
-                        # todo: 服务端密码验证失败
-                        continue
-                    else:
-                        # todo: 服务端密码验证得到错误参数
-                        continue
-
-                elif com_password_hash == Status.DATA_RECEIVE_TIMEOUT:
-                    # todo: 客户端密码哈希验证失败
-                    continue
-                else:
-                    # todo: 客户端密码哈希验证得到错误参数
-                    continue
+    # def createListenSocket(self):
+    #     listen_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    #     listen_socket.listen(128)
+    #     while True:
+    #         if self.uuid:
+    #             listen_socket.close()
+    #             return
+    #         sub_socket, addr = listen_socket.accept()
+    #         if self.uuid:
+    #             listen_socket.close()
+    #             return
+    #         result = sub_socket.recv(1024).decode(self.encode)
+    #         if result == '/_com:comm:sync:get:version:_':
+    #             com_password_hash = SocketTools.sendCommandNoTimeDict(sub_socket, self.config['version'])
+    #             if com_password_hash == '/_com:comm:sync:get:password|hash:_':
+    #                 password = self.config['server']['password']
+    #                 com_password = SocketTools.sendCommandNoTimeDict(sub_socket, xxhash.xxh3_128(password).hexdigest())
+    #                 if com_password == self.config['server']['password']:
+    #                     # 验证通过
+    #                     SocketTools.sendCommandNoTimeDict(sub_socket, 'True', output=False)
+    #                     sub_socket.shutdown(socket.SHUT_RDWR)
+    #                     sub_socket.close()
+    #                     listen_socket.close()
+    #                     break
+    #                 elif com_password == Status.DATA_RECEIVE_TIMEOUT:
+    #                     # todo: 服务端密码验证失败
+    #                     continue
+    #                 else:
+    #                     # todo: 服务端密码验证得到错误参数
+    #                     continue
+    #
+    #             elif com_password_hash == Status.DATA_RECEIVE_TIMEOUT:
+    #                 # todo: 客户端密码哈希验证失败
+    #                 continue
+    #             else:
+    #                 # todo: 客户端密码哈希验证得到错误参数
+    #                 continue
 
     def closeAllSocket(self):
         """结束与服务端的所有会话"""

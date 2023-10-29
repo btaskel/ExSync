@@ -12,14 +12,14 @@ from server.tools.encryption import CryptoTools
 from server.tools.status import Status
 
 
-def createFile(files_path, content):
+def createFile(files_path: str, content: str):
     """快速创建文件"""
     if not os.path.exists(files_path):
         with open(files_path, mode='w', encoding='utf-8') as f:
             f.write(content)
 
 
-def relToAbs(file_path):
+def relToAbs(file_path: str):
     """默认将相对路径转换为绝对路径"""
     try:
         if os.path.isabs(file_path):
@@ -31,7 +31,7 @@ def relToAbs(file_path):
         logging.error(f'File path error: {file_path}')
 
 
-def is_uuid(uuid_str):
+def is_uuid(uuid_str: str):
     """判断一个字符串是否为UUID"""
     try:
         uuid.UUID(uuid_str)
@@ -68,7 +68,7 @@ class HashTools:
         return hasher.hexdigest()
 
     @staticmethod
-    def getRandomStr(number=6):
+    def getRandomStr(number: int = 6):
         """
         随机获取N个 26个大小写字母
         默认: 6位

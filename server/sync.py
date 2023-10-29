@@ -20,7 +20,7 @@ class Index(readConfig):
     首先传入：同步目录的路径
     """
 
-    def __init__(self, path):
+    def __init__(self, path: str):
         super().__init__()
         self.config = self.readJson()
         # 同步目录的路径
