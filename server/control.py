@@ -1,12 +1,12 @@
+import importlib
 import logging
 import os
+import sys
 import threading
 
 from server.client import CommandSend
 from server.core import createSocket, socket_manage
 from server.tools.tools import relToAbs
-
-global_vars = {}
 
 
 class Init:
@@ -164,24 +164,39 @@ class Control(Init):
 class Plugin:
     """插件初始化载入"""
 
-    def __init__(self, path: str):
-        self.path = path
+    def __init__(self):
+        self.path = os.getcwd()
+        self.__plugins = os.path.join(os.path.join(self.path, 'plugins'))
 
     def read_plugins(self):
-        for file in os.listdir('plugins'):
-            file_path = os.path.join(self.path, file)
-            if os.path.isdir(file_path):
-                self.load(file_path, method=0)
-                logging.info(f'Plugin {file} loaded successfully.')
-            elif os.path.isfile(file_path):
-                self.load(file_path, method=1)
-                logging.info(f'Plugin {file} loaded successfully.')
+        for file in os.listdir(self.__plugins):
+            file_path = os.path.join(self.__plugins, file)
+
+            if not os.path.exists(file_path):
+                logging.error(f'Plugin {file} path does not exist!')
+                continue
+
+            elif os.path.isdir(file_path):
+                # 按文件夹加载
+                if self.load(file_path, method=1):
+                    logging.info(f'Plugin {file} loaded successfully.')
+                else:
+                    logging.error(f'Plugin read failed!: {file}')
+
+            elif os.path.isfile(file_path) and file.endswith('.py'):
+                # 按文件加载
+                if self.load(file_path, method=0):
+                    logging.info(f'Plugin {file} loaded successfully.')
+                else:
+                    logging.error(f'Plugin read failed!: {file}')
+
             else:
-                # 读取插件失败
+                # 读取插件失败, 未知的文件类型
                 logging.error(f'Plugin read failed!: {file}')
                 continue
 
-    def load(self, path: str, method: int):
+    @staticmethod
+    def load(path: str, method: int):
         """
         method = 0;
         按文件加载插件
@@ -192,7 +207,39 @@ class Plugin:
         :param method:
         :return:
         """
-        file_path = os.path.join(self.path, path)
+
+        if method == 0:
+            try:
+                filename = os.path.basename(path).split('.')[0]
+                sys.path.append(os.path.dirname(path))
+                module = importlib.import_module(filename)
+            except ImportError as e:
+                print(e)
+                return False
+            try:
+                result = module.main()
+            except AttributeError as e:
+                print(e)
+                return False
+            logging.info(f'Plugin X loaded: {result}')
+            return True
+
+        elif method == 1:
+            folder_name = os.path.basename(path)
+            sys.path.append(path)
+            try:
+                module = importlib.import_module(f'{folder_name}.main')
+            except ImportError as e:
+                print(e)
+                return False
+            try:
+                result = module.main()
+            except AttributeError as e:
+                print(e)
+                return False
+            logging.info(f'Plugin X loaded: {result}')
+            return True
+        raise ValueError(f'{path}, method: {method}未知的插件导入方式！')
 
 
 if __name__ == '__main__':

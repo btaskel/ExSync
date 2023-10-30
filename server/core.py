@@ -306,7 +306,7 @@ class createSocket(Scan):
         if address[0] in self.verify_manage and self.verify_manage[address[0]]['AES_KEY']:
             # 被动验证
 
-            command_socket.permission = PermissionEnum.SYNC
+            command_socket.permission = PermissionEnum.USER
             if address[0] in self.socket_info:
                 self.socket_info[address[0]]['command'] = command_socket
             else:
@@ -315,10 +315,8 @@ class createSocket(Scan):
                     "data": None
                 }
         else:
-            # 主动验证
-
-            command_socket.shutdown(socket.SHUT_RDWR)
-            command_socket.close()
+            # 开始主动验证
+            command_socket.permission = PermissionEnum.GUEST
 
     # def createVerifySocket(self):
     #     """
@@ -406,11 +404,16 @@ class createSocket(Scan):
         client_command = client.createCommandSocket()
 
         match client.connectRemoteCommandSocket():  # 连接指令Socket
+            case Status.CONNECTED:
+                # 连接成功
+                pass
             case Status.CONNECT_TIMEOUT:
                 if client.closeAllSocket():
+                    logging.error(f'Client: {client_mark}, server: {ip} connection timeout!')
                     client = None  # 超时退出：
             case _:
                 if client.closeAllSocket():
+                    logging.error(f'Client: {client_mark}, server: {ip} connection failure!')
                     client = None  # 意外退出：
 
 
@@ -908,27 +911,27 @@ class CommandSocket(DataSocket):
                     # 文件操作
                     if command[2] == 'file':
 
-                        if command[3] == 'post':
+                        if command[3] == 'post' and self.command_socket.permission >= 10:
                             # 对方使用post提交文件至本机
                             values = command[4].split('|')
                             thread = threading.Thread(target=self.recvFile, args=(values, mark))
                             thread.start()
 
-                        elif command[3] == 'get':
+                        elif command[3] == 'get' and self.command_socket.permission >= 10:
                             values = command[4].split('|')
                             thread = threading.Thread(target=self.sendFile, args=(values, mark))
                             thread.start()
                     # 文件夹操作
-                    elif command[2] == 'folder':
+                    elif command[2] == 'folder' and self.command_socket.permission >= 10:
 
                         # 获取服务端文件夹信息
-                        if command[3] == 'get':
+                        if command[3] == 'get' and self.command_socket.permission >= 10:
                             values = command[4]
                             thread = threading.Thread(target=self.getFolder, args=(values, mark))
                             thread.start()
 
                         # 创建服务端文件夹
-                        elif command[3] == 'post':
+                        elif command[3] == 'post' and self.command_socket.permission >= 10:
                             values = command[4].split('|')
                             thread = threading.Thread(target=self.recvFolder, args=(values,))
                             thread.start()
@@ -946,7 +949,7 @@ class CommandSocket(DataSocket):
                                 SocketTools.sendCommand(self.timedict, self.command_socket,
                                                         password_hash,
                                                         output=False, mark=mark)
-                            elif command[4] == 'index':
+                            elif command[4] == 'index' and self.command_socket.permission >= 10:
                                 # 获取索引文件
                                 for userdata in self.config['userdata']:
                                     if command[5] == userdata['spacename']:
@@ -967,7 +970,7 @@ class CommandSocket(DataSocket):
                                 else:
                                     SocketTools.sendCommand(self.timedict, self.command_socket,
                                                             'False', output=False, mark=mark)
-                            elif command[4] == 'verifyConnect':
+                            elif command[4] == 'verifyConnect'  and self.command_socket.permission == 0:
                                 # 验证对方连接合法性
                                 # 对方发送：[8bytes_mark]/_com:comm:sync:post:verifyConnect:password_hash
                                 try:
@@ -980,11 +983,11 @@ class CommandSocket(DataSocket):
 
 
                             # 更新本地索引
-                            elif command[4] == 'index':
+                            elif command[4] == 'index' and self.command_socket.permission >= 10:
                                 thread = threading.Thread(target=self.postIndex, args=(command[5], mark))
                                 thread.start()
 
-                            elif command[4] == 'comm':
+                            elif command[4] == 'comm' and self.command_socket.permission >= 10:
                                 thread = threading.Thread(target=self.executeCommand,
                                                           args=(command['/_com:comm:sync:post:comm:'][1], mark))
                                 thread.start()

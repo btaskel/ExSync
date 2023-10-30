@@ -61,7 +61,7 @@ class Client(Config):
             return True
         return False
 
-    def connectVerify(self, debug: bool=False):
+    def connectVerify(self, debug: bool = False):
         # 发送xxh3_128的密码值
         result = SocketTools.sendCommandNoTimeDict(self.client_command_socket,
                                                    xxhash.xxh3_128(self.password).hexdigest())
@@ -73,17 +73,17 @@ class Client(Config):
             return True
 
         elif result == 'fail':
-            # todo: 验证服务端密码失败
+            # 验证服务端密码失败
             debug and logging.error(f'Failed to verify server {self.ip_addr} password!')
             return False
 
         elif result == Status.DATA_RECEIVE_TIMEOUT:
-            # todo: 验证服务端密码超时
+            # 验证服务端密码超时
             debug and logging.error(f'Verifying server {self.ip_addr} password timeout!')
             return False
 
         else:
-            # todo: 验证服务端密码时得到未知参数
+            # 验证服务端密码时得到未知参数
             debug and logging.error(f'Unknown parameter obtained while verifying server {self.ip_addr} password!')
             return False
 
@@ -114,7 +114,6 @@ class Client(Config):
 
         aes_key = self.host_info.get('AES_KEY')
         if aes_key:
-            pass
             # 如果AES_KEY为空, 则进行主动连接
 
             # if self.client_socket.connect_ex((self.ip, self.command_port)) == 0:
@@ -144,7 +143,7 @@ class Client(Config):
             # return Status.CONNECT_TIMEOUT
             # 连接设备的指定端口
 
-            # todo: AES_KEY不为空, 则验证通过, 直接进行连接
+            # AES_KEY不为空, 则验证通过, 直接进行连接
             self.client_command_socket.settimeout(2)
             status = self.client_command_socket.connect_ex((self.ip, self.command_port))
             if status == 0:
@@ -153,7 +152,9 @@ class Client(Config):
                 #     aes_message = aes.aes_ctr_encrypt('hello')
                 #     SocketTools.sendCommandNoTimeDict(self.client_socket, )
                 # todo:
-                pass
+                data = self.client_command_socket.recv(1024)
+                if not data or data == 'validationFailed':
+                    return
 
             elif status == 10061:
                 # 超时
@@ -162,9 +163,10 @@ class Client(Config):
                 # 其它错误
                 return Status.UNKNOWN_ERROR
         else:
+            # AES_KEY 为空, 进行验证连接.
             self.client_command_socket.settimeout(2)
 
-            count = 3
+            count = 3 # 连接失败重试次数
             for i in range(count):
                 if self.client_command_socket.connect_ex((self.ip_addr, self.command_port)) != 0:
                     continue
@@ -220,6 +222,7 @@ class Client(Config):
                 self.client_command_socket.shutdown(socket.SHUT_RDWR)
                 self.client_command_socket.close()
                 continue
+            return False
 
     def createClientDataSocket(self):
         """

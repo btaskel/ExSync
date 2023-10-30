@@ -41,5 +41,6 @@ class CommandSet(enum.Enum):
 
 
 class PermissionEnum(enum.Enum):
-    ADMIN = '管理员'
-    SYNC = '用户'
+    ADMIN = 20
+    USER = 10
+    GUEST = 0
