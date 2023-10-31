@@ -9,19 +9,7 @@ from server.core import createSocket, socket_manage
 from server.tools.tools import relToAbs
 
 
-class Init:
-    """EXSync初始化"""
-
-    def __init__(self):
-        # 初始化服务端/客户端
-        server = createSocket()
-        socket_ls = [server.createDataSocket, server.createCommandSocket]
-        for thread in socket_ls:
-            thread = threading.Thread(target=thread)
-            thread.start()
-
-
-class Control(Init):
+class Control:
     """
     本地客户端与远程服务端操作接口
     """
@@ -240,6 +228,19 @@ class Plugin:
             logging.info(f'Plugin X loaded: {result}')
             return True
         raise ValueError(f'{path}, method: {method}未知的插件导入方式！')
+
+
+class Init(Control, Plugin):
+    """EXSync初始化"""
+
+    def __init__(self):
+        # 初始化服务端/客户端
+        super().__init__()
+        server = createSocket()
+        socket_ls = [server.createDataSocket, server.createCommandSocket]
+        for thread in socket_ls:
+            thread = threading.Thread(target=thread)
+            thread.start()
 
 
 if __name__ == '__main__':

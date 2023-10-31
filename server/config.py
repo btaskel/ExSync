@@ -167,11 +167,11 @@ class readConfig:
 
         json_str = {
             "log": {
-                "loglevel": ""
+                "loglevel": "info"
             },
             "server": {
                 "addr": {
-                    "id": None,
+                    "id": getRandomString(8),
                     "ip": "127.0.0.1",
                     "port": 5002,
                     "password": getRandomString(10)

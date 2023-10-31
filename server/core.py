@@ -39,6 +39,7 @@ class Scan(readConfig):
         self.command_port = self.config['server']['addr']['port'] + 1
         self.listen_port = self.config['server']['addr']['port'] + 2
         self.password = self.config["server"]["addr"]["password"]
+        self.local_mark = self.config['server']['addr']['id']
         # 读取编码类型
         if self.config['server']['setting']['encode']:
             self.encode_type = self.config['server']['setting']['encode']
@@ -56,6 +57,7 @@ class Scan(readConfig):
         verify_manage = {
             "1.1.1.1": {
                 "AES_KEY": "123456"
+                "MARK": "aBcDeFGh"
             }
         }
         """
@@ -154,16 +156,24 @@ class Scan(readConfig):
 
                         # 发送xxh3_128的密码值
                         result = SocketTools.sendCommandNoTimeDict(test, xxhash.xxh3_128(self.password).hexdigest())
-                        if result == 'success':
+
+                        try:
+                            status, remote_mark = result.split('|')
+                        except Exception as e:
+                            print(e)
+                            logging.error(f'Unknown status returned while scanning server {ip}')
+                            continue
+                        if status == 'success':
                             # 验证成功
                             self.verified_devices.add(ip)
                             self.verify_manage[test.getpeername()[0]] = {
+                                "REMOTE_MARK": remote_mark,
                                 "AES_KEY": self.password
                             }
-                        elif result == 'fail':
+                        elif status == 'fail':
                             # todo: 验证服务端密码失败
                             pass
-                        elif result == Status.DATA_RECEIVE_TIMEOUT:
+                        elif status == Status.DATA_RECEIVE_TIMEOUT:
                             # todo: 验证服务端密码超时
                             pass
                         else:
@@ -181,7 +191,7 @@ class Scan(readConfig):
 
                         cipher_pub = PKCS1_OAEP.new(rsa_pub)
 
-                        message = HashTools.getRandomStr(8).encode('utf-8')
+                        message = f'{HashTools.getRandomStr(8)}|{self.local_mark}'.encode('utf-8')
 
                         ciphertext = cipher_pub.encrypt(message)
 
@@ -189,6 +199,7 @@ class Scan(readConfig):
 
                         self.verified_devices.add(ip)
                         self.verify_manage[test.getpeername()[0]] = {
+                            "REMOTE_MARK": 1,
                             "AES_KEY": self.password
                         }
 
@@ -415,7 +426,6 @@ class createSocket(Scan):
                 if client.closeAllSocket():
                     logging.error(f'Client: {client_mark}, server: {ip} connection failure!')
                     client = None  # 意外退出：
-
 
         client_data = client.createClientDataSocket()  # 连接数据Socket
         if client_data == Status.CONNECT_TIMEOUT:
@@ -734,7 +744,7 @@ class DataSocket(Scan):
         """
         if command.startswith('/sync'):
             # sync指令
-            if self.command_socket.permission == PermissionEnum.SYNC:
+            if self.command_socket.permission >= PermissionEnum.USER:
                 logging.debug(f'Sync level command: {command}')
                 if command == '/sync restart':
                     # todo:重启服务
@@ -747,7 +757,7 @@ class DataSocket(Scan):
 
         else:
             # 系统指令
-            if self.command_socket.permission == PermissionEnum.ADMIN:
+            if self.command_socket.permission >= PermissionEnum.ADMIN:
                 logging.debug(f'System level command: {command}')
                 process = subprocess.Popen(command.split(' '), stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                                            shell=True)
@@ -762,7 +772,149 @@ class DataSocket(Scan):
                 return CommandSet.EXSYNC_INSUFFICIENT_PERMISSION
 
 
-class CommandSocket(DataSocket):
+class DataSocketExpand(DataSocket):
+    """
+    对于基本命令的拓展集
+    """
+
+    def __init__(self, command_socket, data_socket):
+        super().__init__(command_socket, data_socket)
+
+    def postPasswordHash(self, command: list, mark: str):
+        """
+        对比远程密码sha256是否与本地密码sha256相同
+        :param command:
+        :param mark:
+        :return:
+        """
+        password = self.config['server']['addr']['password']
+        local_password = hashlib.sha256(password.encode('utf-8')).hexdigest()
+        if command[4].split('|')[1] == local_password:
+            SocketTools.sendCommand(self.timedict, self.command_socket,
+                                    'True', output=False, mark=mark)
+
+        else:
+            SocketTools.sendCommand(self.timedict, self.command_socket,
+                                    'False', output=False, mark=mark)
+
+    def getPasswordHash(self, mark: str):
+        """
+        远程获取本地密码的sha256
+        :param mark:
+        :return:
+        """
+        password = self.config['server']['addr']['password']
+        password_hash = xxhash.xxh3_128(password).hexdigest()
+        SocketTools.sendCommand(self.timedict, self.command_socket, password_hash, output=False,
+                                mark=mark)
+
+    def getIndex(self, command: list, mark: str):
+        """
+        获取本地某个同步空间的索引路径
+        :param command:
+        :param mark:
+        :return:
+        """
+        for userdata in self.config['userdata']:
+            if command[5] == userdata['spacename']:
+                SocketTools.sendCommand(self.timedict, self.command_socket, userdata['path'],
+                                        mark=mark)
+
+    def verifyConnect(self, command: list, mark: str):
+        """
+        被验证：验证对方服务端TestSocket发送至本地服务端CommandSocket的连接是否合法
+        如果合法则加入可信任设备列表
+
+        密码为空:
+            1. 如果使用加密, 则任何设备都可以连接本地服务端, 会使用AES、RSA进行密钥交换, 进行私密通讯。
+            2. 如果不使用加密, 则任何设备都可以连接本地服务端，且通讯为明文.
+        密码存在:
+            RSA: 初始化RSA密钥对象——导出公钥私钥——加载公钥和私钥——创建cipher实例——开始加密/解密
+            1. 如果使用加密, 则信任连接双方使用AES进行加密通讯.
+            2. 如果不使用加密, 则信任连接双方为明文.
+        """
+        version = command[5]
+
+        if self.g['verify_version'] == version:
+            if self.password == '' or self.password is None:
+                # 如果密码为空, 则与客户端交换AES密钥
+
+                # 生成一个新的RSA密钥对
+                key = RSA.generate(2048)
+
+                # 导出公钥和私钥
+                private_key = key.export_key()
+                public_key = key.publickey().export_key()
+
+                # 发送公钥, 等待对方使用公钥加密随机密码
+                aes_Key = SocketTools.sendCommand(timedict=self.timedict, socket_=self.command_socket,
+                                                  command=f'None:{public_key}', mark=mark)
+                if aes_Key == Status.DATA_RECEIVE_TIMEOUT:
+                    self.command_socket.shutdown(socket.SHUT_RDWR)
+                    self.command_socket.close()
+                    return
+
+                # 加载公钥和私钥
+                private_key = RSA.import_key(private_key)
+                public_key = RSA.import_key(public_key)
+
+                # 创建一个新的cipher实例
+                cipher_pub = PKCS1_OAEP.new(public_key)
+                cipher_priv = PKCS1_OAEP.new(private_key)
+
+                # # 加密一条消息
+                # message = b'This is a secret message'
+                # ciphertext = cipher_pub.encrypt(message)
+
+                # 解密这条消息
+                aes_Key = cipher_priv.decrypt(aes_Key).decode('utf-8')
+
+                address = self.command_socket.getpeername()[0]
+                self.verify_manage[address] = {
+                    "REMOTE_MARK": 1,
+                    "AES_KEY": aes_Key
+                }
+
+            else:
+                # 如果密码不为空, 则无需进行密钥交换, 只需验证密钥即可
+                password_sha256 = hashlib.sha256(self.password.encode('utf-8')).hexdigest()
+                password_xxhash = xxhash.xxh3_128(self.password).hexdigest()
+                # 验证xxh3_128值是否匹配
+                remote_password_xxhash = SocketTools.sendCommand(timedict=self.timedict, socket_=self.data_socket,
+                                                                 command=f'{password_sha256}:None',
+                                                                 mark=mark)  # password_sha256, RSA_publicKey
+                if remote_password_xxhash == password_xxhash:
+                    # 验证通过
+                    SocketTools.sendCommand(timedict=self.timedict, socket_=self.data_socket,
+                                            command=f'success|{self.local_mark}',
+                                            output=False)
+                    self.command_socket.verify_status, self.data_socket.verify_status = True
+
+                    address = self.command_socket.getpeername()[0]
+                    self.verify_manage[address] = {
+                        "REMOTE_MARK": 1,
+                        "AES_KEY": self.password
+                    }
+
+                elif remote_password_xxhash == Status.DATA_RECEIVE_TIMEOUT:
+                    # todo: 服务端密码验证失败(超时)
+                    pass
+
+                else:
+                    # todo: 服务端密码验证失败(或得到错误参数)
+                    SocketTools.sendCommand(timedict=self.timedict, socket_=self.data_socket, command='fail|None',
+                                            output=False)
+
+                self.command_socket.shutdown(socket.SHUT_RDWR)
+                self.command_socket.close()
+                return
+
+        else:
+            # todo: 客户方与服务端验证版本不一致
+            return
+
+
+class CommandSocket(DataSocketExpand):
     """
     异步收发指令
 
@@ -800,94 +952,6 @@ class CommandSocket(DataSocket):
         self.command_socket = command_socket
         self.data_socket = data_socket
 
-    def verifyConnect(self, version: str, mark: str):
-        """
-        被验证：验证对方服务端TestSocket发送至本地服务端CommandSocket的连接是否合法
-        如果合法则加入可信任设备列表
-
-        密码为空:
-            1. 如果使用加密, 则任何设备都可以连接本地服务端, 会使用AES、RSA进行密钥交换, 进行私密通讯。
-            2. 如果不使用加密, 则任何设备都可以连接本地服务端，且通讯为明文.
-        密码存在:
-            RSA: 初始化RSA密钥对象——导出公钥私钥——加载公钥和私钥——创建cipher实例——开始加密/解密
-            1. 如果使用加密, 则信任连接双方使用AES进行加密通讯.
-            2. 如果不使用加密, 则信任连接双方为明文.
-        """
-        if self.g['verify_version'] == version:
-            if self.password == '' or self.password is None:
-                # 如果密码为空, 则与客户端交换AES密钥
-
-                # 生成一个新的RSA密钥对
-                key = RSA.generate(2048)
-
-                # 导出公钥和私钥
-                private_key = key.export_key()
-                public_key = key.publickey().export_key()
-
-                # 发送公钥, 等待对方使用公钥加密随机密码
-                aes_Key = SocketTools.sendCommand(timedict=self.timedict, socket_=self.command_socket,
-                                                  command=f'None:{public_key}', mark=mark)
-                if aes_Key == Status.DATA_RECEIVE_TIMEOUT:
-                    self.command_socket.shutdown(socket.SHUT_RDWR)
-                    self.command_socket.close()
-                    return
-
-                # 加载公钥和私钥
-                private_key = RSA.import_key(private_key)
-                public_key = RSA.import_key(public_key)
-
-                # 创建一个新的cipher实例
-                cipher_pub = PKCS1_OAEP.new(public_key)
-                cipher_priv = PKCS1_OAEP.new(private_key)
-
-                # # 加密一条消息
-                # message = b'This is a secret message'
-                # ciphertext = cipher_pub.encrypt(message)
-
-                # 解密这条消息
-                aes_Key = cipher_priv.decrypt(aes_Key).decode('utf-8')
-
-                address = self.command_socket.getpeername()[0]
-                self.verify_manage[address] = {
-                    "AES_KEY": aes_Key
-                }
-
-            else:
-                # 如果密码不为空, 则无需进行密钥交换, 只需验证密钥即可
-                password_sha256 = hashlib.sha256(self.password.encode('utf-8')).hexdigest()
-                password_xxhash = xxhash.xxh3_128(self.password).hexdigest()
-                # 验证xxh3_128值是否匹配
-                remote_password_xxhash = SocketTools.sendCommand(timedict=self.timedict, socket_=self.data_socket,
-                                                                 command=f'{password_sha256}:None',
-                                                                 mark=mark)  # password_sha256, RSA_publicKey
-                if remote_password_xxhash == password_xxhash:
-                    # 验证通过
-                    SocketTools.sendCommand(timedict=self.timedict, socket_=self.data_socket, command='success',
-                                            output=False)
-                    self.command_socket.verify_status, self.data_socket.verify_status = True
-
-                    address = self.command_socket.getpeername()[0]
-                    self.verify_manage[address] = {
-                        "AES_KEY": self.password
-                    }
-
-                elif remote_password_xxhash == Status.DATA_RECEIVE_TIMEOUT:
-                    # todo: 服务端密码验证失败(超时)
-                    pass
-
-                else:
-                    # todo: 服务端密码验证失败(或得到错误参数)
-                    SocketTools.sendCommand(timedict=self.timedict, socket_=self.data_socket, command='fail',
-                                            output=False)
-
-                self.command_socket.shutdown(socket.SHUT_RDWR)
-                self.command_socket.close()
-                return
-
-        else:
-            # todo: 客户方与服务端验证版本不一致
-            return
-
     def recvCommand(self):
         """
         持续倾听并解析指令
@@ -897,100 +961,94 @@ class CommandSocket(DataSocket):
         while True:
             # 收指令
             command = self.command_socket.recv(1024).decode(self.encode_type)
-            if ':' in command:
-                command = command.split(':')
+            if not ':' in command:
+                continue
 
-                try:
-                    mark = command[0].split('/_com')[0]
-                except Exception as e:
-                    print(e)
-                    continue
+            command = command.split(':')
+            try:
+                mark = command[0].split('/_com')[0]
+            except ValueError as e:
+                print(e)
+                logging.warning(f'Server {self.command_socket.getpeername()[0]}: Missing MARK in {command} command')
+                continue
 
-                # 数据类型判断
-                if command[1] == 'data':
-                    # 文件操作
-                    if command[2] == 'file':
+            # 数据类型判断
+            if command[1] == 'data':
+                # 文件操作
+                if command[2] == 'file':
 
-                        if command[3] == 'post' and self.command_socket.permission >= 10:
-                            # 对方使用post提交文件至本机
-                            values = command[4].split('|')
-                            thread = threading.Thread(target=self.recvFile, args=(values, mark))
+                    if command[3] == 'post' and self.command_socket.permission >= 10:
+                        # 对方使用post提交文件至本机
+                        values = command[4].split('|')
+                        thread = threading.Thread(target=self.recvFile, args=(values, mark))
+                        thread.daemon = True
+                        thread.start()
+
+                    elif command[3] == 'get' and self.command_socket.permission >= 10:
+                        values = command[4].split('|')
+                        thread = threading.Thread(target=self.sendFile, args=(values, mark))
+                        thread.daemon = True
+                        thread.start()
+                # 文件夹操作
+                elif command[2] == 'folder' and self.command_socket.permission >= 10:
+
+                    # 获取服务端文件夹信息
+                    if command[3] == 'get' and self.command_socket.permission >= 10:
+                        values = command[4]
+                        thread = threading.Thread(target=self.getFolder, args=(values, mark))
+                        thread.daemon = True
+                        thread.start()
+
+                    # 创建服务端文件夹
+                    elif command[3] == 'post' and self.command_socket.permission >= 10:
+                        values = command[4].split('|')
+                        thread = threading.Thread(target=self.recvFolder, args=(values,))
+                        thread.daemon = True
+                        thread.start()
+
+            # 普通命令判断
+            elif command[1] == 'comm':
+                # EXSync通讯指令
+                if command[2] == 'sync':
+                    # 获取EXSync信息
+                    if command[3] == 'get':
+                        if command[4] == 'password_hash':
+                            thread = threading.Thread(target=self.getPasswordHash, args=(mark,))
+                            thread.daemon = True
                             thread.start()
 
-                        elif command[3] == 'get' and self.command_socket.permission >= 10:
-                            values = command[4].split('|')
-                            thread = threading.Thread(target=self.sendFile, args=(values, mark))
-                            thread.start()
-                    # 文件夹操作
-                    elif command[2] == 'folder' and self.command_socket.permission >= 10:
-
-                        # 获取服务端文件夹信息
-                        if command[3] == 'get' and self.command_socket.permission >= 10:
-                            values = command[4]
-                            thread = threading.Thread(target=self.getFolder, args=(values, mark))
+                        elif command[4] == 'index' and self.command_socket.permission >= 10:
+                            # 获取索引文件
+                            thread = threading.Thread(target=self.getIndex, args=(command, mark))
+                            thread.daemon = True
                             thread.start()
 
-                        # 创建服务端文件夹
-                        elif command[3] == 'post' and self.command_socket.permission >= 10:
-                            values = command[4].split('|')
-                            thread = threading.Thread(target=self.recvFolder, args=(values,))
+                    # 提交EXSync信息
+                    elif command[3] == 'post':
+                        if command[4] == 'password_hash':
+                            # 对比本地密码hash
+                            thread = threading.Thread(target=self.postPasswordHash, args=(command, mark))
+                            thread.daemon = True
                             thread.start()
 
-                # 普通命令判断
-                elif command[1] == 'comm':
-                    # EXSync通讯指令
-                    if command[2] == 'sync':
-                        # 获取EXSync信息
-                        if command[3] == 'get':
-                            if command[4] == 'password_hash':
-                                # 发送本地密码xxh128哈希
-                                password = self.config['server']['addr']['password']
-                                password_hash = xxhash.xxh3_128(password).hexdigest()
-                                SocketTools.sendCommand(self.timedict, self.command_socket,
-                                                        password_hash,
-                                                        output=False, mark=mark)
-                            elif command[4] == 'index' and self.command_socket.permission >= 10:
-                                # 获取索引文件
-                                for userdata in self.config['userdata']:
-                                    if command[5] == userdata['spacename']:
-                                        SocketTools.sendCommand(self.timedict, self.command_socket, userdata['path'],
-                                                                mark=mark)
+                        elif command[4] == 'verifyConnect' and self.command_socket.permission >= 0:
+                            # 验证对方连接合法性
+                            # 对方发送：[8bytes_mark]/_com:comm:sync:post:verifyConnect:version
+                            thread = threading.Thread(target=self.verifyConnect, args=(command, mark))
+                            thread.daemon = True
+                            thread.start()
 
-                        # 提交EXSync信息
-                        elif command[3] == 'post':
-                            if command[4] == 'password_hash':
+                        # 更新本地索引
+                        elif command[4] == 'index' and self.command_socket.permission >= 10:
+                            thread = threading.Thread(target=self.postIndex, args=(command[5], mark))
+                            thread.daemon = True
+                            thread.start()
 
-                                # 对比本地密码hash
-                                password = self.config['server']['addr']['password']
-                                password_hash = xxhash.xxh3_128(password).hexdigest()
-                                if command[4].split('|')[1] == password_hash:
-                                    SocketTools.sendCommand(self.timedict, self.command_socket,
-                                                            'True', output=False, mark=mark)
-
-                                else:
-                                    SocketTools.sendCommand(self.timedict, self.command_socket,
-                                                            'False', output=False, mark=mark)
-                            elif command[4] == 'verifyConnect'  and self.command_socket.permission == 0:
-                                # 验证对方连接合法性
-                                # 对方发送：[8bytes_mark]/_com:comm:sync:post:verifyConnect:password_hash
-                                try:
-                                    values = command[5].split('|')
-                                except Exception as e:
-                                    print(e)
-                                    continue
-                                thread = threading.Thread(target=self.verifyConnect, args=(values[0], mark))
-                                thread.start()
-
-
-                            # 更新本地索引
-                            elif command[4] == 'index' and self.command_socket.permission >= 10:
-                                thread = threading.Thread(target=self.postIndex, args=(command[5], mark))
-                                thread.start()
-
-                            elif command[4] == 'comm' and self.command_socket.permission >= 10:
-                                thread = threading.Thread(target=self.executeCommand,
-                                                          args=(command['/_com:comm:sync:post:comm:'][1], mark))
-                                thread.start()
+                        elif command[4] == 'comm' and self.command_socket.permission >= 10:
+                            thread = threading.Thread(target=self.executeCommand,
+                                                      args=(command['/_com:comm:sync:post:comm:'][1], mark))
+                            thread.daemon = True
+                            thread.start()
 
 
 if __name__ == '__main__':
