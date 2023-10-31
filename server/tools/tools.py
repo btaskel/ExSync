@@ -131,6 +131,8 @@ class SocketTools:
                     data = cry.aes_ctr_encrypt(data)
                 else:
                     data = data.encode(socket_encode)
+                if len(data) > 1024:
+                    raise ValueError(f'发送命令时超过1024个字节: {mark_value + command}')
                 socket_.send(data)
                 with concurrent.futures.ThreadPoolExecutor() as excutor:
                     future = excutor.submit(timedict.getRecvData(mark_value).decode(socket_encode))

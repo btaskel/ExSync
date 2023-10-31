@@ -166,7 +166,7 @@ class Client(Config):
             # AES_KEY 为空, 进行验证连接.
             self.client_command_socket.settimeout(2)
 
-            count = 3 # 连接失败重试次数
+            count = 3  # 连接失败重试次数
             for i in range(count):
                 if self.client_command_socket.connect_ex((self.ip_addr, self.command_port)) != 0:
                     continue
@@ -436,8 +436,22 @@ class CommandSend(Config, Client):
 
         # 发送指令，远程服务端准备
         # 服务端return: /_com:data:reply:filemark:{remote_size}|{hash_value}
+        # result = SocketTools.sendCommand(self.timedict, self.command_socket,
+        #                                  f'/_com:data:file:get:{path}|{file_hash}|{file_size}|{filemark}:_',
+        #                                  mark=reply_mark, encrypt_password=self.password)
         result = SocketTools.sendCommand(self.timedict, self.command_socket,
-                                         f'/_com:data:file:get:{path}|{file_hash}|{file_size}|{filemark}:_',
+                                         '''
+                                         {
+                                            "command": "data",
+                                            "type": "file",
+                                            "method": "get",
+                                            "data": {
+                                                "remote_file_hash": %s,
+                                                "remote_size": %s,
+                                                "filemark": %s
+                                            }
+                                         }
+                                         ''' % (file_hash, file_size, filemark),
                                          mark=reply_mark, encrypt_password=self.password)
         try:
             values = result.split('|')

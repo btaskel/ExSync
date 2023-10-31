@@ -8,6 +8,7 @@ import socket
 import subprocess
 import threading
 import time
+from ast import literal_eval
 
 import socks
 import xxhash
@@ -589,7 +590,7 @@ class DataSocket(Scan):
                     # 不存在文件，不予传输
                     return False
 
-    def sendFile(self, command: list, mark: str):
+    def sendFile(self, data_: dict, mark: str):
         """
         服务端发送文件至客户端
 
@@ -601,7 +602,15 @@ class DataSocket(Scan):
         """
         block = 1024
         reply_mark = mark
-        path, remote_file_hash, remote_size, filemark = command[0], command[1], command[2], command[3]
+        # path, remote_file_hash, remote_size, filemark = command[0], command[1], command[2], command[3]
+        path = data_.get('path')
+
+        remote_file_hash = data_.get('remote_file_hash', 0)
+        remote_size = data_.get('remote_size', 0)
+        filemark = data_.get('filemark')
+        if not filemark:
+            logging.warning('Core function sendFile: Missing parameter [filemark]!')
+
         data_block = block - len(filemark)
 
         if os.path.exists(path):
@@ -951,6 +960,7 @@ class CommandSocket(DataSocketExpand):
         super().__init__(command_socket, data_socket)
         self.command_socket = command_socket
         self.data_socket = data_socket
+        self.address = self.command_socket.getpeername()[0]
 
     def recvCommand(self):
         """
@@ -1049,6 +1059,91 @@ class CommandSocket(DataSocketExpand):
                                                       args=(command['/_com:comm:sync:post:comm:'][1], mark))
                             thread.daemon = True
                             thread.start()
+
+    def recvCommand_(self):
+        """
+        以dict格式接收指令:
+        {
+            "command": "data"/"comm", # 命令类型
+            "type": "file",      # 操作类型
+            "method": "get",     # 操作方法
+            "data": {            # 参数数据集
+                "a": 1
+                ....
+            }
+        }
+
+        :return:
+        """
+        while True:
+            command = self.command_socket.recv(1024).decode(self.encode_type)
+            mark, command = command[:8], command[8:]  # 8字节的mark头信息和指令
+
+            command = literal_eval(command)
+            if not isinstance(command, dict):
+                logging.warning(f'Server {self.address}: Missing MARK in {command} command!')
+                continue
+            command_ = command.get('command')
+            type_ = command.get('type')
+            method_ = command.get('method')
+            data_ = command.get('data')
+            if not command_ and not type_ and not method_ and not data_:
+                logging.warning(f'Server {self.address}: Command {command} parsing failed!')
+                continue
+
+            if command_ == 'data' and type_ == 'file' and method_ == 'get':
+                self.dataGetFile(data_, mark)
+
+            elif command_ == 'data' and type_ == 'file' and method_ == 'post':
+                self.dataPostFile(data_, mark)
+
+            elif command_ == 'data' and type_ == 'folder' and method_ == 'get':
+                self.dataGetFolder(data_, mark)
+
+            elif command_ == 'data' and type_ == 'folder' and method_ == 'get':
+                self.dataPostFolder(data_, mark)
+
+            elif command_ == 'data' and type_ == 'index' and method_ == 'get':
+                self.dataGetIndex(data_, mark)
+
+            elif command_ == 'comm' and type_ == '' and method_ == ''
+
+    def dataGetFile(self, data_: dict, mark: str):
+        """
+        远程客户端请求本地发送文件
+        :param data_:
+        :param mark:
+        :return:
+        """
+        if self.command_socket.permission >= 10:
+            thread = threading.Thread(target=self.sendFile, args=(data_, mark))
+            thread.daemon = True
+            thread.start()
+        else:
+            logging.warning(f'Client {self.address}: Cancel sending file due to insufficient permissions!')
+
+    def dataPostFile(self, data_: dict, mark: str):
+        """
+        远程客户端请求本地接收文件
+        :param data_:
+        :param mark:
+        :return:
+        """
+        if self.command_socket.permission >= 10:
+            thread = threading.Thread(target=self.recvFile, args=(data_, mark))
+            thread.daemon = True
+            thread.start()
+        else:
+            logging.warning(f'Client {self.address}: Cancel receiving files due to insufficient permissions!')
+
+    def dataGetFolder(self, data_: dict, mark: str):
+        pass
+
+    def dataPostFolder(self, data_: dict, mark: str):
+        pass
+
+    def dataGetIndex(self, data_: dict, mark: str):
+        pass
 
 
 if __name__ == '__main__':
