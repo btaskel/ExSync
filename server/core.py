@@ -474,6 +474,8 @@ class DataSocket(Scan):
         self.block = 1024
         self.command_socket = command_socket
         self.data_socket = data_socket
+        self.address = self.command_socket.getpeername()[0]
+
         self.system_encode = locale.getpreferredencoding()
 
         self.timedict = TimeDictInit(data_socket, command_socket)
@@ -668,15 +670,24 @@ class DataSocket(Scan):
                     data = bytes(filemark, 'utf-8') + data
                     self.data_socket.send(data)
 
-    def recvFolder(self, command: list):
+    def postFolder(self, data_: dict):
         """
         接收路径并创建文件夹
         """
-        if not os.path.exists(command[0]):
-            os.makedirs(command[0])
-        return
+        path = data_.get('path')
+        if not path:
+            logging.warning(f'Client {self.address} : Missing parameter [path] for execution [postFolder]')
+            return False
+        try:
+            if not os.path.exists(path):
+                os.makedirs(path)
+            return True
+        except ValueError as e:
+            print(e)
+            logging.warning(f'Client {self.address} : Parameter [path] error for execution [postFolder]')
+            return False
 
-    def getFolder(self, command: list, mark: str):
+    def getFolder(self, data_: dict, mark: str):
         """
         获取文件夹信息
         如果服务端存在文件夹，以及其索引，则返回索引
@@ -684,7 +695,11 @@ class DataSocket(Scan):
         """
 
         paths = []
-        path = command[4]
+        path = data_.get('path')
+        if not path:
+            logging.warning(f'Client {self.address} : Missing parameter [path] for execution [getFolder]')
+            return False
+
         if os.path.exists(path):
             for home, folders, files in os.walk(path):
                 paths.append(folders)
@@ -694,12 +709,13 @@ class DataSocket(Scan):
             SocketTools.sendCommand(self.timedict, self.data_socket, 'pathError', output=False, mark=mark)
             return
 
-    def postIndex(self, command, mark):
+    def postIndex(self, data_: dict, mark: str):
         """
         根据远程发送过来的索引数据更新本地同步空间的索引
         """
         reply_mark = mark
-        spacename, json_example, isfile = command[0], command[1], command[2]
+
+        spacename, json_example, isfile = data_.get('spacename'), data_.get('json'), data_.get('isfile')
         if spacename in self.config['userdata']:
             path = self.config['userdata'][spacename]['path']
             files_index_path = os.path.join(path, '\\.sync\\info\\files.json')
@@ -710,10 +726,10 @@ class DataSocket(Scan):
                                             'remoteIndexNoExist', output=False, mark=reply_mark)
                     return False
             try:
-                json_example = json.loads(command[1])
+                json_example = json.loads(json_example)
             except Exception as e:
                 print(e)
-                logging.warning(f'Failed to load local index: {command[0]}')
+                logging.warning(f'Failed to load local index: {spacename}')
                 return False
 
             def __updateIndex(index_path):
@@ -746,14 +762,19 @@ class DataSocket(Scan):
                                     output=False, mark=reply_mark)
             return False
 
-    def executeCommand(self, command, mark):
+    def executeCommand(self, data_: dict, mark: str):
         """
         执行远程的指令
         :return return_code, output, error
         """
+        command = data_.get('command')
+        if not command:
+            logging.warning(f'Client {self.address} : Missing parameter [command] for execution [executeCommand]')
+            return False
+
         if command.startswith('/sync'):
             # sync指令
-            if self.command_socket.permission >= PermissionEnum.USER:
+            if self.command_socket.permission >= 10:
                 logging.debug(f'Sync level command: {command}')
                 if command == '/sync restart':
                     # todo:重启服务
@@ -766,7 +787,7 @@ class DataSocket(Scan):
 
         else:
             # 系统指令
-            if self.command_socket.permission >= PermissionEnum.ADMIN:
+            if self.command_socket.permission >= 20:
                 logging.debug(f'System level command: {command}')
                 process = subprocess.Popen(command.split(' '), stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                                            shell=True)
@@ -817,19 +838,25 @@ class DataSocketExpand(DataSocket):
         SocketTools.sendCommand(self.timedict, self.command_socket, password_hash, output=False,
                                 mark=mark)
 
-    def getIndex(self, command: list, mark: str):
+    def getIndex(self, data_: dict, mark: str):
         """
         获取本地某个同步空间的索引路径
-        :param command:
+        :param data_:
         :param mark:
         :return:
         """
+        spacename = data_.get('spacename')
+        if not spacename:
+            logging.warning(f'Client {self.address} : Missing parameter [spacename] for execution [getIndex]')
+            return False
         for userdata in self.config['userdata']:
-            if command[5] == userdata['spacename']:
+            if spacename == userdata['spacename']:
                 SocketTools.sendCommand(self.timedict, self.command_socket, userdata['path'],
                                         mark=mark)
+                return True
+        return False
 
-    def verifyConnect(self, command: list, mark: str):
+    def verifyConnect(self, data_: dict, mark: str):
         """
         被验证：验证对方服务端TestSocket发送至本地服务端CommandSocket的连接是否合法
         如果合法则加入可信任设备列表
@@ -841,8 +868,13 @@ class DataSocketExpand(DataSocket):
             RSA: 初始化RSA密钥对象——导出公钥私钥——加载公钥和私钥——创建cipher实例——开始加密/解密
             1. 如果使用加密, 则信任连接双方使用AES进行加密通讯.
             2. 如果不使用加密, 则信任连接双方为明文.
+
         """
-        version = command[5]
+
+        version = data_.get('version')
+        if not version:
+            logging.warning(f'Client {self.address} : Missing parameter [version] for execution [verifyConnect]')
+            return False
 
         if self.g['verify_version'] == version:
             if self.password == '' or self.password is None:
@@ -960,105 +992,104 @@ class CommandSocket(DataSocketExpand):
         super().__init__(command_socket, data_socket)
         self.command_socket = command_socket
         self.data_socket = data_socket
-        self.address = self.command_socket.getpeername()[0]
 
-    def recvCommand(self):
-        """
-        持续倾听并解析指令
-        :return:
-        """
-
-        while True:
-            # 收指令
-            command = self.command_socket.recv(1024).decode(self.encode_type)
-            if not ':' in command:
-                continue
-
-            command = command.split(':')
-            try:
-                mark = command[0].split('/_com')[0]
-            except ValueError as e:
-                print(e)
-                logging.warning(f'Server {self.command_socket.getpeername()[0]}: Missing MARK in {command} command')
-                continue
-
-            # 数据类型判断
-            if command[1] == 'data':
-                # 文件操作
-                if command[2] == 'file':
-
-                    if command[3] == 'post' and self.command_socket.permission >= 10:
-                        # 对方使用post提交文件至本机
-                        values = command[4].split('|')
-                        thread = threading.Thread(target=self.recvFile, args=(values, mark))
-                        thread.daemon = True
-                        thread.start()
-
-                    elif command[3] == 'get' and self.command_socket.permission >= 10:
-                        values = command[4].split('|')
-                        thread = threading.Thread(target=self.sendFile, args=(values, mark))
-                        thread.daemon = True
-                        thread.start()
-                # 文件夹操作
-                elif command[2] == 'folder' and self.command_socket.permission >= 10:
-
-                    # 获取服务端文件夹信息
-                    if command[3] == 'get' and self.command_socket.permission >= 10:
-                        values = command[4]
-                        thread = threading.Thread(target=self.getFolder, args=(values, mark))
-                        thread.daemon = True
-                        thread.start()
-
-                    # 创建服务端文件夹
-                    elif command[3] == 'post' and self.command_socket.permission >= 10:
-                        values = command[4].split('|')
-                        thread = threading.Thread(target=self.recvFolder, args=(values,))
-                        thread.daemon = True
-                        thread.start()
-
-            # 普通命令判断
-            elif command[1] == 'comm':
-                # EXSync通讯指令
-                if command[2] == 'sync':
-                    # 获取EXSync信息
-                    if command[3] == 'get':
-                        if command[4] == 'password_hash':
-                            thread = threading.Thread(target=self.getPasswordHash, args=(mark,))
-                            thread.daemon = True
-                            thread.start()
-
-                        elif command[4] == 'index' and self.command_socket.permission >= 10:
-                            # 获取索引文件
-                            thread = threading.Thread(target=self.getIndex, args=(command, mark))
-                            thread.daemon = True
-                            thread.start()
-
-                    # 提交EXSync信息
-                    elif command[3] == 'post':
-                        if command[4] == 'password_hash':
-                            # 对比本地密码hash
-                            thread = threading.Thread(target=self.postPasswordHash, args=(command, mark))
-                            thread.daemon = True
-                            thread.start()
-
-                        elif command[4] == 'verifyConnect' and self.command_socket.permission >= 0:
-                            # 验证对方连接合法性
-                            # 对方发送：[8bytes_mark]/_com:comm:sync:post:verifyConnect:version
-                            thread = threading.Thread(target=self.verifyConnect, args=(command, mark))
-                            thread.daemon = True
-                            thread.start()
-
-                        # 更新本地索引
-                        elif command[4] == 'index' and self.command_socket.permission >= 10:
-                            thread = threading.Thread(target=self.postIndex, args=(command[5], mark))
-                            thread.daemon = True
-                            thread.start()
-
-                        elif command[4] == 'comm' and self.command_socket.permission >= 10:
-                            thread = threading.Thread(target=self.executeCommand,
-                                                      args=(command['/_com:comm:sync:post:comm:'][1], mark))
-                            thread.daemon = True
-                            thread.start()
+    # def recvCommand(self):
+    #     """
+    #     持续倾听并解析指令
+    #     :return:
+    #     """
+    #
+    #     while True:
+    #         # 收指令
+    #         command = self.command_socket.recv(1024).decode(self.encode_type)
+    #         if not ':' in command:
+    #             continue
+    #
+    #         command = command.split(':')
+    #         try:
+    #             mark = command[0].split('/_com')[0]
+    #         except ValueError as e:
+    #             print(e)
+    #             logging.warning(f'Server {self.command_socket.getpeername()[0]}: Missing MARK in {command} command')
+    #             continue
+    #
+    #         # 数据类型判断
+    #         if command[1] == 'data':
+    #             # 文件操作
+    #             if command[2] == 'file':
+    #
+    #                 if command[3] == 'post' and self.command_socket.permission >= 10:
+    #                     # 对方使用post提交文件至本机
+    #                     values = command[4].split('|')
+    #                     thread = threading.Thread(target=self.recvFile, args=(values, mark))
+    #                     thread.daemon = True
+    #                     thread.start()
+    #
+    #                 elif command[3] == 'get' and self.command_socket.permission >= 10:
+    #                     values = command[4].split('|')
+    #                     thread = threading.Thread(target=self.sendFile, args=(values, mark))
+    #                     thread.daemon = True
+    #                     thread.start()
+    #             # 文件夹操作
+    #             elif command[2] == 'folder' and self.command_socket.permission >= 10:
+    #
+    #                 # 获取服务端文件夹信息
+    #                 if command[3] == 'get' and self.command_socket.permission >= 10:
+    #                     values = command[4]
+    #                     thread = threading.Thread(target=self.getFolder, args=(values, mark))
+    #                     thread.daemon = True
+    #                     thread.start()
+    #
+    #                 # 创建服务端文件夹
+    #                 elif command[3] == 'post' and self.command_socket.permission >= 10:
+    #                     values = command[4].split('|')
+    #                     thread = threading.Thread(target=self.recvFolder, args=(values,))
+    #                     thread.daemon = True
+    #                     thread.start()
+    #
+    #         # 普通命令判断
+    #         elif command[1] == 'comm':
+    #             # EXSync通讯指令
+    #             if command[2] == 'sync':
+    #                 # 获取EXSync信息
+    #                 if command[3] == 'get':
+    #                     if command[4] == 'password_hash':
+    #                         thread = threading.Thread(target=self.getPasswordHash, args=(mark,))
+    #                         thread.daemon = True
+    #                         thread.start()
+    #
+    #                     elif command[4] == 'index' and self.command_socket.permission >= 10:
+    #                         # 获取索引文件
+    #                         thread = threading.Thread(target=self.getIndex, args=(command, mark))
+    #                         thread.daemon = True
+    #                         thread.start()
+    #
+    #                 # 提交EXSync信息
+    #                 elif command[3] == 'post':
+    #                     if command[4] == 'password_hash':
+    #                         # 对比本地密码hash
+    #                         thread = threading.Thread(target=self.postPasswordHash, args=(command, mark))
+    #                         thread.daemon = True
+    #                         thread.start()
+    #
+    #                     elif command[4] == 'verifyConnect' and self.command_socket.permission >= 0:
+    #                         # 验证对方连接合法性
+    #                         # 对方发送：[8bytes_mark]/_com:comm:sync:post:verifyConnect:version
+    #                         thread = threading.Thread(target=self.verifyConnect, args=(command, mark))
+    #                         thread.daemon = True
+    #                         thread.start()
+    #
+    #                     # 更新本地索引
+    #                     elif command[4] == 'index' and self.command_socket.permission >= 10:
+    #                         thread = threading.Thread(target=self.postIndex, args=(command[5], mark))
+    #                         thread.daemon = True
+    #                         thread.start()
+    #
+    #                     elif command[4] == 'comm' and self.command_socket.permission >= 10:
+    #                         thread = threading.Thread(target=self.executeCommand,
+    #                                                   args=(command['/_com:comm:sync:post:comm:'][1], mark))
+    #                         thread.daemon = True
+    #                         thread.start()
 
     def recvCommand_(self):
         """
@@ -1091,6 +1122,10 @@ class CommandSocket(DataSocketExpand):
                 logging.warning(f'Server {self.address}: Command {command} parsing failed!')
                 continue
 
+            command_ = command_.lower()
+            type_ = command_.lower()
+            method_ = command_.lower()
+
             if command_ == 'data' and type_ == 'file' and method_ == 'get':
                 self.dataGetFile(data_, mark)
 
@@ -1100,17 +1135,29 @@ class CommandSocket(DataSocketExpand):
             elif command_ == 'data' and type_ == 'folder' and method_ == 'get':
                 self.dataGetFolder(data_, mark)
 
-            elif command_ == 'data' and type_ == 'folder' and method_ == 'get':
-                self.dataPostFolder(data_, mark)
+            elif command_ == 'data' and type_ == 'folder' and method_ == 'post':
+                self.dataPostFolder(data_)
 
             elif command_ == 'data' and type_ == 'index' and method_ == 'get':
                 self.dataGetIndex(data_, mark)
 
-            elif command_ == 'comm' and type_ == '' and method_ == ''
+            elif command_ == 'data' and type_ == 'index' and method_ == 'post':
+                self.dataPostIndex(data_, mark)
 
-    def dataGetFile(self, data_: dict, mark: str):
+            elif command_ == 'comm' and type_ == 'verifyconnect' and method_ == 'post':
+                self.commPostVerifyConnect(data_, mark)
+
+            elif command_ == 'comm' and type_ == 'command' and method_ == 'post':
+                self.commPostCommand(data_, mark)
+
+    def dataGetFile(self, data_: dict, mark: str) -> bool:
         """
         远程客户端请求本地发送文件
+
+        data: {
+
+        }
+
         :param data_:
         :param mark:
         :return:
@@ -1119,10 +1166,12 @@ class CommandSocket(DataSocketExpand):
             thread = threading.Thread(target=self.sendFile, args=(data_, mark))
             thread.daemon = True
             thread.start()
+            return True
         else:
-            logging.warning(f'Client {self.address}: Cancel sending file due to insufficient permissions!')
+            logging.warning(f'Client {self.address}: Cancel sending [file] due to insufficient permissions!')
+            return False
 
-    def dataPostFile(self, data_: dict, mark: str):
+    def dataPostFile(self, data_: dict, mark: str) -> bool:
         """
         远程客户端请求本地接收文件
         :param data_:
@@ -1133,18 +1182,138 @@ class CommandSocket(DataSocketExpand):
             thread = threading.Thread(target=self.recvFile, args=(data_, mark))
             thread.daemon = True
             thread.start()
+            return True
         else:
-            logging.warning(f'Client {self.address}: Cancel receiving files due to insufficient permissions!')
+            logging.warning(f'Client {self.address}: Cancel receiving [file] due to insufficient permissions!')
+            return False
 
-    def dataGetFolder(self, data_: dict, mark: str):
-        pass
+    def dataGetFolder(self, data_: dict, mark: str) -> bool:
+        """
 
-    def dataPostFolder(self, data_: dict, mark: str):
-        pass
+        data:{
+            path: ...
+        }
 
-    def dataGetIndex(self, data_: dict, mark: str):
-        pass
+        :param data_:
+        :param mark:
+        :return:
+        """
+        if self.command_socket.permission >= 10:
+            thread = threading.Thread(target=self.getFolder, args=(data_, mark))
+            thread.daemon = True
+            thread.start()
+            return True
+        else:
+            logging.warning(f'Client {self.address}: Cancel sending [folder] due to insufficient permissions!')
+            return False
 
+    def dataPostFolder(self, data_: dict) -> bool:
+        """
+
+        data: {
+            path: ...
+        }
+        :param data_:
+        :return:
+        """
+        if self.command_socket.permission >= 10:
+            thread = threading.Thread(target=self.postFolder, args=(data_,))
+            thread.daemon = True
+            thread.start()
+            logging.warning(f'Client {self.address}: Cancel receiving [folder] due to insufficient permissions!')
+            return True
+        else:
+            return False
+
+    def dataGetIndex(self, data_: dict, mark: str) -> bool:
+        """
+
+        data: {
+            spacename: ...
+            json: {
+                file1
+                file2
+                ...
+            }
+            isfile: Boolean
+        }
+
+        :param data_:
+        :param mark:
+        :return:
+        """
+        if self.command_socket.permission >= 10:
+            thread = threading.Thread(target=self.getIndex, args=(data_, mark))
+            thread.daemon = True
+            thread.start()
+            return True
+        else:
+            logging.warning(f'Client {self.address}: Cancel sending [Index] due to insufficient permissions!')
+            return False
+
+    def dataPostIndex(self, data_: dict, mark: str) -> bool:
+        """
+
+        data: {
+            spacename: ... # 同步空间名称
+            json: ... # json字符串
+            isfile: Boolean # 是否为文件索引
+        }
+
+        :param data_:
+        :param mark:
+        :return:
+        """
+        if self.command_socket.permission >= 10:
+            thread = threading.Thread(target=self.postIndex, args=(data_, mark))
+            thread.daemon = True
+            thread.start()
+            return True
+        else:
+            logging.warning(f'Client {self.address}: Cancel receiving [Index] due to insufficient permissions!')
+            return False
+
+    def commPostVerifyConnect(self, data_: dict, mark: str) -> bool:
+        # 验证对方连接合法性
+        # 对方发送：[8bytes_mark]/_com:comm:sync:post:verifyConnect:version
+        """
+
+        data: {
+            version: ...
+        }
+
+        :param data_:
+        :param mark:
+        :return:
+        """
+        if self.command_socket.permission >= 0:
+            thread = threading.Thread(target=self.verifyConnect, args=(data_, mark))
+            thread.daemon = True
+            thread.start()
+            return True
+        else:
+            logging.warning(f'Client {self.address}: Cancel [verifyConnect] due to insufficient permissions!')
+            return False
+
+    def commPostCommand(self, data_: dict, mark: str) -> bool:
+        """
+
+        data: {
+            command: ...
+        }
+
+        :param data_:
+        :param mark:
+        :return:
+        """
+        if self.command_socket.permission >= 10:
+            thread = threading.Thread(target=self.executeCommand, args=(data_, mark))
+            thread.daemon = True
+            thread.start()
+            return True
+        else:
+            logging.warning(f'Client {self.address}: Cancel [postCommand] due to insufficient permissions!')
+            return False
 
 if __name__ == '__main__':
     s = createSocket()
