@@ -1091,7 +1091,7 @@ class CommandSocket(DataSocketExpand):
     #                         thread.daemon = True
     #                         thread.start()
 
-    def recvCommand_(self):
+    def recvCommand(self):
         """
         以dict格式接收指令:
         {
@@ -1123,8 +1123,8 @@ class CommandSocket(DataSocketExpand):
                 continue
 
             command_ = command_.lower()
-            type_ = command_.lower()
-            method_ = command_.lower()
+            type_ = type_.lower()
+            method_ = method_.lower()
 
             if command_ == 'data' and type_ == 'file' and method_ == 'get':
                 self.dataGetFile(data_, mark)
@@ -1314,6 +1314,7 @@ class CommandSocket(DataSocketExpand):
         else:
             logging.warning(f'Client {self.address}: Cancel [postCommand] due to insufficient permissions!')
             return False
+
 
 if __name__ == '__main__':
     s = createSocket()

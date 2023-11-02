@@ -40,50 +40,20 @@ PS:
 
 客户端发送至服务端指令套接字：
 
-    指令以 /_com: 开头，以 :_ 结尾，并且用 : 作为分隔符，又使用 | 作为值的分隔符。
+    指令以 随机8字节的Mark 开头，并且连接字典来传递参数。
     在后续的异步发送文件中，每一条指令的发送会自动加上 8个字节的mark 标识。
 
     ——————————————————————————————————————————————————
-
-    Data操作指令说明：
-    data: 使用data套接字
-    file/folder: 传输文件或文件夹
-    get/post: 对方客户端接收或发送文件到服务端
-    filepath: 文件(或文件夹)路径
-    size: 文件(或文件夹)大小
-    hash: 文件的xxhash128值
-    mode：对文件(或文件夹)的操作模式
-
-    文件与文件夹的传输指令:
-        /_com:data:file:get:path|hash|size|filemark:_
-        /_com:data:file:post:path|size|hash|mode|filemark:_
-
-        /_com:data:file(folder):get:filepath|size|hash|mode|filemark:_
-        /_com:data:file(folder):post:filepath|size|hash|mode|filemark:_
-    ——————————————————————————————————————————————————
-    EXSync通讯指令:
-
-    会话id确认：
-        /_com:comm:sync:post:session|True:_
-        /_com:comm:sync:post:session|False:_
-
-    获取密码:
-
-        密码哈希值操作指令
-        /_com:comm:sync:get:password_hash|local_hash:_
-        /_com:comm:sync:post:password_hash|local_hash:_
-
-        密码指令
-        /_com:comm:sync:get:password|local_password:_
-        /_com:comm:sync:post:password|local_password:_
-
-    索引文件操作
-        /_com:comm:sync:get:index:_
-        /_com:comm:sync:post:index|path(file_index):_
-
-    获取客户端信息:
-        /_com:comm:sync:get:version:_
-        /_com:comm:sync:post:version:_
+    更改指令格式为：
+        {
+            "command": "data"/"comm", # 命令类型(数据类型/命令类型)
+            "type": "file",      # 操作类型(具体操作方式)
+            "method": "get",     # 操作方法(get/post 获取与提交)
+            "data": {            # 参数数据集(具体参数)
+                "a": 1
+                ....
+            }
+        }
 
     ——————————————————————————————————————————————————
 
