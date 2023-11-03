@@ -482,7 +482,7 @@ class DataSocket(Scan):
         self.timeDictTools = TimeDictTools(self.timedict)
         self.closeTimeDict = False
 
-    def recvFile(self, command: list, mark: str):
+    def recvFile(self, data_: dict, mark: str):
         """
         客户端发送文件至服务端
         文件与文件夹的传输指令:
@@ -498,11 +498,37 @@ class DataSocket(Scan):
         mode = 2;
         如果存在文件，并且准备发送的文件字节是对方文件字节的超集(xxh3_128相同)，则续写文件。
         """
-        remote_file_path = command[0]
-        remote_file_size = command[1]
-        mode = int(command[3])
-        # 用于文件传输
-        filemark = command[4]
+        remote_file_path = str(data_.get('file_path'))
+        remote_file_size = data_.get('file_size', 0)
+        remote_file_hash = str(data_.get('file_hash'))
+        mode = data_.get('mode')
+        filemark = str(data_.get('filemark'))  # 用于接下来的文件传输的mark
+
+        if not remote_file_path:
+            logging.warning('Core function recvFile: Missing parameter [file_path]!')
+            return Status.PARAMETER_ERROR
+
+        elif not remote_file_size:
+            logging.warning('Core function recvFile: Missing parameter [file_size]!')
+            return Status.PARAMETER_ERROR
+
+        elif not remote_file_hash:
+            logging.warning('Core function recvFile: Missing parameter [file_hash]!')
+            return Status.PARAMETER_ERROR
+
+        elif not mode:
+            logging.warning('Core function recvFile: Missing parameter [mode]!')
+            return Status.PARAMETER_ERROR
+
+        elif not filemark:
+            logging.warning('Core function recvFile: Missing parameter [filemark]!')
+            return Status.PARAMETER_ERROR
+
+        elif len(filemark) == 8 and isinstance(remote_file_size, int) and isinstance(mode, int) and len(
+                remote_file_hash) == 32:
+            logging.warning('Core function recvFile: parameter error!')
+            return Status.PARAMETER_ERROR
+
         # 用于信息的交换答复
         reply_mark = mark
 
@@ -532,7 +558,7 @@ class DataSocket(Scan):
                 # 如果不存在文件，则创建文件。否则不执行操作。
                 if exists:
                     return
-                file_size = int(remote_file_size[1])
+                file_size = remote_file_size
                 with open(remote_file_path, mode='ab') as f:
                     while True:
                         if file_size > 0:
@@ -551,7 +577,7 @@ class DataSocket(Scan):
                                 data = self.timedict.getRecvData(filemark, decrypt_password=self.password)
                                 f.write(data)
                 else:
-                    file_size = int(remote_file_size[1])
+                    file_size = remote_file_size
                     with open(remote_file_path, mode='ab') as f:
                         while True:
                             if file_size > 0:
@@ -1094,7 +1120,7 @@ class CommandSocket(DataSocketExpand):
     def recvCommand(self):
         """
         以dict格式接收指令:
-        {
+        [8bytesMark]{
             "command": "data"/"comm", # 命令类型
             "type": "file",      # 操作类型
             "method": "get",     # 操作方法
@@ -1108,6 +1134,8 @@ class CommandSocket(DataSocketExpand):
         """
         while True:
             command = self.command_socket.recv(1024).decode(self.encode_type)
+            if len(command) < 9:
+                continue
             mark, command = command[:8], command[8:]  # 8字节的mark头信息和指令
 
             command = literal_eval(command)
@@ -1154,8 +1182,11 @@ class CommandSocket(DataSocketExpand):
         """
         远程客户端请求本地发送文件
 
-        data: {
-
+        "data": {
+            "path": ...
+            "remote_file_hash": ...
+            "remote_size": ...
+            "filemark": ...
         }
 
         :param data_:
@@ -1166,6 +1197,7 @@ class CommandSocket(DataSocketExpand):
             thread = threading.Thread(target=self.sendFile, args=(data_, mark))
             thread.daemon = True
             thread.start()
+            logging.debug(f'Client {self.address}: dataGetFile executing')
             return True
         else:
             logging.warning(f'Client {self.address}: Cancel sending [file] due to insufficient permissions!')
@@ -1174,6 +1206,14 @@ class CommandSocket(DataSocketExpand):
     def dataPostFile(self, data_: dict, mark: str) -> bool:
         """
         远程客户端请求本地接收文件
+
+        "data": {
+            "file_path": ...,
+            "file_size": ...,
+            "mode": ...,
+            "filemark": ...
+        }
+
         :param data_:
         :param mark:
         :return:
@@ -1182,6 +1222,7 @@ class CommandSocket(DataSocketExpand):
             thread = threading.Thread(target=self.recvFile, args=(data_, mark))
             thread.daemon = True
             thread.start()
+            logging.debug(f'Client {self.address}: dataPostFile executing')
             return True
         else:
             logging.warning(f'Client {self.address}: Cancel receiving [file] due to insufficient permissions!')
@@ -1190,8 +1231,8 @@ class CommandSocket(DataSocketExpand):
     def dataGetFolder(self, data_: dict, mark: str) -> bool:
         """
 
-        data:{
-            path: ...
+        "data":{
+            "path": ...
         }
 
         :param data_:
@@ -1202,6 +1243,7 @@ class CommandSocket(DataSocketExpand):
             thread = threading.Thread(target=self.getFolder, args=(data_, mark))
             thread.daemon = True
             thread.start()
+            logging.debug(f'Client {self.address}: dataGetFolder executing')
             return True
         else:
             logging.warning(f'Client {self.address}: Cancel sending [folder] due to insufficient permissions!')
@@ -1210,8 +1252,8 @@ class CommandSocket(DataSocketExpand):
     def dataPostFolder(self, data_: dict) -> bool:
         """
 
-        data: {
-            path: ...
+        "data": {
+            "path": ...
         }
         :param data_:
         :return:
@@ -1220,22 +1262,23 @@ class CommandSocket(DataSocketExpand):
             thread = threading.Thread(target=self.postFolder, args=(data_,))
             thread.daemon = True
             thread.start()
-            logging.warning(f'Client {self.address}: Cancel receiving [folder] due to insufficient permissions!')
+            logging.debug(f'Client {self.address}: dataPostFolder executing')
             return True
         else:
+            logging.warning(f'Client {self.address}: Cancel receiving [folder] due to insufficient permissions!')
             return False
 
     def dataGetIndex(self, data_: dict, mark: str) -> bool:
         """
 
-        data: {
-            spacename: ...
-            json: {
+        "data": {
+            "spacename": ...
+            "json": {
                 file1
                 file2
                 ...
             }
-            isfile: Boolean
+            "isfile": Boolean
         }
 
         :param data_:
@@ -1246,6 +1289,7 @@ class CommandSocket(DataSocketExpand):
             thread = threading.Thread(target=self.getIndex, args=(data_, mark))
             thread.daemon = True
             thread.start()
+            logging.debug(f'Client {self.address}: dataGetIndex executing')
             return True
         else:
             logging.warning(f'Client {self.address}: Cancel sending [Index] due to insufficient permissions!')
@@ -1254,10 +1298,10 @@ class CommandSocket(DataSocketExpand):
     def dataPostIndex(self, data_: dict, mark: str) -> bool:
         """
 
-        data: {
-            spacename: ... # 同步空间名称
-            json: ... # json字符串
-            isfile: Boolean # 是否为文件索引
+        "data": {
+            "spacename": ... # 同步空间名称
+            "json": ... # json字符串
+            "isfile": Boolean # 是否为文件索引
         }
 
         :param data_:
@@ -1268,6 +1312,7 @@ class CommandSocket(DataSocketExpand):
             thread = threading.Thread(target=self.postIndex, args=(data_, mark))
             thread.daemon = True
             thread.start()
+            logging.debug(f'Client {self.address}: dataPostIndex executing')
             return True
         else:
             logging.warning(f'Client {self.address}: Cancel receiving [Index] due to insufficient permissions!')
@@ -1278,8 +1323,8 @@ class CommandSocket(DataSocketExpand):
         # 对方发送：[8bytes_mark]/_com:comm:sync:post:verifyConnect:version
         """
 
-        data: {
-            version: ...
+        "data": {
+            "version": ...
         }
 
         :param data_:
@@ -1290,6 +1335,7 @@ class CommandSocket(DataSocketExpand):
             thread = threading.Thread(target=self.verifyConnect, args=(data_, mark))
             thread.daemon = True
             thread.start()
+            logging.debug(f'Client {self.address}: commPostVerifyConnect executing')
             return True
         else:
             logging.warning(f'Client {self.address}: Cancel [verifyConnect] due to insufficient permissions!')
@@ -1298,8 +1344,8 @@ class CommandSocket(DataSocketExpand):
     def commPostCommand(self, data_: dict, mark: str) -> bool:
         """
 
-        data: {
-            command: ...
+        "data": {
+            "command": ...
         }
 
         :param data_:
@@ -1310,6 +1356,7 @@ class CommandSocket(DataSocketExpand):
             thread = threading.Thread(target=self.executeCommand, args=(data_, mark))
             thread.daemon = True
             thread.start()
+            logging.debug(f'Client {self.address}: commPostCommand executing')
             return True
         else:
             logging.warning(f'Client {self.address}: Cancel [postCommand] due to insufficient permissions!')

@@ -49,65 +49,67 @@ class Client(Config):
         socks.set_default_proxy(socks.SOCKS5, proxy_host, proxy_port)
         socket.socket = socks.socksocket
 
-    def createCommandSocket(self):
-        """创建客户端的指令套接字"""
-        self.client_command_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        return self.client_command_socket
-
-    def host_info(self, host_info):
+    def host_info(self, host_info) -> bool:
         """输入与主机联系的属性资料, 用于确认连接状态"""
         if type(host_info) is dict and len(host_info) >= 1:
             self.host_info = host_info
             return True
         return False
 
-    def connectVerify(self, debug: bool = False):
-        # 发送xxh3_128的密码值
-        result = SocketTools.sendCommandNoTimeDict(self.client_command_socket,
-                                                   xxhash.xxh3_128(self.password).hexdigest())
-        if result == 'success':
-            # 验证成功
-            self.verify_manage[self.client_command_socket.getpeername()[0]] = {
-                "AES_KEY": self.password
-            }
-            return True
-
-        elif result == 'fail':
-            # 验证服务端密码失败
-            debug and logging.error(f'Failed to verify server {self.ip_addr} password!')
-            return False
-
-        elif result == Status.DATA_RECEIVE_TIMEOUT:
-            # 验证服务端密码超时
-            debug and logging.error(f'Verifying server {self.ip_addr} password timeout!')
-            return False
-
-        else:
-            # 验证服务端密码时得到未知参数
-            debug and logging.error(f'Unknown parameter obtained while verifying server {self.ip_addr} password!')
-            return False
-
-    def connectVerifyNoPassword(self, rsa_publickey: str, debug: bool = False):
-        try:
-            rsa_pub = RSA.import_key(rsa_publickey)
-        except Exception as e:
-            print(e)
-            if debug:
-                logging.error(
-                    f'''When connecting to server {self.ip_addr}, the other party's RSA public key is incorrect''')
-                return False
-            return False
-        cipher_pub = PKCS1_OAEP.new(rsa_pub)
-        message = HashTools.getRandomStr(8).encode('utf-8')
-        ciphertext = cipher_pub.encrypt(message)
-        SocketTools.sendCommandNoTimeDict(self.client_command_socket, ciphertext, output=False)
-        return True
+    def createCommandSocket(self):
+        """创建客户端的指令套接字"""
+        self.client_command_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        return self.client_command_socket
 
     def connectRemoteCommandSocket(self):
         """
         尝试连接ip_list,连接成功返回连接的ip，并且增加进connected列表
         连接至对方的server-command_socket
         """
+
+        def connectVerify(debug_status: bool = False) -> bool:
+            # 发送xxh3_128的密码值
+            out = SocketTools.sendCommandNoTimeDict(self.client_command_socket,
+                                                    xxhash.xxh3_128(self.password).hexdigest())
+            if out == 'success':
+                # 验证成功
+                self.verify_manage[self.client_command_socket.getpeername()[0]] = {
+                    "AES_KEY": self.password
+                }
+                return True
+
+            elif out == 'fail':
+                # 验证服务端密码失败
+                debug_status and logging.error(f'Failed to verify server {self.ip_addr} password!')
+                return False
+
+            elif out == Status.DATA_RECEIVE_TIMEOUT:
+                # 验证服务端密码超时
+                debug_status and logging.error(f'Verifying server {self.ip_addr} password timeout!')
+                return False
+
+            else:
+                # 验证服务端密码时得到未知参数
+                debug_status and logging.error(
+                    f'Unknown parameter obtained while verifying server {self.ip_addr} password!')
+                return False
+
+        def connectVerifyNoPassword(public_key: str, out: bool = False) -> bool:
+            try:
+                rsa_pub = RSA.import_key(public_key)
+            except Exception as e:
+                print(e)
+                if out:
+                    logging.error(
+                        f'''When connecting to server {self.ip_addr}, the other party's RSA public key is incorrect''')
+                    return False
+                return False
+            cipher_pub = PKCS1_OAEP.new(rsa_pub)
+            message = HashTools.getRandomStr(8).encode('utf-8')
+            ciphertext = cipher_pub.encrypt(message)
+            SocketTools.sendCommandNoTimeDict(self.client_command_socket, ciphertext, output=False)
+            return True
+
         if not self.client_command_socket:
             logging.debug('Client_Command_Socket not created.')
             return Status.UNKNOWN_ERROR
@@ -172,7 +174,12 @@ class Client(Config):
                     continue
                 version = self.config['version']
                 result = SocketTools.sendCommandNoTimeDict(self.client_command_socket,
-                                                           f'/_com:comm:sync:post:verifyConnect:{version}')
+                                                           '''{
+                                                               "command": "comm",
+                                                               "type": "verifyconnect",
+                                                               "method": "post",
+                                                               "data": {"version": %s}
+                                                           }''' % version)
                 # 验证sha256值是否匹配
                 try:
                     remote_password_sha256, rsa_publickey = result.split(':')
@@ -186,7 +193,7 @@ class Client(Config):
                     # todo: 有密码验证
                     debug = (i == count)
 
-                    if self.connectVerify(debug):
+                    if connectVerify(debug):
                         pass
                     else:
                         continue
@@ -197,7 +204,7 @@ class Client(Config):
                     # todo: 无密码验证
                     logging.info(f'Target server {self.ip_addr} has no password set.')
                     debug = (i == count)
-                    if self.connectVerifyNoPassword(rsa_publickey, debug):
+                    if connectVerifyNoPassword(rsa_publickey, debug):
                         pass
                     else:
                         continue
@@ -303,7 +310,7 @@ class CommandSend(Config, Client):
 
         self.timedict = TimeDictInit(data_socket, command_socket)
 
-    def post_File(self, path, mode=1, output_path=None):
+    def post_File(self, path: str, mode: int = 1, output_path: str = None):
         """
         输入文件路径，发送文件至服务端
         data_socket: 与服务端连接的socket
@@ -330,10 +337,20 @@ class CommandSend(Config, Client):
         data_block = self.block - len(filemark)
         # 远程服务端初始化接收文件
         # 服务端返回信息格式：exist | filesize | filehash | filedate
-        result = SocketTools.sendCommand(self.timedict, self.command_socket,
-                                         f'/_com:data:file:post:{path}|{local_size}|{hash_value}|{mode}|{filemark}:_',
-                                         mark=reply_mark)
 
+        command = '''{
+            "command": "data",
+            "type": "file",
+            "method": "post",
+            "data": {
+                "file_path": "%s",
+                "file_size": %s,
+                "file_hash": "%s",
+                "mode": %s,
+                "filemark": "%s"
+            }
+        }''' % path, local_size, hash_value, mode, filemark
+        result = SocketTools.sendCommand(self.timedict, self.command_socket, str(command), mark=reply_mark)
         # 服务端准备完毕，开始传输文件
         if result == Status.DATA_RECEIVE_TIMEOUT:
             return Status.DATA_RECEIVE_TIMEOUT
