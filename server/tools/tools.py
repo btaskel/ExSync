@@ -42,7 +42,7 @@ def is_uuid(uuid_str: str):
 
 class HashTools:
     @staticmethod
-    def getFileHash(path: str, block: int = 65536):
+    def getFileHash(path: str, block: int = 65536) -> str:
         """获取文件的128位 xxhash值"""
         hasher = xxhash.xxh3_128()
 
@@ -55,7 +55,7 @@ class HashTools:
         return hasher.hexdigest()
 
     @staticmethod
-    def getFileHash_32(path: str, block: int = 65536):
+    def getFileHash_32(path: str, block: int = 65536) -> str:
         """获取文件的32位 xxhash值"""
         hasher = xxhash.xxh32()
 
@@ -68,7 +68,7 @@ class HashTools:
         return hasher.hexdigest()
 
     @staticmethod
-    def getRandomStr(number: int = 6):
+    def getRandomStr(number: int = 6) -> str:
         """
         随机获取N个 26个大小写字母
         默认: 6位
@@ -108,8 +108,8 @@ class SocketTools:
         :param command:
         :return:
         """
-        mark_value = mark
-        if not mark_value:
+        mark_value = str(mark)
+        if not mark_value or len(mark_value) != 8:
             while True:
                 characters = string.ascii_letters + '1234567890'
                 mark_value = "".join(random.sample(characters, 8))
@@ -123,39 +123,46 @@ class SocketTools:
             socket_encode = readConfig.readJson()['server']['addr']['encode']
         except Exception as e:
             raise KeyError('读取Config时错误：', e)
-        if output:
+
+        data = mark_value + command
+
+        try:
+            if encrypt_password:
+                cry = CryptoTools(encrypt_password)
+                data = cry.aes_ctr_encrypt(data)
+            else:
+                data = data.encode(socket_encode)
+            if len(data) > 1024:
+                raise ValueError(f'发送命令时超过1K bytes: {mark_value + command}')
+        except Exception as e:
+            print(e)
+            return
+
+        if not output:
             try:
-                data = mark_value + command
-                if encrypt_password:
-                    cry = CryptoTools(encrypt_password)
-                    data = cry.aes_ctr_encrypt(data)
-                else:
-                    data = data.encode(socket_encode)
-                if len(data) > 1024:
-                    raise ValueError(f'发送命令时超过1024个字节: {mark_value + command}')
                 socket_.send(data)
-                with concurrent.futures.ThreadPoolExecutor() as excutor:
-                    future = excutor.submit(timedict.getRecvData(mark_value).decode(socket_encode))
-                    try:
-                        # 没有超时2000ms则返回接收值
-                        result = future.result(timeout=timeout)
-                        if mark is None:
-                            return mark_value, result
-                        return result
-                    except concurrent.futures.TimeoutError:
-                        # 超时返回错误
-                        return Status.DATA_RECEIVE_TIMEOUT
-            except Exception as e:
-                print(e)
-                return False
-        else:
-            try:
-                socket_.send((mark_value + command).encode(socket_encode))
-                if mark is None:
+                if not mark:
                     return mark_value
             except Exception as e:
                 raise TimeoutError('Socket错误: ', e)
-            return True
+            return
+
+        try:
+            socket_.send(data)
+            with concurrent.futures.ThreadPoolExecutor() as excutor:
+                future = excutor.submit(timedict.getRecvData(mark_value).decode(socket_encode))
+                try:
+                    # 没有超时2000ms则返回接收值
+                    result = future.result(timeout=timeout)
+                    if mark is None:
+                        return mark_value, result
+                    return result
+                except concurrent.futures.TimeoutError:
+                    # 超时返回错误
+                    return Status.DATA_RECEIVE_TIMEOUT
+        except Exception as e:
+            print(e)
+            return Status.UNKNOWN_ERROR
 
     @staticmethod
     def sendCommandNoTimeDict(socket_, command: str or bytes, output: bool = True, timeout: int = 2):

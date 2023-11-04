@@ -132,22 +132,28 @@ class TimeDictInit(TimeDict):
         如果在开启加密时, 发送方累计超过十次发送无效数据, 则停止接收数据
         """
         count = 0
-        # todo
         while True:
             if not self.close_all:
                 result = self.data_socket.recv(1024)
                 try:
+                    # 确保接收到的数据有效
+                    if len(result) < 16:
+                        continue
+
+                    # 解密数据内容
                     if self.encry:
                         cry = CryptoTools(self.password)
-                        cry.aes_ctr_decrypt(result)
+                        result = cry.aes_ctr_decrypt(result)
+
+                    # 分流数据内容
                     mark, data = result[:8], result[8:]
                     if self.hasKey(mark):
                         self.set(mark, data)
                 except Exception as e:
                     print(e)
                     count += 1
-                    if count >= 10:
-                        # 获取到十次的, 连续的未知数据, 断开连接
+                    if count >= 20:
+                        # 获取到20次的, 连续的未知数据, 断开连接
                         self.close_all = True
             else:
                 self.close()

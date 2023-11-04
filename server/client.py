@@ -3,6 +3,7 @@ import logging
 import os
 import shutil
 import socket
+from ast import literal_eval
 
 import socks
 import xxhash
@@ -49,7 +50,7 @@ class Client(Config):
         socks.set_default_proxy(socks.SOCKS5, proxy_host, proxy_port)
         socket.socket = socks.socksocket
 
-    def host_info(self, host_info) -> bool:
+    def host_info(self, host_info: dict) -> bool:
         """输入与主机联系的属性资料, 用于确认连接状态"""
         if type(host_info) is dict and len(host_info) >= 1:
             self.host_info = host_info
@@ -349,16 +350,31 @@ class CommandSend(Config, Client):
                 "mode": %s,
                 "filemark": "%s"
             }
-        }''' % path, local_size, hash_value, mode, filemark
-        result = SocketTools.sendCommand(self.timedict, self.command_socket, str(command), mark=reply_mark)
-        # 服务端准备完毕，开始传输文件
-        if result == Status.DATA_RECEIVE_TIMEOUT:
-            return Status.DATA_RECEIVE_TIMEOUT
+        }''' % (path, local_size, hash_value, mode, filemark)
+        result = SocketTools.sendCommand(self.timedict, self.command_socket, command, mark=reply_mark)
         try:
-            values = result.split('|')
-        except Exception as e:
+            data = literal_eval(result)
+        except ValueError as e:
             print(e)
             return Status.PARAMETER_ERROR
+
+        exists = data.get('exists')
+        file_size = data.get('file_size')
+        file_hash = data.get('file_hash')
+        file_date = data.get('file_date')
+
+        if not isinstance(exists, bool) or not isinstance(file_size, int) or not isinstance(file_hash,
+                                                                                            str) or not isinstance(\file_date, str):
+            return Status.PARAMETER_ERROR
+
+        # # 服务端准备完毕，开始传输文件
+        # if result == Status.DATA_RECEIVE_TIMEOUT:
+        #     return Status.DATA_RECEIVE_TIMEOUT
+        # try:
+        #     values = result.split('|')
+        # except Exception as e:
+        #     print(e)
+        #     return Status.PARAMETER_ERROR
 
         # 文件存在状态判断
         if values[0] == 'True':

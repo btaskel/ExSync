@@ -40,7 +40,7 @@ class Scan(readConfig):
         self.command_port = self.config['server']['addr']['port'] + 1
         self.listen_port = self.config['server']['addr']['port'] + 2
         self.password = self.config["server"]["addr"]["password"]
-        self.local_mark = self.config['server']['addr']['id']
+        self.id = self.config['server']['addr']['id']
         # 读取编码类型
         if self.config['server']['setting']['encode']:
             self.encode_type = self.config['server']['setting']['encode']
@@ -142,11 +142,14 @@ class Scan(readConfig):
                 # 连接设备的指定端口
                 if test.connect_ex((ip, self.command_port)) == 0:
                     version = self.g['verify_version']
-                    remote_password_sha256 = SocketTools.sendCommandNoTimeDict(test,
-                                                                               f'/_com:comm:sync:post:verifyConnect:{version}')
+                    result = SocketTools.sendCommandNoTimeDict(test, '''{"command": "comm","type": "verifyconnect",
+                    "method": "post","data": {"version": %s}}'''.replace('\x20', '') % version)
+
                     # 验证sha256值是否匹配
                     try:
-                        remote_password_sha256, rsa_publickey = remote_password_sha256.split(':')
+                        dict_result = literal_eval(result).get('data')
+                        remote_password_sha256 = dict_result.get('password_hash')
+                        public_key = dict_result.get('public_key')
                     except Exception as e:
                         print(e)
                         test.shutdown(socket.SHUT_RDWR)
@@ -155,28 +158,42 @@ class Scan(readConfig):
 
                     if remote_password_sha256 == hashlib.sha256(self.password.encode('utf-8')).hexdigest():
 
-                        # 发送xxh3_128的密码值
-                        result = SocketTools.sendCommandNoTimeDict(test, xxhash.xxh3_128(self.password).hexdigest())
-
+                        # 发送sha384
+                        password_sha384 = hashlib.sha384(self.password.encode()).hexdigest()
+                        result = SocketTools.sendCommandNoTimeDict(test, command='''
+                        {
+                            "data": {
+                            password_hash: "%s"
+                            }
+                        }
+                        '''.replace('\x20', '') % password_sha384)
                         try:
-                            status, remote_mark = result.split('|')
+                            data = literal_eval(result).get('data')
+                            status = data.get('status')
+                            remote_id = data.get('id')
                         except Exception as e:
                             print(e)
                             logging.error(f'Unknown status returned while scanning server {ip}')
+                            test.shutdown(socket.SHUT_RDWR)
+                            test.close()
                             continue
+
                         if status == 'success':
                             # 验证成功
                             self.verified_devices.add(ip)
                             self.verify_manage[test.getpeername()[0]] = {
-                                "REMOTE_MARK": remote_mark,
+                                "id": remote_id,
                                 "AES_KEY": self.password
                             }
+
                         elif status == 'fail':
                             # todo: 验证服务端密码失败
                             pass
+
                         elif status == Status.DATA_RECEIVE_TIMEOUT:
                             # todo: 验证服务端密码超时
                             pass
+
                         else:
                             # todo: 验证服务端密码时得到未知参数
                             pass
@@ -185,14 +202,24 @@ class Scan(readConfig):
                         test.close()
                         continue
 
-                    elif remote_password_sha256 == 'None' and rsa_publickey:
+                    elif remote_password_sha256 == 'None' and public_key:
                         # 对方密码为空，示意任何设备均可连接
                         # 首先使用RSA发送一个随机字符串给予对方
-                        rsa_pub = RSA.import_key(rsa_publickey)
+                        rsa_pub = RSA.import_key(public_key)
 
                         cipher_pub = PKCS1_OAEP.new(rsa_pub)
 
-                        message = f'{HashTools.getRandomStr(8)}|{self.local_mark}'.encode('utf-8')
+                        session_password = HashTools.getRandomStr(8)
+
+                        # 即将发送的加密数据
+                        message = ('''
+                        {
+                            "data": {
+                                "session_password": "%s",
+                                "id": "%s"
+                            }
+                        }
+                        '''.replace('\x20', '') % (session_password, self.id)).encode('utf-8')
 
                         ciphertext = cipher_pub.encrypt(message)
 
@@ -201,7 +228,7 @@ class Scan(readConfig):
                         self.verified_devices.add(ip)
                         self.verify_manage[test.getpeername()[0]] = {
                             "REMOTE_MARK": 1,
-                            "AES_KEY": self.password
+                            "AES_KEY": session_password
                         }
 
                     elif remote_password_sha256 == Status.DATA_RECEIVE_TIMEOUT:
@@ -234,6 +261,7 @@ class createSocket(Scan):
     def __init__(self):
         super().__init__()
         # Socks5代理设置
+        self.host_id = self.config['server']['addr']['id']
         self.devices = None
         self.client_connected = set()
         if self.config['server']['proxy']['enabled']:
@@ -410,6 +438,7 @@ class createSocket(Scan):
         client_info = {
             'client_mark': client_mark,
             'ip': ip,
+            'id': self.host_id,
             'AES_KEY': aes_key
         }
         client.host_info(client_info)
@@ -438,6 +467,7 @@ class createSocket(Scan):
         else:
             socket_manage[client_mark] = {
                 'ip': ip,
+                'id': self.host_id,
                 'client': client,
                 'command_socket': client_command,
                 'data_socket': client_data,
@@ -497,12 +527,26 @@ class DataSocket(Scan):
 
         mode = 2;
         如果存在文件，并且准备发送的文件字节是对方文件字节的超集(xxh3_128相同)，则续写文件。
+
+        {
+            "command": "data",
+            "type": "file",
+            "method": "post",
+            "data": {
+                "file_path": "%s",
+                "file_size": %s,
+                "file_hash": "%s",
+                "mode": %s,
+                "filemark": "%s"
+            }
+        }
         """
-        remote_file_path = str(data_.get('file_path'))
-        remote_file_size = data_.get('file_size', 0)
-        remote_file_hash = str(data_.get('file_hash'))
+        remote_file_path: str = str(data_.get('file_path'))
+        remote_file_size: int = data_.get('file_size', 0)
+        remote_file_hash: str = str(data_.get('file_hash'))
         mode = data_.get('mode')
         filemark = str(data_.get('filemark'))  # 用于接下来的文件传输的mark
+        nonce_length: int = 8
 
         if not remote_file_path:
             logging.warning('Core function recvFile: Missing parameter [file_path]!')
@@ -533,7 +577,7 @@ class DataSocket(Scan):
         reply_mark = mark
 
         # 接收数据初始化
-        self.timedict.createRecv(filemark)
+        self.timedict.createRecv(filemark, )
 
         if os.path.exists(remote_file_path):
             local_file_size = os.path.getsize(remote_file_path)
@@ -545,14 +589,20 @@ class DataSocket(Scan):
             exists = False
 
         # 将所需文件信息返回到客户端
-        SocketTools.sendCommand(self.timedict, self.data_socket,
-                                f'{exists}|{local_file_size}|{local_file_hash}|{local_file_date}',
-                                output=False, mark=reply_mark)
+        command = """
+        "data": {
+            "exists": %s,
+            "file_size": %s,
+            "file_hash": %s,
+            "file_date": %s
+        }
+        """ % (exists, local_file_size, local_file_hash, local_file_date)
+        SocketTools.sendCommand(self.timedict, self.data_socket, command, output=False, mark=reply_mark)
 
         # 文件传输切片
         if not local_file_size:
             return
-        data_block = self.block - len(filemark)
+        data_block = self.block - len(filemark) - nonce_length
         match mode:
             case 0:
                 # 如果不存在文件，则创建文件。否则不执行操作。
@@ -902,82 +952,116 @@ class DataSocketExpand(DataSocket):
             logging.warning(f'Client {self.address} : Missing parameter [version] for execution [verifyConnect]')
             return False
 
-        if self.g['verify_version'] == version:
-            if self.password == '' or self.password is None:
-                # 如果密码为空, 则与客户端交换AES密钥
+        if not self.g['verify_version'] == version:
+            # todo: 客户方与服务端验证版本不一致
+            return
 
-                # 生成一个新的RSA密钥对
-                key = RSA.generate(2048)
+        if not self.password:
+            # 如果密码为空, 则与客户端交换AES密钥
 
-                # 导出公钥和私钥
-                private_key = key.export_key()
-                public_key = key.publickey().export_key()
+            # 生成一个新的RSA密钥对
+            key = RSA.generate(2048)
 
-                # 发送公钥, 等待对方使用公钥加密随机密码
-                aes_Key = SocketTools.sendCommand(timedict=self.timedict, socket_=self.command_socket,
-                                                  command=f'None:{public_key}', mark=mark)
-                if aes_Key == Status.DATA_RECEIVE_TIMEOUT:
-                    self.command_socket.shutdown(socket.SHUT_RDWR)
-                    self.command_socket.close()
-                    return
+            # 导出公钥和私钥
+            private_key = key.export_key()
+            public_key = key.publickey().export_key()
 
-                # 加载公钥和私钥
-                private_key = RSA.import_key(private_key)
-                public_key = RSA.import_key(public_key)
+            # 发送公钥, 等待对方使用公钥加密随机密码
+            result = SocketTools.sendCommand(timedict=self.timedict, socket_=self.command_socket, mark=mark,
+                                             command='''{"data": {"public_key": "%s"}}''' % public_key)
 
-                # 创建一个新的cipher实例
-                cipher_pub = PKCS1_OAEP.new(public_key)
-                cipher_priv = PKCS1_OAEP.new(private_key)
-
-                # # 加密一条消息
-                # message = b'This is a secret message'
-                # ciphertext = cipher_pub.encrypt(message)
-
-                # 解密这条消息
-                aes_Key = cipher_priv.decrypt(aes_Key).decode('utf-8')
-
-                address = self.command_socket.getpeername()[0]
-                self.verify_manage[address] = {
-                    "REMOTE_MARK": 1,
-                    "AES_KEY": aes_Key
-                }
-
-            else:
-                # 如果密码不为空, 则无需进行密钥交换, 只需验证密钥即可
-                password_sha256 = hashlib.sha256(self.password.encode('utf-8')).hexdigest()
-                password_xxhash = xxhash.xxh3_128(self.password).hexdigest()
-                # 验证xxh3_128值是否匹配
-                remote_password_xxhash = SocketTools.sendCommand(timedict=self.timedict, socket_=self.data_socket,
-                                                                 command=f'{password_sha256}:None',
-                                                                 mark=mark)  # password_sha256, RSA_publicKey
-                if remote_password_xxhash == password_xxhash:
-                    # 验证通过
-                    SocketTools.sendCommand(timedict=self.timedict, socket_=self.data_socket,
-                                            command=f'success|{self.local_mark}',
-                                            output=False)
-                    self.command_socket.verify_status, self.data_socket.verify_status = True
-
-                    address = self.command_socket.getpeername()[0]
-                    self.verify_manage[address] = {
-                        "REMOTE_MARK": 1,
-                        "AES_KEY": self.password
-                    }
-
-                elif remote_password_xxhash == Status.DATA_RECEIVE_TIMEOUT:
-                    # todo: 服务端密码验证失败(超时)
-                    pass
-
-                else:
-                    # todo: 服务端密码验证失败(或得到错误参数)
-                    SocketTools.sendCommand(timedict=self.timedict, socket_=self.data_socket, command='fail|None',
-                                            output=False)
-
+            if result == Status.DATA_RECEIVE_TIMEOUT:
                 self.command_socket.shutdown(socket.SHUT_RDWR)
                 self.command_socket.close()
                 return
 
+            # 加载公钥和私钥
+            private_key = RSA.import_key(private_key)
+            public_key = RSA.import_key(public_key)
+
+            # 创建一个新的cipher实例
+            cipher_pub = PKCS1_OAEP.new(public_key)
+            cipher_priv = PKCS1_OAEP.new(private_key)
+
+            # # 加密一条消息
+            # message = b'This is a secret message'
+            # ciphertext = cipher_pub.encrypt(message)
+
+            # 解密这条消息
+            source = cipher_priv.decrypt(result).decode('utf-8')
+
+            try:
+                data = literal_eval(source)['data']
+                session_password = data.get('session_password')
+                remote_id = data.get('id')
+            except Exception as e:
+                print(e)
+                return
+
+            address = self.command_socket.getpeername()[0]
+            self.verify_manage[address] = {
+                "REMOTE_ID": remote_id,
+                "AES_KEY": session_password
+            }
+
         else:
-            # todo: 客户方与服务端验证版本不一致
+            # 如果密码不为空, 则无需进行密钥交换, 只需验证密钥即可
+            password_sha256 = hashlib.sha256(self.password.encode('utf-8')).hexdigest()
+            # 远程验证sha256值是否匹配
+            result = SocketTools.sendCommand(timedict=self.timedict, socket_=self.data_socket,
+                                             mark=mark, command='''
+            {
+                "data": {
+                "password_hash": "%s"
+                }
+            }
+            '''.replace('\x20', '') % password_sha256)  # password_sha256, RSA_publicKey
+
+            try:
+                remote_password_sha384 = literal_eval(result).get('data').get('password')
+            except Exception as e:
+                print(e)
+                return
+
+            # 验证sha384值是否匹配
+            password_sha384 = hashlib.sha384(self.password.encode('utf-8')).hexdigest()
+            if remote_password_sha384 == password_sha384:
+                # 验证通过
+                SocketTools.sendCommand(timedict=self.timedict, socket_=self.data_socket, mark=mark,
+                                        command="""
+                {
+                    "data": {
+                        "status": 'success',
+                        "id": %s
+                    }
+                }
+                """.replace('\x20', '') % self.id, output=False)
+
+                self.command_socket.verify_status, self.data_socket.verify_status = True
+
+                address = self.command_socket.getpeername()[0]
+                self.verify_manage[address] = {
+                    "REMOTE_MARK": 1,
+                    "AES_KEY": self.password
+                }
+
+            elif remote_password_sha384 == Status.DATA_RECEIVE_TIMEOUT:
+                # todo: 服务端密码验证失败(超时)
+                pass
+
+            else:
+                # todo: 服务端密码验证失败(或得到错误参数)
+                SocketTools.sendCommand(timedict=self.timedict, socket_=self.data_socket, mark=mark, command="""
+                {
+                    "data": {
+                        "status": 'fail',
+                        "id": %s
+                    }
+                }
+                """.replace('\x20', '') % self.id, output=False)
+
+            self.command_socket.shutdown(socket.SHUT_RDWR)
+            self.command_socket.close()
             return
 
 
