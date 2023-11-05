@@ -119,7 +119,7 @@ class createSocket(Scan):
         else:
             # 开始主动验证
             command_socket.permission = PermissionEnum.GUEST
-
+        command_socket.send('')
         if address[0] in self.socket_info:
             self.socket_info[address[0]]['command'] = command_socket
         else:

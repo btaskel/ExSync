@@ -29,23 +29,12 @@ class readConfig:
     读取配置信息
     """
 
-    def __init__(self):
-        self.g = {
-            'verify_version': 0.1
-        }
-
-    # 全局变量管理
-    def __setitem__(self, key, value):
-        self.g[key] = value
-
-    def __getitem__(self, item):
-        return self.g[item]
-
-    def __delitem__(self, key):
-        del self.g[key]
-
     @staticmethod
     def readJson():
+        """
+        读取config
+        :return:
+        """
         config = {}
         with open('.\\config\\config.json', mode='r', encoding='utf-8') as f:
             json_file = json.loads(f.read())

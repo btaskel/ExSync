@@ -14,12 +14,15 @@ class CryptoTools:
             raise ValueError(f'Unsupported password suite: {method}')
         self.textLength = textLength
 
-    def aes_ctr_encrypt(self, message: str or bytes) -> bytes:
+    def aes_ctr_encrypt(self, message: str or bytes, offset: int = 0) -> bytes:
         """
         aes-128-ctr 加密
         数据内容占用1008个字节
+        :param message: 数据内容
+        :param offset: 偏移值：默认按nonce + Mark加密后1024个字节
+        :return:
         """
-        block = self.textLength - 16  # nonce 和 mark 共需要16个字节
+        block = self.textLength - 16 + offset  # nonce 和 mark 共需要16个字节
         if len(message) > block:
             raise ValueError('aes_ctr_encrypt加密时遇到超过1008个字节的信息流')
         elif type(message) is bytes:

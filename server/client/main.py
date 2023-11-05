@@ -11,7 +11,8 @@ from Crypto.PublicKey import RSA
 from server.config import readConfig
 from server.tools.status import Status
 from server.tools.tools import HashTools, SocketTools
-
+from server.tools.timedict import TimeDictInit
+from server.tools.encryption import CryptoTools
 
 class Config(readConfig):
     def __init__(self):
@@ -29,12 +30,6 @@ class Client(Config):
         self.client_command_socket = None
         self.client_data_socket = None
         self.verified = verified
-
-        # 已连接列表
-        self.connected = []
-
-        # 会话id
-        self.uuid = None
 
         self.ip = ip
         self.data_port = port
@@ -127,7 +122,11 @@ class Client(Config):
                 #     aes_message = aes.aes_ctr_encrypt('hello')
                 #     SocketTools.sendCommandNoTimeDict(self.client_socket, )
                 # todo:
+
+
                 data = self.client_command_socket.recv(1024)
+                cry = CryptoTools(aes_key)
+                cry.aes_ctr_decrypt(data)
                 if not data or data == 'validationFailed':
                     return
 
@@ -154,7 +153,7 @@ class Client(Config):
                                                            }'''.replace('\x20', '') % self.config['version'])
                 # 验证sha256值是否匹配
                 try:
-                    data: dict = literal_eval(result).get('data')
+                    data = literal_eval(result).get('data')
                     public_key = data.get('public_key')
                     remote_password_sha256 = data.get('password_hash')
                 except Exception as e:

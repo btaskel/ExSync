@@ -125,11 +125,13 @@ class TimeDictInit(TimeDict):
 
     def _recvData(self):
         """
+
         持续接收数据等待接下来的方法处理数据，同时遵循TimeDict的元素生命周期
         以mark头来区分数据流，如果接收到发现数据流的标识不存在则丢弃数据流
         EXSync的mark头为数据流的前8位
 
         如果在开启加密时, 发送方累计超过十次发送无效数据, 则停止接收数据
+        :return:
         """
         count = 0
         while True:
@@ -182,8 +184,9 @@ class TimeDictInit(TimeDict):
 
     def getRecvData(self, mark: str, decrypt_password: str = None):
         """
-        mark: 取出指定mark队列第一个值，并且将其弹出
-        decrypt_password: 如果此项填写，则取出时将进行解密
+        :param mark: 取出指定mark队列第一个值，并且将其弹出
+        :param decrypt_password: 如果此项填写，则取出时将进行解密
+        :return:
         """
         result = self.get(mark, pop=True)
         if decrypt_password:
@@ -198,7 +201,12 @@ class TimeDictInit(TimeDict):
             return result
 
     def createRecv(self, mark: str, encryption: str = None):
-        """创建一个数据流接收队列"""
+        """
+        创建一个数据流接收队列
+        :param mark: mark头
+        :param encryption: 密钥
+        :return:
+        """
         if 4 < len(mark) < 8:
             self.set(mark, encryption)
         else:

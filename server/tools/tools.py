@@ -12,15 +12,27 @@ from server.tools.encryption import CryptoTools
 from server.tools.status import Status
 
 
-def createFile(files_path: str, content: str):
-    """快速创建文件"""
-    if not os.path.exists(files_path):
-        with open(files_path, mode='w', encoding='utf-8') as f:
+def createFile(file_path: str, content: str) -> bool:
+    """
+    快速创建文件
+    :param file_path: 文件路径
+    :param content: 文件内容
+    :return:
+    """
+    if not os.path.exists(file_path):
+        with open(file_path, mode='w', encoding='utf-8') as f:
             f.write(content)
+        return True
+    else:
+        return False
 
 
 def relToAbs(file_path: str):
-    """默认将相对路径转换为绝对路径"""
+    """
+    默认将相对路径转换为绝对路径
+    :param file_path: 文件路径
+    :return:
+    """
     try:
         if os.path.isabs(file_path):
             return file_path
@@ -31,8 +43,12 @@ def relToAbs(file_path: str):
         logging.error(f'File path error: {file_path}')
 
 
-def is_uuid(uuid_str: str):
-    """判断一个字符串是否为UUID"""
+def is_uuid(uuid_str: str) -> bool:
+    """
+    判断一个字符串是否为UUID
+    :param uuid_str: UUID对象
+    :return: 布尔值
+    """
     try:
         uuid.UUID(uuid_str)
         return True
@@ -43,7 +59,12 @@ def is_uuid(uuid_str: str):
 class HashTools:
     @staticmethod
     def getFileHash(path: str, block: int = 65536) -> str:
-        """获取文件的128位 xxhash值"""
+        """
+        获取文件的128位 xxhash值
+        :param path: 文件路径
+        :param block: 数据分块大小
+        :return: 128位 xxhash值
+        """
         hasher = xxhash.xxh3_128()
 
         with open(path, mode="rb") as f:
@@ -56,7 +77,12 @@ class HashTools:
 
     @staticmethod
     def getFileHash_32(path: str, block: int = 65536) -> str:
-        """获取文件的32位 xxhash值"""
+        """
+        获取文件的32位 xxhash值
+        :param path: 文件路径
+        :param block: 数据分块大小
+        :return: 32位 xxhash值
+        """
         hasher = xxhash.xxh32()
 
         with open(path, mode="rb") as f:
@@ -68,13 +94,15 @@ class HashTools:
         return hasher.hexdigest()
 
     @staticmethod
-    def getRandomStr(number: int = 6) -> str:
+    def getRandomStr(length: int = 6) -> str:
         """
         随机获取N个 26个大小写字母
         默认: 6位
+        :param length: 随机字符串长度
+        :return:
         """
         characters = string.ascii_letters + '1234567890'
-        return "".join(random.sample(characters, number))
+        return "".join(random.sample(characters, length))
 
 
 class SocketTools:
@@ -87,25 +115,18 @@ class SocketTools:
         发送指令并准确接收返回数据
 
         例： 本地客户端发送至对方服务端 获取文件 的指令（对方会返回数据）。
-         timedict : 首先客户端设置timedict的值作为自身接收数据暂存区。
-         socket_ : 客户端选择使用（Command Socket/Data Socket）作为发送套接字（在此例下是主动发起请求方，为Command_socket）。
-         command : 设置发送的指令。
-         output : 设置是否等待接下来的返回值。
-         timeout : 默认超时时间，如果超过则返回DATA_RECEIVE_TIMEOUT。
-         mark : 本次答复所用的标识（主动发起请求的一方默认为None，会自动生成一个8长度的字符串作为答复ID）
-         encrypt_password : 如果此项填写, 则发送数据时会对数据进行加密, 否则为明文(安全的局域网下可以不填写以提高传输性能)。
 
         1. 生成 8 长度的字符串作为[答复ID]，并以此在timedict中创建一个接收接下来服务端回复的键值。
         2. 在发送指令的前方追加[答复ID]，编码发送。
         3. 从timedict中等待返回值，如果超时，返回DATA_RECEIVE_TIMEOUT。
 
-        :param encrypt_password:
-        :param mark:
-        :param timedict:
-        :param timeout:
-        :param output:
-        :param socket_:
-        :param command:
+        :param encrypt_password: 如果此项填写, 则发送数据时会对数据进行加密, 否则为明文(安全的局域网下可以不填写以提高传输性能)。
+        :param mark: 次答复所用的标识（主动发起请求的一方默认为None，会自动生成一个8长度的字符串作为答复ID）
+        :param timedict: 首先客户端设置timedict的值作为自身接收数据暂存区。
+        :param timeout: 默认超时时间，如果超过则返回DATA_RECEIVE_TIMEOUT。
+        :param output: 设置是否等待接下来的返回值。
+        :param socket_: 客户端选择使用（Command Socket/Data Socket）作为发送套接字（在此例下是主动发起请求方，为Command_socket）。
+        :param command: 设置发送的指令。
         :return:
         """
         mark_value = str(mark)
@@ -165,15 +186,16 @@ class SocketTools:
             return Status.UNKNOWN_ERROR
 
     @staticmethod
-    def sendCommandNoTimeDict(socket_, command: str or bytes, output: bool = True, timeout: int = 2):
+    def sendCommandNoTimeDict(socket_, command: str or bytes, output: bool = True, timeout: int = 2,
+                              encrypt_password: str=None):
         """
         取消使用TimeDict收发数据, 用于非异步数据传输. 如无必要建议使用sendCommand()
 
-        如果 output = True 则sendCommand()将会等待一个返回值，默认超时2s。
-        :param timeout:
-        :param output:
-        :param socket_:
-        :param command:
+        :param encrypt_password: 如果此项填写, 则发送数据时会对数据进行加密, 否则为明文(安全的局域网下可以不填写以提高传输性能)。
+        :param timeout: 默认超时时间，如果超过则返回DATA_RECEIVE_TIMEOUT。
+        :param output: 如果 output = True 则sendCommand()将会等待一个返回值，默认超时2s。设置是否等待接下来的返回值。
+        :param socket_: 客户端选择使用（Command Socket/Data Socket）作为发送套接字（在此例下是主动发起请求方，为Command_socket）。
+        :param command: 设置发送的指令。
         :return:
         """
         try:
@@ -181,23 +203,27 @@ class SocketTools:
         except Exception as e:
             raise KeyError('读取Config时错误：', e)
         if output:
-            try:
-                if type(command) is str:
-                    socket_.send(command.encode(socket_encode))
-                else:
-                    socket_.send(command)
-                with concurrent.futures.ThreadPoolExecutor() as excutor:
-                    future = excutor.submit(socket_.recv(1024))
-                    try:
-                        # 没有超时2000ms则返回接收值
-                        result = future.result(timeout=timeout)
-                        return result
-                    except concurrent.futures.TimeoutError:
-                        # 超时返回错误
-                        return Status.DATA_RECEIVE_TIMEOUT
-            except Exception as e:
-                print(e)
-                return False
+            if encrypt_password:
+                cry = CryptoTools(encrypt_password)
+                data = cry.aes_ctr_encrypt(command)
+                socket_.send(data)
+                try:
+                    if isinstance(command, str):
+                        socket_.send(command.encode(socket_encode))
+                    else:
+                        socket_.send(command)
+                    with concurrent.futures.ThreadPoolExecutor() as excutor:
+                        future = excutor.submit(socket_.recv(1024))
+                        try:
+                            # 没有超时2000ms则返回接收值
+                            result = future.result(timeout=timeout)
+                            return result
+                        except concurrent.futures.TimeoutError:
+                            # 超时返回错误
+                            return Status.DATA_RECEIVE_TIMEOUT
+                except Exception as e:
+                    print(e)
+                    return False
         else:
             try:
                 socket_.send(command.encode(socket_encode))
@@ -256,7 +282,12 @@ class SocketSession(SocketTools):
                     break
 
     def send(self, command: str, output: bool = True):
-        """发送命令"""
+        """
+        发送命令
+        :param command: 指令内容
+        :param output: 是否返回内容
+        :return:
+        """
         match self.method:
             case 0:
                 _socket = self.__command_socket if self.count == 0 else self.__data_socket
@@ -287,7 +318,10 @@ class SocketSession(SocketTools):
         self.count += 1
 
     def recv(self) -> str:
-        """接收数据"""
+        """
+        接收数据
+        :return: 指定mark队列的数据
+        """
         return self.__timedict.getRecvData(mark=self.mark)
 
     def __enter__(self):
