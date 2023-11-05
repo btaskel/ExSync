@@ -4,8 +4,8 @@ import os
 import sys
 import threading
 
-from server.client import CommandSend
-from server.core import createSocket, socket_manage
+from server.client.command import CommandSend
+from server.core.main import createSocket, socket_manage
 from server.tools.tools import relToAbs
 
 

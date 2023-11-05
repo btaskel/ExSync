@@ -11,12 +11,14 @@
     <orderEntry type="jdk" jdkName="Python 3.11 (ExSync)" jdkType="Python SDK" />
     <orderEntry type="sourceFolder" forTests="false" />
   </component>
-  <component name="TemplatesService">
-    <option name="TEMPLATE_CONFIGURATION" value="Jinja2" />
-    <option name="TEMPLATE_FOLDERS">
+  <component name="PyNamespacePackagesService">
+    <option name="namespacePackageFolders">
       <list>
-        <option value="$MODULE_DIR$/../Sync\templates" />
+        <option value="$MODULE_DIR$/server/client" />
       </list>
     </option>
+  </component>
+  <component name="TemplatesService">
+    <option name="TEMPLATE_CONFIGURATION" value="Jinja2" />
   </component>
 </module>

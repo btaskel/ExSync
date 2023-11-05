@@ -3,492 +3,22 @@ import json
 import locale
 import logging
 import os
-import re
 import socket
 import subprocess
 import threading
-import time
 from ast import literal_eval
 
-import socks
 import xxhash
 from Crypto.Cipher import PKCS1_OAEP
 from Crypto.PublicKey import RSA
 
-from server.client import CommandSend as Client
-from server.config import readConfig
-from server.tools.status import Status, PermissionEnum, CommandSet
+from server.core.scan import Scan
+from server.tools.status import Status, CommandSet
 from server.tools.timedict import TimeDictInit, TimeDictTools
 from server.tools.tools import SocketTools, HashTools
 
-"""
-客户端实例管理
-"""
-socket_manage = {}
 
-
-class Scan(readConfig):
-    """
-    对局域网/指定网段进行扫描和添加设备
-    """
-
-    def __init__(self):
-        super().__init__()
-        self.config = readConfig.readJson()
-        self.ip_list = []
-        self.data_port = self.config['server']['addr']['port']
-        self.command_port = self.config['server']['addr']['port'] + 1
-        self.listen_port = self.config['server']['addr']['port'] + 2
-        self.password = self.config["server"]["addr"]["password"]
-        self.id = self.config['server']['addr']['id']
-        # 读取编码类型
-        if self.config['server']['setting']['encode']:
-            self.encode_type = self.config['server']['setting']['encode']
-        else:
-            self.encode_type = 'utf-8'
-        self.verified_devices = set()
-
-        """
-        验证结果管理
-
-        在等待客户端和服务端连接后，会保存验证信息和Key,
-        TestSocket关闭, 并等待客户端与服务端的连接建立, 
-        会与socket_manage产生关联
-
-        verify_manage = {
-            "1.1.1.1": {
-                "AES_KEY": "123456"
-                "MARK": "aBcDeFGh"
-            }
-        }
-        """
-        self.verify_manage = {}
-
-    def scanStart(self):
-        """
-        添加
-        """
-        ip_list = []
-        global_ = {}
-        for key, value in self.config["server"]["scan"].items():
-            global_[key] = value
-
-        if global_['enabled']:
-            if global_['type'].lower() == 'lan':
-                """
-                LAN模式：逐一扫描局域网并自动搜寻具有正确密钥的计算机
-                """
-
-                # 获取局域网所在的网段
-                result = os.popen('ipconfig /all').read()
-                pattern = re.compile(r'IPv4.*?(\d+\.\d+\.\d+)\.\d+')
-                match = pattern.search(result)
-                if not match:
-                    print('无法获取局域网所在的网段')
-                    return
-                net = match.group(1)
-
-                # 清空当前所有的 arp 映射表
-                os.popen('arp -d *')
-
-                # 循环遍历当前网段所有可能的 IP 与其 ping 一遍建立 arp 映射表
-                for i in range(1, 256):
-                    os.popen(f'ping {net}.{i} -n 1 -w 1')
-
-                # 读取缓存的映射表获取所有与本机连接的设备的 MAC 地址
-                result = os.popen('arp -a').read()
-                pattern = re.compile(
-                    r'(\d+\.\d+\.\d+\.\d+)\s+([\da-f]{2}-[\da-f]{2}-[\da-f]{2}-[\da-f]{2}-[\da-f]{2}-[\da-f]{2})')
-                ips = pattern.findall(result)
-                for ip, mac in ips:
-                    ip_list.append(ip)
-                logging.debug('LAN: Search for IP completed')
-                return ip_list
-
-            elif global_['type'].lower() == 'white':
-                """
-                白名单模式：在此模式下只有添加的ip才能连接
-                """
-                for value in self.config['server']['scan']['device']:
-                    ip_list.append(value)
-                logging.info('White List: Search for IP completed')
-
-            elif global_['type'].lower() == 'black':
-                """
-                黑名单模式：在此模式下被添加的ip将无法连接
-                """
-                for value in self.config['server']['scan']['device']:
-                    ip_list.append(value)
-                logging.info('Black List: Search for IP completed')
-
-        remove_ip = ['192.168.1.1', socket.gethostbyname(socket.gethostname())]
-        if ip_list:
-            for j in remove_ip:
-                ip_list.remove(j)
-        return ip_list
-
-    def testDevice(self, ip_list):
-        """
-        主动验证：主动嗅探并验证ip列表是否存在活动的设备
-        如果存在活动的设备判断密码是否相同
-        :return: devices
-        """
-
-        for ip in ip_list:
-            if ip not in self.verify_manage:
-                test = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                test.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-                test.settimeout(1)
-                # 连接设备的指定端口
-                if test.connect_ex((ip, self.command_port)) == 0:
-                    version = self.g['verify_version']
-                    result = SocketTools.sendCommandNoTimeDict(test, '''{"command": "comm","type": "verifyconnect",
-                    "method": "post","data": {"version": %s}}'''.replace('\x20', '') % version)
-
-                    # 验证sha256值是否匹配
-                    try:
-                        dict_result = literal_eval(result).get('data')
-                        remote_password_sha256 = dict_result.get('password_hash')
-                        public_key = dict_result.get('public_key')
-                    except Exception as e:
-                        print(e)
-                        test.shutdown(socket.SHUT_RDWR)
-                        test.close()
-                        continue
-
-                    if remote_password_sha256 == hashlib.sha256(self.password.encode('utf-8')).hexdigest():
-
-                        # 发送sha384
-                        password_sha384 = hashlib.sha384(self.password.encode()).hexdigest()
-                        result = SocketTools.sendCommandNoTimeDict(test, command='''
-                        {
-                            "data": {
-                            password_hash: "%s"
-                            }
-                        }
-                        '''.replace('\x20', '') % password_sha384)
-                        try:
-                            data = literal_eval(result).get('data')
-                            status = data.get('status')
-                            remote_id = data.get('id')
-                        except Exception as e:
-                            print(e)
-                            logging.error(f'Unknown status returned while scanning server {ip}')
-                            test.shutdown(socket.SHUT_RDWR)
-                            test.close()
-                            continue
-
-                        if status == 'success':
-                            # 验证成功
-                            self.verified_devices.add(ip)
-                            self.verify_manage[test.getpeername()[0]] = {
-                                "id": remote_id,
-                                "AES_KEY": self.password
-                            }
-
-                        elif status == 'fail':
-                            # todo: 验证服务端密码失败
-                            pass
-
-                        elif status == Status.DATA_RECEIVE_TIMEOUT:
-                            # todo: 验证服务端密码超时
-                            pass
-
-                        else:
-                            # todo: 验证服务端密码时得到未知参数
-                            pass
-
-                        test.shutdown(socket.SHUT_RDWR)
-                        test.close()
-                        continue
-
-                    elif remote_password_sha256 == 'None' and public_key:
-                        # 对方密码为空，示意任何设备均可连接
-                        # 首先使用RSA发送一个随机字符串给予对方
-                        rsa_pub = RSA.import_key(public_key)
-
-                        cipher_pub = PKCS1_OAEP.new(rsa_pub)
-
-                        session_password = HashTools.getRandomStr(8)
-
-                        # 即将发送的加密数据
-                        message = ('''
-                        {
-                            "data": {
-                                "session_password": "%s",
-                                "id": "%s"
-                            }
-                        }
-                        '''.replace('\x20', '') % (session_password, self.id)).encode('utf-8')
-
-                        ciphertext = cipher_pub.encrypt(message)
-
-                        SocketTools.sendCommandNoTimeDict(test, ciphertext, output=False)
-
-                        self.verified_devices.add(ip)
-                        self.verify_manage[test.getpeername()[0]] = {
-                            "REMOTE_MARK": 1,
-                            "AES_KEY": session_password
-                        }
-
-                    elif remote_password_sha256 == Status.DATA_RECEIVE_TIMEOUT:
-                        # todo: 验证客户端密码哈希超时
-                        pass
-
-                    else:
-                        # todo: 验证客户端密码哈希得到未知参数
-                        pass
-
-                    test.shutdown(socket.SHUT_RDWR)
-                    test.close()
-                    continue
-
-            return self.verified_devices
-
-
-class createSocket(Scan):
-    """
-    创建命令收发和数据收发套接字
-
-    过程：
-    1.首先服务端会设置代理（适用于数据、指令、监听Socket）。
-    2.监听Socket等待客户端指令Socket连接，验证成功的客户端ip会增加进白名单列表，如果验证成功开始第三步。
-    3.指令Socket等待客户端指令Socket连接，如果客户端的ip在白名单中，则连接成功，并进入等待循环。
-    4.数据Socket等待客户端数据Socket连接，如果客户端的ip在白名单中，则连接成功，终止指令Socket的等待循环。
-    5.循环等待客户端指令。
-    """
-
-    def __init__(self):
-        super().__init__()
-        # Socks5代理设置
-        self.host_id = self.config['server']['addr']['id']
-        self.devices = None
-        self.client_connected = set()
-        if self.config['server']['proxy']['enabled']:
-            proxy_host, proxy_port = self.config['server']['proxy']['hostname'], self.config['server']['proxy']['port']
-            socks.set_default_proxy(socks.SOCKS5, proxy_host, proxy_port)
-            # 替换socket
-            socket.socket = socks.socksocket
-
-        self.local_password_hash = xxhash.xxh3_128(self.config['server']['addr']['password']).hexdigest()
-
-        """
-        当前与客户端建立连接的ip
-        """
-        self.connected = set()
-
-        """
-        Socket套接字连接成功实例存储
-        address : {
-            command: command_socket 
-            data: data_socket
-        }
-        """
-        self.socket_info = {}
-
-        # 已验证标识的计算机
-        self.whitelist = set()
-
-        # 持续合并指令与数据传输套接字
-        funcs = [self.mergeSocket, self.updateIplist]
-        for func in funcs:
-            thread = threading.Thread(target=func)
-            thread.start()
-
-    def createDataSocket(self):
-        data_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        data_socket.bind((self.config["server"]["addr"]["ip"], int(self.config["server"]["addr"]["port"])))
-        data_socket.listen(128)
-
-        while True:
-            # 等待客户端连接服务端
-            sub_socket, addr = data_socket.accept()
-            thread = threading.Thread(target=self.verifyDataSocket, args=(sub_socket, addr))
-            thread.start()
-
-    def verifyDataSocket(self, sub_socket, addr):
-        """
-        验证数据套接字；
-        验证连接对象是否已经通过验证
-        :return:
-        """
-        if addr[0] in self.verify_manage and self.verify_manage[addr[0]]['AES_KEY']:
-            # 如果指令套接字存在则添加
-            if addr[0] in self.socket_info:
-                self.socket_info[sub_socket.getpeername()[0]]["data"] = sub_socket
-            else:
-                self.socket_info[sub_socket.getpeername()[0]] = {
-                    "command": None,
-                    "data": sub_socket
-                }
-
-        else:
-            # 关闭连接
-            sub_socket.shutdown(socket.SHUT_RDWR)
-            sub_socket.close()
-
-    def createCommandSocket(self):
-        """创建指令传输套接字"""
-        command_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        command_socket.bind((self.config['server']['addr']['ip'], self.command_port))
-        command_socket.listen(128)
-        while True:
-            sub_socket, addr = command_socket.accept()
-            thread = threading.Thread(target=self.verifyCommandSocket, args=(sub_socket, addr))
-            thread.start()
-
-    def verifyCommandSocket(self, command_socket, address):
-        """
-        验证指令套接字，验证连接对象是否已经通过验证
-        主动验证：当对方客户端主动连接，但本机并未扫描验证对方，就会触发此模式。
-        被动验证：当本机已经扫描验证对方连接，当对方再次连接时就会按白名单内容予以通过验证。
-        """
-        if address[0] in self.verify_manage and self.verify_manage[address[0]]['AES_KEY']:
-            # 被动验证
-
-            command_socket.permission = PermissionEnum.USER
-            if address[0] in self.socket_info:
-                self.socket_info[address[0]]['command'] = command_socket
-            else:
-                self.socket_info[address[0]] = {
-                    "command": command_socket,
-                    "data": None
-                }
-        else:
-            # 开始主动验证
-            command_socket.permission = PermissionEnum.GUEST
-
-    # def createVerifySocket(self):
-    #     """
-    #     创建监听套接字，并且验证双方身份
-    #     被动连接，则对方主动连接CommandSocket
-    #     """
-    #     verify_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    #     # 设置收发命令的端口号(DataSocket Port + 1)
-    #     verify_socket.bind((self.config['server']['addr']['ip'], self.listen_port))
-    #     verify_socket.listen(128)
-    #
-    #     while True:
-    #         if len(self.ip_list) <= self.config['server']['scan']['max']:
-    #             sub_socket, addr = verify_socket.accept()
-    #             thread = threading.Thread(target=self.verifySocket, args=(sub_socket, addr,))
-    #             thread.start()
-    #         else:
-    #             break
-    #
-    # def verify(self, command_socket, addr):
-    #     result = SocketTools.sendCommandNoTimeDict(command_socket, '/_com:comm:sync:get:password_hash')
-    #     if result == xxhash.xxh3_128(self.config['server']['password']).hexdigest():
-    #         # 验证成功
-    #         SocketTools.sendCommandNoTimeDict(command_socket, self.config['password'], output=False)
-    #         SocketTools.sendCommandNoTimeDict(command_socket, self.uuid, output=False)
-    #         self.connected.add(addr[0])
-    #
-    #         if command_socket.getpeername()[0] in self.socket_info:
-    #             self.socket_info[command_socket.getpeername()[0]]["command"] = command_socket
-    #         else:
-    #             command_socket.permission = PermissionEnum.SYNC
-    #             self.socket_info[command_socket.getpeername()[0]] = {
-    #                 "command": command_socket,
-    #                 "data": None
-    #             }
-    #     else:
-    #         SocketTools.sendCommandNoTimeDict(command_socket, 'passwordError', output=False)
-    #
-    # def verifySocket(self, verify_socket, verify_addr):
-    #     """
-    #     如果被连接则客户端与服务端的套接字开始验证连接合法性
-    #     1.获取对方密码哈希值
-    #     2.对比自身密码哈希值
-    #     3.增加至服务端白名单
-    #     """
-    #     # 被动模式，等待连接
-    #     password_hash = SocketTools.sendCommandNoTimeDict(verify_socket, f'/_com:comm:sync:get:password_hash:_')
-    #     if password_hash == self.local_password_hash:
-    #         # 哈希验证成功，ip添加进白名单
-    #         if verify_addr[0] not in self.ip_list:
-    #             self.ip_list.add(verify_addr)
-    #     verify_socket.shutdown(socket.SHUT_RDWR)
-    #     verify_socket.close()
-
-    def mergeSocket(self):
-        """
-        当远程客户端同时连接上data_socket和command_socket后开始指令与数据的收发
-        :return:
-        """
-        while True:
-            index = 0
-            for key, value in self.socket_info.items():
-                if value['command'] and value['data']:
-                    command_socket, data_socket = self.socket_info.pop(index)
-                    command = CommandSocket(command_socket, data_socket)
-                    thread = threading.Thread(target=command.recvCommand)
-                    thread.start()
-                    index += 1
-            time.sleep(0.05)
-
-    def createClientCommandSocket(self, ip: str):
-        """
-        本地客户端主动连接远程服务端
-        """
-        client_mark = HashTools.getRandomStr(8)
-        aes_key = self.verify_manage[ip].get('aes_key', None)
-
-        client = Client(ip, self.data_port)
-        client_info = {
-            'client_mark': client_mark,
-            'ip': ip,
-            'id': self.host_id,
-            'AES_KEY': aes_key
-        }
-        client.host_info(client_info)
-        client_command = client.createCommandSocket()
-
-        match client.connectRemoteCommandSocket():  # 连接指令Socket
-            case Status.CONNECTED:
-                # 连接成功
-                pass
-            case Status.CONNECT_TIMEOUT:
-                if client.closeAllSocket():
-                    logging.error(f'Client: {client_mark}, server: {ip} connection timeout!')
-                    client = None  # 超时退出：
-            case _:
-                if client.closeAllSocket():
-                    logging.error(f'Client: {client_mark}, server: {ip} connection failure!')
-                    client = None  # 意外退出：
-
-        client_data = client.createClientDataSocket()  # 连接数据Socket
-        if client_data == Status.CONNECT_TIMEOUT:
-            client.closeAllSocket()  # 连接超时, 关闭客户端连接
-
-        elif client_data == Status.SESSION_FALSE:
-            client.closeAllSocket()  # 会话验证失败, 关闭客户端连接
-
-        else:
-            socket_manage[client_mark] = {
-                'ip': ip,
-                'id': self.host_id,
-                'client': client,
-                'command_socket': client_command,
-                'data_socket': client_data,
-                'AES_KEY': aes_key
-            }
-
-    def updateIplist(self):
-        """持续更新设备列表"""
-        while True:
-            time.sleep(15)
-            ip_list = self.scanStart()
-            self.devices = self.testDevice(ip_list)
-            logging.debug(f'IP list update: {self.devices}')
-            for ip in self.devices:
-                if ip not in self.client_connected:
-                    thread = threading.Thread(target=self.createClientCommandSocket, args=(ip,))
-                    thread.start()
-                    self.client_connected.add(ip)
-
-
-class DataSocket(Scan):
+class BaseCommandSet(Scan):
     """
     数据传输套接字：主要用于文件收发的方法实现
     所有方法的command参数传入皆为指令中值的列表
@@ -878,7 +408,7 @@ class DataSocket(Scan):
                 return CommandSet.EXSYNC_INSUFFICIENT_PERMISSION
 
 
-class DataSocketExpand(DataSocket):
+class CommandSetExpand(BaseCommandSet):
     """
     对于基本命令的拓展集
     """
@@ -981,14 +511,14 @@ class DataSocketExpand(DataSocket):
 
             # 创建一个新的cipher实例
             cipher_pub = PKCS1_OAEP.new(public_key)
-            cipher_priv = PKCS1_OAEP.new(private_key)
+            private_key = PKCS1_OAEP.new(private_key)
 
             # # 加密一条消息
             # message = b'This is a secret message'
             # ciphertext = cipher_pub.encrypt(message)
 
             # 解密这条消息
-            source = cipher_priv.decrypt(result).decode('utf-8')
+            source = private_key.decrypt(result).decode('utf-8')
 
             try:
                 data = literal_eval(source)['data']
@@ -1018,7 +548,7 @@ class DataSocketExpand(DataSocket):
             '''.replace('\x20', '') % password_sha256)  # password_sha256, RSA_publicKey
 
             try:
-                remote_password_sha384 = literal_eval(result).get('data').get('password')
+                remote_password_sha384 = literal_eval(result).get('data').get('password_hash')
             except Exception as e:
                 print(e)
                 return
@@ -1065,37 +595,9 @@ class DataSocketExpand(DataSocket):
             return
 
 
-class CommandSocket(DataSocketExpand):
+class RecvCommand(CommandSetExpand):
     """
     异步收发指令
-
-    Data操作指令：
-    文件与文件夹的传输指令:
-        /_com:data:file(folder):get:filepath|size|hash|mode|filemark:_
-        /_com:data:file(folder):post:filepath|size|hash|mode|filemark:_
-
-    EXSync通讯指令:
-    会话id确认：
-        /_com:comm:sync:post:session|True:_
-        /_com:comm:sync:post:session|False:_
-
-    获取密码:
-        [命令：sync：信息交换方式：本机密码哈希：哈希标识]
-        密码哈希指令
-        内容 | 值
-        /_com:comm:sync:get:password_hash|local_hash:_
-        /_com:comm:sync:post:password_hash|local_hash:_
-
-        密码指令
-        /_com:comm:sync:get:password|local_password:_
-        /_com:comm:sync:post:password|local_password:_
-
-    获取客户端信息:
-        /_com:comm:sync:get:version:_
-        /_com:comm:sync:post:version:_
-
-    系统级指令:
-
     """
 
     def __init__(self, command_socket, data_socket):
@@ -1103,103 +605,8 @@ class CommandSocket(DataSocketExpand):
         self.command_socket = command_socket
         self.data_socket = data_socket
 
-    # def recvCommand(self):
-    #     """
-    #     持续倾听并解析指令
-    #     :return:
-    #     """
-    #
-    #     while True:
-    #         # 收指令
-    #         command = self.command_socket.recv(1024).decode(self.encode_type)
-    #         if not ':' in command:
-    #             continue
-    #
-    #         command = command.split(':')
-    #         try:
-    #             mark = command[0].split('/_com')[0]
-    #         except ValueError as e:
-    #             print(e)
-    #             logging.warning(f'Server {self.command_socket.getpeername()[0]}: Missing MARK in {command} command')
-    #             continue
-    #
-    #         # 数据类型判断
-    #         if command[1] == 'data':
-    #             # 文件操作
-    #             if command[2] == 'file':
-    #
-    #                 if command[3] == 'post' and self.command_socket.permission >= 10:
-    #                     # 对方使用post提交文件至本机
-    #                     values = command[4].split('|')
-    #                     thread = threading.Thread(target=self.recvFile, args=(values, mark))
-    #                     thread.daemon = True
-    #                     thread.start()
-    #
-    #                 elif command[3] == 'get' and self.command_socket.permission >= 10:
-    #                     values = command[4].split('|')
-    #                     thread = threading.Thread(target=self.sendFile, args=(values, mark))
-    #                     thread.daemon = True
-    #                     thread.start()
-    #             # 文件夹操作
-    #             elif command[2] == 'folder' and self.command_socket.permission >= 10:
-    #
-    #                 # 获取服务端文件夹信息
-    #                 if command[3] == 'get' and self.command_socket.permission >= 10:
-    #                     values = command[4]
-    #                     thread = threading.Thread(target=self.getFolder, args=(values, mark))
-    #                     thread.daemon = True
-    #                     thread.start()
-    #
-    #                 # 创建服务端文件夹
-    #                 elif command[3] == 'post' and self.command_socket.permission >= 10:
-    #                     values = command[4].split('|')
-    #                     thread = threading.Thread(target=self.recvFolder, args=(values,))
-    #                     thread.daemon = True
-    #                     thread.start()
-    #
-    #         # 普通命令判断
-    #         elif command[1] == 'comm':
-    #             # EXSync通讯指令
-    #             if command[2] == 'sync':
-    #                 # 获取EXSync信息
-    #                 if command[3] == 'get':
-    #                     if command[4] == 'password_hash':
-    #                         thread = threading.Thread(target=self.getPasswordHash, args=(mark,))
-    #                         thread.daemon = True
-    #                         thread.start()
-    #
-    #                     elif command[4] == 'index' and self.command_socket.permission >= 10:
-    #                         # 获取索引文件
-    #                         thread = threading.Thread(target=self.getIndex, args=(command, mark))
-    #                         thread.daemon = True
-    #                         thread.start()
-    #
-    #                 # 提交EXSync信息
-    #                 elif command[3] == 'post':
-    #                     if command[4] == 'password_hash':
-    #                         # 对比本地密码hash
-    #                         thread = threading.Thread(target=self.postPasswordHash, args=(command, mark))
-    #                         thread.daemon = True
-    #                         thread.start()
-    #
-    #                     elif command[4] == 'verifyConnect' and self.command_socket.permission >= 0:
-    #                         # 验证对方连接合法性
-    #                         # 对方发送：[8bytes_mark]/_com:comm:sync:post:verifyConnect:version
-    #                         thread = threading.Thread(target=self.verifyConnect, args=(command, mark))
-    #                         thread.daemon = True
-    #                         thread.start()
-    #
-    #                     # 更新本地索引
-    #                     elif command[4] == 'index' and self.command_socket.permission >= 10:
-    #                         thread = threading.Thread(target=self.postIndex, args=(command[5], mark))
-    #                         thread.daemon = True
-    #                         thread.start()
-    #
-    #                     elif command[4] == 'comm' and self.command_socket.permission >= 10:
-    #                         thread = threading.Thread(target=self.executeCommand,
-    #                                                   args=(command['/_com:comm:sync:post:comm:'][1], mark))
-    #                         thread.daemon = True
-    #                         thread.start()
+    def closeCommand(self):
+        return
 
     def recvCommand(self):
         """
@@ -1445,11 +852,3 @@ class CommandSocket(DataSocketExpand):
         else:
             logging.warning(f'Client {self.address}: Cancel [postCommand] due to insufficient permissions!')
             return False
-
-
-if __name__ == '__main__':
-    s = createSocket()
-    s.createCommandSocket()
-    s.createDataSocket()
-    # s = Scan()
-    # print(s.start())
