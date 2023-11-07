@@ -14,6 +14,14 @@ from server.tools.tools import HashTools
 
 """
 客户端实例管理
+client_mark : {
+    'ip': ip,
+    'id': self.host_id,
+    'client': client,
+    'command_socket': client_command,
+    'data_socket': client_data,
+    'AES_KEY': aes_key
+    }
 """
 socket_manage = {}
 
@@ -34,20 +42,6 @@ class createSocket(Scan):
         super().__init__()
         # Socks5代理设置
         self.host_id = self.config['server']['addr']['id']
-        self.devices = None
-        self.client_connected = set()
-        if self.config['server']['proxy']['enabled']:
-            proxy_host, proxy_port = self.config['server']['proxy']['hostname'], self.config['server']['proxy']['port']
-            socks.set_default_proxy(socks.SOCKS5, proxy_host, proxy_port)
-            # 替换socket
-            socket.socket = socks.socksocket
-
-        self.local_password_hash = xxhash.xxh3_128(self.config['server']['addr']['password']).hexdigest()
-
-        """
-        当前与客户端建立连接的ip
-        """
-        self.connected = set()
 
         """
         Socket套接字连接成功实例存储
@@ -57,15 +51,19 @@ class createSocket(Scan):
         }
         """
         self.socket_info = {}
-
-        # 已验证标识的计算机
-        self.whitelist = set()
-
+        self.init()
         # 持续合并指令与数据传输套接字
         funcs = [self.mergeSocket, self.updateIplist]
         for func in funcs:
             thread = threading.Thread(target=func)
             thread.start()
+
+    def init(self):
+        if self.config['server']['proxy']['enabled']:
+            proxy_host, proxy_port = self.config['server']['proxy']['hostname'], self.config['server']['proxy']['port']
+            socks.set_default_proxy(socks.SOCKS5, proxy_host, proxy_port)
+            # 替换socket
+            socket.socket = socks.socksocket
 
     def createDataSocket(self):
         data_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -82,14 +80,17 @@ class createSocket(Scan):
         """
         验证数据套接字；
         验证连接对象是否已经通过验证
+        :param data_socket: 数据套接字
+        :param address: 客户端地址
         :return:
         """
         if address[0] in self.verify_manage and self.verify_manage[address[0]]['AES_KEY']:
             data_socket.permission = PermissionEnum.USER
         else:
-            data_socket.permission = PermissionEnum.GUEST
+            data_socket.shutdown(socket.SHUT_RDWR)
+            data_socket.close()
         # 如果指令套接字存在则添加
-        if address[0] in self.socket_info:
+        if address[0] in self.verified_devices:
             self.socket_info[address[0]]["data"] = data_socket
         else:
             self.socket_info[address[0]] = {
@@ -112,6 +113,9 @@ class createSocket(Scan):
         验证指令套接字，验证连接对象是否已经通过验证
         主动验证：当对方客户端主动连接，但本机并未扫描验证对方，就会触发此模式。
         被动验证：当本机已经扫描验证对方连接，当对方再次连接时就会按白名单内容予以通过验证。
+        :param command_socket: 指令套接字
+        :param address: 目标客户端IP地址
+        :return:
         """
         if address[0] in self.verify_manage and self.verify_manage[address[0]]['AES_KEY']:
             # 被动验证
@@ -120,7 +124,7 @@ class createSocket(Scan):
             # 开始主动验证
             command_socket.permission = PermissionEnum.GUEST
         command_socket.send('')
-        if address[0] in self.socket_info:
+        if address[0] in self.verified_devices:
             self.socket_info[address[0]]['command'] = command_socket
         else:
             self.socket_info[address[0]] = {
@@ -147,9 +151,11 @@ class createSocket(Scan):
     def createClientCommandSocket(self, ip: str):
         """
         本地客户端主动连接远程服务端
+        :param ip: 目标EXSync指令套接字地址
+        :return:
         """
         client_mark = HashTools.getRandomStr(8)
-        aes_key = self.verify_manage[ip].get('aes_key', None)
+        aes_key = self.verify_manage[ip].get('aes_key')
 
         client = Client(ip, self.data_port)
         client_info = {
@@ -182,6 +188,7 @@ class createSocket(Scan):
             client.closeAllSocket()  # 会话验证失败, 关闭客户端连接
 
         else:
+            # 连接成功
             socket_manage[client_mark] = {
                 'ip': ip,
                 'id': self.host_id,
@@ -192,17 +199,19 @@ class createSocket(Scan):
             }
 
     def updateIplist(self):
-        """持续更新设备列表"""
+        """
+        持续更新设备列表, 并主动连接已验证的设备
+        :return:
+        """
         while True:
             time.sleep(15)
-            ip_list = self.scanStart()
-            self.devices = self.testDevice(ip_list)
-            logging.debug(f'IP list update: {self.devices}')
-            for ip in self.devices:
-                if ip not in self.client_connected:
+            devices = self.testDevice(self.scanStart())
+            logging.debug(f'IP list update: {devices}')
+            for ip in devices:
+                if ip not in self.verified_devices:
                     thread = threading.Thread(target=self.createClientCommandSocket, args=(ip,))
                     thread.start()
-                    self.client_connected.add(ip)
+                    self.verified_devices.add(ip)
 
 
 if __name__ == '__main__':

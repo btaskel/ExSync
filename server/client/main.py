@@ -14,43 +14,47 @@ from server.tools.tools import HashTools, SocketTools
 from server.tools.timedict import TimeDictInit
 from server.tools.encryption import CryptoTools
 
+
 class Config(readConfig):
     def __init__(self):
         super().__init__()
         self.config = readConfig.readJson()
-        self.ip_addr = self.config['server']['addr']['ip']
-        self.encode_type = self.config['server']['setting']['encode']
-        self.password = self.config['server']['addr']['password']
+        self.local_ip: str = self.config['server']['addr'].get('ip')
+        self.encode_type: str = self.config['server']['setting'].get('encode')
+        self.password: str = self.config['server']['addr'].get('password')
 
 
 class Client(Config):
-    def __init__(self, ip, port, verified=False):
+    def __init__(self, ip: str, port: int, verified: bool = False):
         super().__init__()
-        self.host_info = None
+        self.host_info: dict = {}
         self.client_command_socket = None
         self.client_data_socket = None
-        self.verified = verified
+        self.verified: bool = verified
 
-        self.ip = ip
-        self.data_port = port
-        self.command_port = port + 1
-        self.listen_port = port + 2
-        self.encode = self.config['server']['setting']['encode']
+        self.ip: str = ip
+        self.data_port: int = port
+        self.command_port: int = port + 1
+        self.encode: str = self.config['server']['setting'].get('encode', 'utf-8')
 
         # 并且初始化代理设置
-        proxy_host, proxy_port = self.config['server']['proxy']['hostname'], self.config['server']['proxy']['port']
+        proxy_host, proxy_port = self.config['server']['proxy'].get('hostname'), self.config['server']['proxy'].get(
+            'port')
         socks.set_default_proxy(socks.SOCKS5, proxy_host, proxy_port)
         socket.socket = socks.socksocket
 
     def host_info(self, host_info: dict) -> bool:
         """输入与主机联系的属性资料, 用于确认连接状态"""
-        if type(host_info) is dict and len(host_info) >= 1:
+        if isinstance(host_info, dict) and len(host_info) >= 1:
             self.host_info = host_info
             return True
         return False
 
     def createCommandSocket(self):
-        """创建客户端的指令套接字"""
+        """
+        创建客户端的指令套接字
+        :return: 指令Socket
+        """
         self.client_command_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         return self.client_command_socket
 
@@ -76,18 +80,18 @@ class Client(Config):
 
             elif out == 'fail':
                 # 验证服务端密码失败
-                debug_status and logging.error(f'Failed to verify server {self.ip_addr} password!')
+                debug_status and logging.error(f'Failed to verify server {self.local_ip} password!')
                 return False
 
             elif out == Status.DATA_RECEIVE_TIMEOUT:
                 # 验证服务端密码超时
-                debug_status and logging.error(f'Verifying server {self.ip_addr} password timeout!')
+                debug_status and logging.error(f'Verifying server {self.local_ip} password timeout!')
                 return False
 
             else:
                 # 验证服务端密码时得到未知参数
                 debug_status and logging.error(
-                    f'Unknown parameter obtained while verifying server {self.ip_addr} password!')
+                    f'Unknown parameter obtained while verifying server {self.local_ip} password!')
                 return False
 
         def connectVerifyNoPassword(pub_key: str, out: bool = False) -> bool:
@@ -97,7 +101,7 @@ class Client(Config):
                 print(err)
                 if out:
                     logging.error(
-                        f'''When connecting to server {self.ip_addr}, the other party's RSA public key is incorrect''')
+                        f'''When connecting to server {self.local_ip}, the other party's RSA public key is incorrect''')
                     return False
                 return False
             cipher_pub = PKCS1_OAEP.new(rsa_pub)
@@ -123,7 +127,6 @@ class Client(Config):
                 #     SocketTools.sendCommandNoTimeDict(self.client_socket, )
                 # todo:
 
-
                 data = self.client_command_socket.recv(1024)
                 cry = CryptoTools(aes_key)
                 cry.aes_ctr_decrypt(data)
@@ -142,7 +145,7 @@ class Client(Config):
 
             count = 3  # 连接失败重试次数
             for i in range(count):
-                if self.client_command_socket.connect_ex((self.ip_addr, self.command_port)) != 0:
+                if self.client_command_socket.connect_ex((self.local_ip, self.command_port)) != 0:
                     continue
                 result = SocketTools.sendCommandNoTimeDict(self.client_command_socket,
                                                            '''{
@@ -175,7 +178,7 @@ class Client(Config):
                     # 对方密码为空，示意任何设备均可连接
                     # 首先使用RSA发送一个随机字符串给予对方
                     # todo: 无密码验证
-                    logging.info(f'Target server {self.ip_addr} has no password set.')
+                    logging.info(f'Target server {self.local_ip} has no password set.')
                     debug = (i == count)
                     if connectVerifyNoPassword(public_key, debug):
                         pass
@@ -185,7 +188,7 @@ class Client(Config):
                 elif remote_password_sha256 == Status.DATA_RECEIVE_TIMEOUT:
                     # 验证客户端密码哈希超时
                     if i == count:
-                        logging.error(f'Connection to server {self.ip_addr} timed out!')
+                        logging.error(f'Connection to server {self.local_ip} timed out!')
                         return Status.CONNECT_TIMEOUT
                     else:
                         continue
@@ -194,7 +197,7 @@ class Client(Config):
                     # 验证客户端密码哈希得到未知参数
                     if i == count:
                         logging.error(
-                            f'Unknown parameter obtained while verifying server {self.ip_addr} password hash value!')
+                            f'Unknown parameter obtained while verifying server {self.local_ip} password hash value!')
                         return Status.PARAMETER_ERROR
                     else:
                         continue
@@ -210,7 +213,7 @@ class Client(Config):
         """
         if self.client_command_socket:
             self.client_data_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            self.client_data_socket.bind((self.ip_addr, 0))
+            self.client_data_socket.bind((self.local_ip, 0))
             status = self.client_data_socket.connect_ex((self.ip, self.data_port))
             if status == 0:
                 # 会话验证成功
@@ -269,5 +272,3 @@ class Client(Config):
     #             else:
     #                 # todo: 客户端密码哈希验证得到错误参数
     #                 continue
-
-

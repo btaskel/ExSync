@@ -1,6 +1,6 @@
 import logging
 from hashlib import sha256
-
+import base64
 from Crypto.Cipher import AES
 
 
@@ -19,7 +19,7 @@ class CryptoTools:
         aes-128-ctr 加密
         数据内容占用1008个字节
         :param message: 数据内容
-        :param offset: 偏移值：默认按nonce + Mark加密后1024个字节
+        :param offset: 偏移值：默认按nonce + Mark加密后1024个字节; offset会补偿诺干字节
         :return:
         """
         block = self.textLength - 16 + offset  # nonce 和 mark 共需要16个字节
@@ -72,8 +72,14 @@ class AESSession(CryptoTools):
 
 
 if __name__ == '__main__':
-    cry = CryptoTools('123')
-    encry = cry.aes_ctr_encrypt('awdhawdihawdoiw')
-    print(len(encry))
-    decry = cry.aes_ctr_decrypt(encry)
-    print(len(decry))
+    # cry = CryptoTools('123')
+    # encry = cry.aes_ctr_encrypt('awdhawdihawdoiw')
+    # print(encry)
+    # print(base64.b64encode(encry).decode())
+    # decry = cry.aes_ctr_decrypt(encry)
+    # print(decry)
+
+    string = b'\x939\xca|\xc1\x19J\x7fE\x19_\xde\xde_\xbc\xed\xc6zj\x11\x95\xf1;'
+    string = base64.b64encode(string).decode()
+    print(string)
+    # awdhawdihawdoiw

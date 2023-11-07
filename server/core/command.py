@@ -1,3 +1,4 @@
+import base64
 import hashlib
 import json
 import locale
@@ -13,7 +14,8 @@ from Crypto.Cipher import PKCS1_OAEP
 from Crypto.PublicKey import RSA
 
 from server.core.scan import Scan
-from server.tools.status import Status, CommandSet
+from server.tools.encryption import CryptoTools
+from server.tools.status import Status, CommandSet, PermissionEnum
 from server.tools.timedict import TimeDictInit, TimeDictTools
 from server.tools.tools import SocketTools, HashTools
 
@@ -433,7 +435,7 @@ class CommandSetExpand(BaseCommandSet):
             SocketTools.sendCommand(self.timedict, self.command_socket,
                                     'False', output=False, mark=mark)
 
-    def getPasswordHash(self, mark: str):
+    def getPasswordHash(self, mark: str) -> bool:
         """
         远程获取本地密码的sha256
         :param mark:
@@ -443,8 +445,9 @@ class CommandSetExpand(BaseCommandSet):
         password_hash = xxhash.xxh3_128(password).hexdigest()
         SocketTools.sendCommand(self.timedict, self.command_socket, password_hash, output=False,
                                 mark=mark)
+        return True
 
-    def getIndex(self, data_: dict, mark: str):
+    def getIndex(self, data_: dict, mark: str) -> bool:
         """
         获取本地某个同步空间的索引路径
         :param data_:
@@ -475,6 +478,9 @@ class CommandSetExpand(BaseCommandSet):
             1. 如果使用加密, 则信任连接双方使用AES进行加密通讯.
             2. 如果不使用加密, 则信任连接双方为明文.
 
+        :param data_:
+        :param mark:
+        :return:
         """
 
         version = data_.get('version')
@@ -482,7 +488,7 @@ class CommandSetExpand(BaseCommandSet):
             logging.warning(f'Client {self.address} : Missing parameter [version] for execution [verifyConnect]')
             return False
 
-        if not self.g['verify_version'] == version:
+        if not self.config['version'] == version:
             # todo: 客户方与服务端验证版本不一致
             return
 
@@ -533,11 +539,12 @@ class CommandSetExpand(BaseCommandSet):
                 "REMOTE_ID": remote_id,
                 "AES_KEY": session_password
             }
+            self.command_socket.permission = PermissionEnum.USER
 
         else:
+            # 2.验证远程sha256值是否与本地匹配: 发送本地的password_sha256值到远程
             # 如果密码不为空, 则无需进行密钥交换, 只需验证密钥即可
             password_sha256 = hashlib.sha256(self.password.encode('utf-8')).hexdigest()
-            # 远程验证sha256值是否匹配
             result = SocketTools.sendCommand(timedict=self.timedict, socket_=self.data_socket,
                                              mark=mark, command='''
             {
@@ -545,15 +552,23 @@ class CommandSetExpand(BaseCommandSet):
                 "password_hash": "%s"
                 }
             }
-            '''.replace('\x20', '') % password_sha256)  # password_sha256, RSA_publicKey
+            '''.replace('\x20', '') % password_sha256)
 
             try:
-                remote_password_sha384 = literal_eval(result).get('data').get('password_hash')
+                data = literal_eval(result).get('data')
+                remote_password_sha384 = data.get('password_hash')
+                remote_id_cry = data.get('id')
+            except Exception as e:
+                print(e)
+                return
+            try:
+                remote_id_cry = base64.b64decode(remote_id_cry.encode('utf-8'))
+                remote_id = CryptoTools(self.password).aes_ctr_decrypt(remote_id_cry)
             except Exception as e:
                 print(e)
                 return
 
-            # 验证sha384值是否匹配
+            # 5.验证本地sha384值是否与远程匹配匹配: 接收对方的密码sha384值, 如果通过返回id和验证状态
             password_sha384 = hashlib.sha384(self.password.encode('utf-8')).hexdigest()
             if remote_password_sha384 == password_sha384:
                 # 验证通过
@@ -565,19 +580,26 @@ class CommandSetExpand(BaseCommandSet):
                         "id": %s
                     }
                 }
-                """.replace('\x20', '') % self.id, output=False)
-
-                self.command_socket.verify_status, self.data_socket.verify_status = True
+                """.replace('\x20', '') % self.id, output=False, encrypt_password=self.password)
 
                 address = self.command_socket.getpeername()[0]
                 self.verify_manage[address] = {
-                    "REMOTE_MARK": 1,
-                    "AES_KEY": self.password
+                    "REMOTE_ID": remote_id,
+                    "AES_KEY": self.password,
+                    "PERMISSION": PermissionEnum.USER.value
                 }
+                self.command_socket.permission = PermissionEnum.USER
 
             elif remote_password_sha384 == Status.DATA_RECEIVE_TIMEOUT:
                 # todo: 服务端密码验证失败(超时)
-                pass
+                SocketTools.sendCommand(timedict=self.timedict, socket_=self.data_socket, mark=mark, command="""
+               {
+                   "data": {
+                       "status": 'fail',
+                       "id": %s
+                   }
+               }
+               """.replace('\x20', '') % self.id, output=False)
 
             else:
                 # todo: 服务端密码验证失败(或得到错误参数)

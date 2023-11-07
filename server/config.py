@@ -30,30 +30,50 @@ class readConfig:
     """
 
     @staticmethod
-    def readJson():
+    def readJson() -> dict:
         """
         读取config
         :return:
         """
-        config = {}
+        config: dict = {}
         with open('.\\config\\config.json', mode='r', encoding='utf-8') as f:
             json_file = json.loads(f.read())
 
             # log-loglevel
-            if json_file['log']['loglevel'].lower() in ['debug', 'info', 'warning', 'error', 'none']:
+            log = json_file.get('log')
+            if not log:
+                config['log'] = {}
+                config['log']['loglevel'] = None
+            elif log and not log.get('loglevel'):
+                config['log']['loglevel'] = None
+
+            if log.get('loglevel').lower() in ['debug', 'info', 'warning', 'error', 'none']:
                 config['log']['loglevel'] = json_file['log']['loglevel']
             else:
                 config['log']['loglevel'] = 'info'
 
-            addr = json_file['server']['addr']
+            # addr = json_file['server']['addr']
+            server = json_file.get('server')
+            if not server:
+                config['server'] = {}
+                config['server']['addr'] = {}
+            elif server and not server.get('addr'):
+                config['server']['addr'] = {}
+            else:
+                config['server'] = json_file.get('server')
+
+            addr = config['server']['addr']
             # server-addr-id
-            if addr['id'] is None:
+            if addr.get('id'):
+                if len(config.get('id')) < 4:
+                    logging.warning('If the device ID length is less than 4, there may be a security risk.')
+            else:
                 logging.info('The device ID is already random, which will hide your device.')
                 # config['server']['addr']['id'] = ''.join(random.sample(string.ascii_letters, 10))
                 config['server']['addr']['id'] = None
 
             # server-addr-ip
-            if addr['ip']:
+            if addr.get('ip'):
                 try:
                     # 判断是否为ipv4
                     socket.inet_pton(socket.AF_INET, addr['ip'])
@@ -72,60 +92,83 @@ class readConfig:
                 config['server']['addr']['ip_type'] = 'ipv4'
 
             # server-addr-port
-            if not isinstance(addr['port'], int) and 65536 < addr['port'] < 1024:
+            if not isinstance(addr.get('port'), int) and 65536 < addr.get('port') < 1024:
                 logging.error('Port number setting error! Has been defaulted to 5001!')
                 config['server']['addr']['port'] = 5001
 
             # server-addr-password
-            if not addr['password']:
+            if not addr.get('password'):
                 logging.error('Password not set! Your device may be in a dangerous state!')
                 sys.exit(1)
-            elif len(addr['password']) < 4:
+            elif len(addr.get('password')) < 4:
                 logging.error('Password length is less than 4! Should be between 4 and 48 characters!')
                 sys.exit(1)
-            elif len(addr['password']) > 48:
+            elif len(addr.get('password')) > 48:
                 logging.error('The password length is greater than 48! Should be between 4 and 48 characters!')
                 sys.exit(1)
 
-            setting = json_file['server']['setting']
+            if server.get['setting']:
+                config['server']['setting'] = server.get['setting']
+            else:
+                config['server']['setting'] = {}
+
+            setting = config['server']['setting']
+
             # server-setting-encode
-            if not setting['encode'] and setting['encode'] != 'gbk' or setting['encode'] != 'utf-8':
+            if not setting.get('encode') and setting.get('encode').lower() != 'gbk' or setting.get(
+                    'encode').lower() != 'utf-8':
                 logging.info('Invalid encoding, defaults to UTF-8.')
 
             # server-setting-IOBalance
-            if not isinstance(setting['iobalance'], bool):
+            if not isinstance(setting.get('iobalance'), bool):
                 config['server']['setting']['iobalance'] = False
 
+            if server.get('scan'):
+                config['server']['scan'] = server.get('scan')
+            else:
+                config['server']['scan'] = {}
+
             scan = config['server']['scan']
+
             # server-scan-enabled
-            if not isinstance(scan['enabled'], bool):
+            if not isinstance(scan.get('enabled'), bool):
                 config['server']['scan']['enabled'] = True
 
             # server-scan-type
-            if not scan['type'] == 'lan' or scan['type'] == 'white' or scan['type'] == 'black':
+            if scan.get('type') not in ['lan', 'white', 'black']:
                 config['server']['scan']['type'] = 'lan'
 
             # server-scan-max
-            if isinstance(scan['max'], int) and scan['max'] < 1:
+            if isinstance(scan.get('max'), int) and scan.get('max') < 1:
                 config['server']['scan']['max'] = 5
 
             # server-scan-device
-            if not isinstance(scan['devices'], list):
+            if not isinstance(scan.get('devices'), list):
                 config['server']['scan']['devices'] = []
 
+            if server.get('proxy'):
+                config['server']['proxy'] = server['proxy']
+            else:
+                config['server']['proxy'] = {}
             proxy = config['server']['proxy']
+
             # server-proxy-enabled
-            if not isinstance(proxy['enabled'], bool):
+            if not isinstance(proxy.get('enabled'), bool):
                 config['server']['proxy']['enabled'] = False
 
             # server-proxy-hostname
-            if not isinstance(proxy['hostname'], str) or proxy['hostname'] == '':
+            if not isinstance(proxy.get('hostname'), str):
                 config['server']['proxy']['hostname'] = '127.0.0.1'
 
             # server-proxy-port
-            if not isinstance(proxy['port'], int) and 65536 < proxy['port'] < 1024:
-                logging.error('Proxy port error! Restore default: 1080 !')
+            if not isinstance(proxy.get('port'), int) and 65536 < proxy.get('port') < 1024:
+                logging.error('Proxy port error! Restore default: 5001 !')
                 config['server']['proxy']['port'] = 5001
+
+            if json_file.get('userdata'):
+                config['userdata'] = json_file.get('userdata')
+            else:
+                config['userdata'] = {}
 
             # userdata
             count = 1
@@ -149,10 +192,13 @@ class readConfig:
                     config['userdata'][userdata]['autostart'] = True
                 count += 1
 
+            # version
+            config['version'] = json_file.get('version')
+
         return config
 
     @staticmethod
-    def jsonData():
+    def jsonData() -> dict:
 
         json_str = {
             "log": {
