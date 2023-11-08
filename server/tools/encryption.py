@@ -1,6 +1,7 @@
+import base64
 import logging
 from hashlib import sha256
-import base64
+
 from Crypto.Cipher import AES
 
 
@@ -22,8 +23,7 @@ class CryptoTools:
         :param offset: 偏移值：默认按nonce + Mark加密后1024个字节; offset会补偿诺干字节
         :return:
         """
-        block = self.textLength - 16 + offset  # nonce 和 mark 共需要16个字节
-        if len(message) > block:
+        if len(message) > (self.textLength - 16 + offset):  # nonce 和 mark 共需要16个字节
             raise ValueError('aes_ctr_encrypt加密时遇到超过1008个字节的信息流')
         elif type(message) is bytes:
             cipher = AES.new(self.key.encode('utf-8'), AES.MODE_CTR)

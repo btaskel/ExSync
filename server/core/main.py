@@ -4,7 +4,6 @@ import threading
 import time
 
 import socks
-import xxhash
 
 from server.client.command import CommandSend as Client
 from server.core.command import RecvCommand
@@ -20,22 +19,59 @@ client_mark : {
     'client': client,
     'command_socket': client_command,
     'data_socket': client_data,
+    'permission': permission,
     'AES_KEY': aes_key
     }
 """
-socket_manage = {}
+socket_manage: dict = {}
 
 
-class createSocket(Scan):
+class Manage:
+    """
+    对socket_manager的管理
+    """
+
+    @staticmethod
+    def getAllConnectedDev() -> dict:
+        """
+        列出所有已经连接并验证成功的设备
+        :return:
+        """
+        return socket_manage
+
+    @staticmethod
+    def getDevInfo(attr: str, value) -> dict:
+        """
+        通过某一个设备的属性找到对应的信息内容
+        :param attr: 属性
+        :param value: 值
+        :return: 设备信息对象
+        """
+        for dev in socket_manage:
+            for info in dev:
+                if info.get(attr) == value:
+                    return dev
+
+    @staticmethod
+    def delDevInfo(client_mark: str) -> bool:
+        """
+        :param client_mark: 客户端mark值
+        :return:
+        """
+        if socket_manage.pop(client_mark):
+            return True
+        return False
+
+
+class createSocket(Scan, Manage):
     """
     创建命令收发和数据收发套接字
 
     过程：
     1.首先服务端会设置代理（适用于数据、指令、监听Socket）。
-    2.监听Socket等待客户端指令Socket连接，验证成功的客户端ip会增加进白名单列表，如果验证成功开始第三步。
-    3.指令Socket等待客户端指令Socket连接，如果客户端的ip在白名单中，则连接成功，并进入等待循环。
-    4.数据Socket等待客户端数据Socket连接，如果客户端的ip在白名单中，则连接成功，终止指令Socket的等待循环。
-    5.循环等待客户端指令。
+    2.指令Socket等待客户端指令Socket连接，如果客户端的ip在白名单中，则连接成功，并进入等待循环。
+    3.当指令Socket连接成功并通过验证后，数据Socket才能够进行连接。
+    4.循环等待客户端指令。
     """
 
     def __init__(self):
@@ -195,6 +231,7 @@ class createSocket(Scan):
                 'client': client,
                 'command_socket': client_command,
                 'data_socket': client_data,
+                'permission': PermissionEnum.USER.value,
                 'AES_KEY': aes_key
             }
 

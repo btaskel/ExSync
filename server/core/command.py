@@ -513,10 +513,10 @@ class CommandSetExpand(BaseCommandSet):
 
             # 加载公钥和私钥
             private_key = RSA.import_key(private_key)
-            public_key = RSA.import_key(public_key)
+            # public_key = RSA.import_key(public_key)
 
             # 创建一个新的cipher实例
-            cipher_pub = PKCS1_OAEP.new(public_key)
+            # cipher_pub = PKCS1_OAEP.new(public_key)
             private_key = PKCS1_OAEP.new(private_key)
 
             # # 加密一条消息
@@ -626,9 +626,10 @@ class RecvCommand(CommandSetExpand):
         super().__init__(command_socket, data_socket)
         self.command_socket = command_socket
         self.data_socket = data_socket
+        self.close = False
 
     def closeCommand(self):
-        return
+        self.close = True
 
     def recvCommand(self):
         """
@@ -646,6 +647,8 @@ class RecvCommand(CommandSetExpand):
         :return:
         """
         while True:
+            if self.close:
+                return
             command = self.command_socket.recv(1024).decode(self.encode_type)
             if len(command) < 9:
                 continue
@@ -844,7 +847,7 @@ class RecvCommand(CommandSetExpand):
         :param mark:
         :return:
         """
-        if self.command_socket.permission >= 0:
+        if self.command_socket.permission <= 0:
             thread = threading.Thread(target=self.verifyConnect, args=(data_, mark))
             thread.daemon = True
             thread.start()

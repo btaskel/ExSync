@@ -1,18 +1,17 @@
+import base64
 import hashlib
 import logging
 import socket
 from ast import literal_eval
 
 import socks
-import xxhash
 from Crypto.Cipher import PKCS1_OAEP
 from Crypto.PublicKey import RSA
 
 from server.config import readConfig
+from server.tools.encryption import CryptoTools
 from server.tools.status import Status
 from server.tools.tools import HashTools, SocketTools
-from server.tools.timedict import TimeDictInit
-from server.tools.encryption import CryptoTools
 
 
 class Config(readConfig):
@@ -33,18 +32,33 @@ class Client(Config):
         self.verified: bool = verified
 
         self.ip: str = ip
+        self.id: str = self.config['server']['addr'].get('id')
         self.data_port: int = port
         self.command_port: int = port + 1
         self.encode: str = self.config['server']['setting'].get('encode', 'utf-8')
 
         # 并且初始化代理设置
-        proxy_host, proxy_port = self.config['server']['proxy'].get('hostname'), self.config['server']['proxy'].get(
-            'port')
-        socks.set_default_proxy(socks.SOCKS5, proxy_host, proxy_port)
+        proxy = self.config['server']['proxy']
+        proxy_host = proxy.get('hostname')
+        proxy_port = proxy.get('port')
+        username = proxy.get('username')
+        password = proxy.get('password')
+        socks.set_default_proxy(proxy_type=socks.SOCKS5, addr=proxy_host, port=proxy_port, username=username,
+                                password=password)
         socket.socket = socks.socksocket
 
     def host_info(self, host_info: dict) -> bool:
-        """输入与主机联系的属性资料, 用于确认连接状态"""
+        """
+        输入与主机联系的属性资料, 用于确认连接状态
+        {
+            'client_mark': client_mark,
+            'ip': ip,
+            'id': self.host_id,
+            'AES_KEY': aes_key
+        }
+        :param host_info:
+        :return:
+        """
         if isinstance(host_info, dict) and len(host_info) >= 1:
             self.host_info = host_info
             return True
@@ -65,25 +79,39 @@ class Client(Config):
         """
 
         def connectVerify(debug_status: bool = False) -> bool:
-            # 发送xxh3_128的密码值
+            # 4.本地发送sha384:发送本地密码sha384
+            password_sha384 = hashlib.sha384(self.password.encode('utf-8')).hexdigest()
+            encrypt_local_id = CryptoTools(self.password).aes_ctr_encrypt(self.id, 8).decode('utf-8')
             out = SocketTools.sendCommandNoTimeDict(self.client_command_socket,
-                                                    xxhash.xxh3_128(self.password).hexdigest())
-            '''
-            {}
-            '''
-            if out == 'success':
-                # 验证成功
-                self.verify_manage[self.client_command_socket.getpeername()[0]] = {
-                    "AES_KEY": self.password
+            command='''
+            {
+                "data": {
+                "password_hash": "%s",
+                "id": "%s"
                 }
+            }
+            '''.replace('\x20', '') % (password_sha384, encrypt_local_id))
+
+            try:
+                output = literal_eval(out[8:])
+                remote_id = CryptoTools(self.password).aes_ctr_decrypt(base64.b64decode(output.get('id')))
+            except Exception as w:
+                print(w)
+                return False
+            status_ = output.get('status')
+
+            # 6.远程发送状态和id:获取通过状态和远程id 验证结束
+            if status_ == 'success':
+                # 验证成功
+                self.host_info['id'] = remote_id
                 return True
 
-            elif out == 'fail':
+            elif status_ == 'fail':
                 # 验证服务端密码失败
                 debug_status and logging.error(f'Failed to verify server {self.local_ip} password!')
                 return False
 
-            elif out == Status.DATA_RECEIVE_TIMEOUT:
+            elif status_ == Status.DATA_RECEIVE_TIMEOUT:
                 # 验证服务端密码超时
                 debug_status and logging.error(f'Verifying server {self.local_ip} password timeout!')
                 return False
@@ -145,43 +173,43 @@ class Client(Config):
 
             count = 3  # 连接失败重试次数
             for i in range(count):
+                logging.debug(f'Connecting to server {self.ip} for the {i}th time')
                 if self.client_command_socket.connect_ex((self.local_ip, self.command_port)) != 0:
                     continue
+                # 1.本地发送验证指令:发送指令开始进行验证
                 result = SocketTools.sendCommandNoTimeDict(self.client_command_socket,
                                                            '''{
                                                                "command": "comm",
                                                                "type": "verifyconnect",
                                                                "method": "post",
-                                                               "data": {"version": %s}
-                                                           }'''.replace('\x20', '') % self.config['version'])
-                # 验证sha256值是否匹配
+                                                               "data": {"version": "%s"}
+                                                           }'''.replace('\x20', '') % self.config.get('version'))
+                # 3.远程发送sha256值:验证远程sha256值是否与本地匹配
                 try:
-                    data = literal_eval(result).get('data')
-                    public_key = data.get('public_key')
-                    remote_password_sha256 = data.get('password_hash')
+                    data = literal_eval(result[8:]).get('data')
                 except Exception as e:
                     print(e)
                     self.client_command_socket.shutdown(socket.SHUT_RDWR)
                     self.client_command_socket.close()
                     continue
-
+                public_key = data.get('public_key')
+                remote_password_sha256 = data.get('password_hash')
                 if remote_password_sha256 == hashlib.sha256(self.password.encode('utf-8')).hexdigest():
-                    # todo: 有密码验证
                     debug = (i == count)
 
                     if connectVerify(debug):
-                        pass
+                        # 验证通过
+                        return True
                     else:
                         continue
 
                 elif not remote_password_sha256 and public_key:
-                    # 对方密码为空，示意任何设备均可连接
-                    # 首先使用RSA发送一个随机字符串给予对方
-                    # todo: 无密码验证
+                    # 对方密码为空，示意任何设备均可连接, 首先使用RSA发送一个随机字符串给予对方
                     logging.info(f'Target server {self.local_ip} has no password set.')
                     debug = (i == count)
                     if connectVerifyNoPassword(public_key, debug):
-                        pass
+                        # 验证通过
+                        return True
                     else:
                         continue
 
@@ -202,9 +230,8 @@ class Client(Config):
                     else:
                         continue
 
-                self.client_command_socket.shutdown(socket.SHUT_RDWR)
-                self.client_command_socket.close()
-                continue
+            self.client_command_socket.shutdown(socket.SHUT_RDWR)
+            self.client_command_socket.close()
             return False
 
     def createClientDataSocket(self):

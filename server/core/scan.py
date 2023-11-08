@@ -1,3 +1,4 @@
+import base64
 import hashlib
 import logging
 import os
@@ -9,9 +10,9 @@ from Crypto.Cipher import PKCS1_OAEP
 from Crypto.PublicKey import RSA
 
 from server.config import readConfig
+from server.tools.encryption import CryptoTools
 from server.tools.status import Status
 from server.tools.tools import SocketTools, HashTools
-from server.tools.encryption import CryptoTools
 
 
 class Scan(readConfig):
@@ -163,7 +164,7 @@ class Scan(readConfig):
                     result = cry.aes_ctr_decrypt(result[8:])
                     data = literal_eval(result).get('data')
                     status = data.get('status')
-                    remote_id = data.get('id')
+                    remote_id = CryptoTools(self.password).aes_ctr_decrypt(base64.b64decode(data.get('id')))
                 except Exception as e:
                     print(e)
                     logging.error(f'Unknown status returned while scanning server {ip}')
@@ -180,16 +181,12 @@ class Scan(readConfig):
                     }
 
                 elif status == 'fail':
-                    # todo: 验证服务端密码失败
-                    pass
+                    # 验证服务端密码失败
+                    logging.debug(f'Verification failed when connecting to server {ip}')
 
                 elif status == Status.DATA_RECEIVE_TIMEOUT:
-                    # todo: 验证服务端密码超时
-                    pass
-
-                else:
-                    # todo: 验证服务端密码时得到未知参数
-                    pass
+                    # 验证服务端密码超时
+                    logging.debug(f'Timed out connecting to server {ip}')
 
                 test.shutdown(socket.SHUT_RDWR)
                 test.close()
