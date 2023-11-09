@@ -4,7 +4,7 @@ import string
 import threading
 import time
 
-from server.tools.encryption import CryptoTools
+from core.tools.encryption import CryptoTools
 
 
 class TimeDict:

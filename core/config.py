@@ -165,6 +165,13 @@ class readConfig:
                 logging.error('Proxy port error! Restore default: 5001 !')
                 config['server']['proxy']['port'] = 5001
 
+            # server-proxy-username
+            if not isinstance(proxy.get('username'), str):
+                config['server']['proxy']['username'] = None
+
+            # server-proxy-password
+            config['server']['proxy']['username'] = proxy.get('username')
+
             if json_file.get('userdata'):
                 config['userdata'] = json_file.get('userdata')
             else:
@@ -231,7 +238,9 @@ class readConfig:
                 "proxy": {
                     "enabled": False,
                     "hostname": "localhost",
-                    "port": 0
+                    "port": 0,
+                    "username": None,
+                    "password": None
                 }
             },
             "userdata": [

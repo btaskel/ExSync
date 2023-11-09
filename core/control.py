@@ -4,9 +4,9 @@ import os
 import sys
 import threading
 
-from server.client.command import CommandSend
-from server.core.main import createSocket, socket_manage
-from server.tools.tools import relToAbs
+from core.client.command import CommandSend
+from core.server.main import createSocket, socket_manage
+from core.tools.tools import relToAbs
 
 
 class Control:

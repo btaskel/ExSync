@@ -14,7 +14,7 @@
   <component name="PyNamespacePackagesService">
     <option name="namespacePackageFolders">
       <list>
-        <option value="$MODULE_DIR$/server/client" />
+        <option value="$MODULE_DIR$/core/client" />
       </list>
     </option>
   </component>

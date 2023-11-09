@@ -2,7 +2,7 @@ import os
 
 from flask import Blueprint, flash, render_template
 
-from server.sync import SyncData
+from core.sync import SyncData
 
 bp = Blueprint('test', __name__, url_prefix='/test')
 

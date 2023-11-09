@@ -9,9 +9,9 @@ from datetime import datetime
 import ntplib
 import xxhash
 
-from server.config import readConfig
-from server.control import Control
-from server.tools.tools import createFile, relToAbs
+from core.config import readConfig
+from core.control import Control
+from core.tools.tools import createFile, relToAbs
 
 
 class Index(readConfig):

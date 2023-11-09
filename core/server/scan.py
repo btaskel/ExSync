@@ -9,10 +9,10 @@ from ast import literal_eval
 from Crypto.Cipher import PKCS1_OAEP
 from Crypto.PublicKey import RSA
 
-from server.config import readConfig
-from server.tools.encryption import CryptoTools
-from server.tools.status import Status
-from server.tools.tools import SocketTools, HashTools
+from core.config import readConfig
+from core.tools.encryption import CryptoTools
+from core.tools.status import Status
+from core.tools.tools import SocketTools, HashTools
 
 
 class Scan(readConfig):
@@ -125,7 +125,6 @@ class Scan(readConfig):
             test.settimeout(2)
             # 连接设备的指定端口
             if test.connect_ex((ip, self.command_port)) != 0:
-
                 test.shutdown(socket.SHUT_RDWR)
                 test.close()
                 continue
@@ -136,7 +135,7 @@ class Scan(readConfig):
 
             # 3.远程发送sha256值:验证远程sha256值是否与本地匹配
             try:
-                dict_result = literal_eval(result[8:]).get('data') # 去除mark头
+                dict_result = literal_eval(result[8:]).get('data')  # 去除mark头
                 remote_password_sha256 = dict_result.get('password_hash')
                 public_key = dict_result.get('public_key')
             except Exception as e:
@@ -145,11 +144,12 @@ class Scan(readConfig):
                 test.close()
                 continue
 
-            if remote_password_sha256 == hashlib.sha256(self.password.encode('utf-8')).hexdigest(): # 密码不为空，验证是否与本地密码相同
+            if remote_password_sha256 == hashlib.sha256(self.password.encode('utf-8')).hexdigest():  # 密码不为空，验证是否与本地密码相同
 
                 # 4.本地发送sha384:发送本地密码sha384
-                password_sha384 = hashlib.sha384(self.password.encode('utf-8')).hexdigest()# 获取密码的sha384
-                encrypt_local_id = CryptoTools(self.password).aes_ctr_encrypt(self.id, 8).decode('utf-8')# 获取self.id的加密值
+                password_sha384 = hashlib.sha384(self.password.encode('utf-8')).hexdigest()  # 获取密码的sha384
+                encrypt_local_id = CryptoTools(self.password).aes_ctr_encrypt(self.id, 8).decode(
+                    'utf-8')  # 获取self.id的加密值
                 result = SocketTools.sendCommandNoTimeDict(test, command='''
                 {
                     "data": {
@@ -194,12 +194,11 @@ class Scan(readConfig):
 
             elif not remote_password_sha256 and public_key:
                 # 对方密码为空，示意任何设备均可连接
-                rsa_pub = RSA.import_key(public_key) # 首先使用RSA发送一个随机字符串给予对方
+                rsa_pub = RSA.import_key(public_key)  # 首先使用RSA发送一个随机字符串给予对方
 
                 cipher_pub = PKCS1_OAEP.new(rsa_pub)
 
                 session_password = HashTools.getRandomStr(8)
-
 
                 message = ('''
                 {
@@ -208,7 +207,7 @@ class Scan(readConfig):
                         "id": "%s"
                     }
                 }
-                '''.replace('\x20', '') % (session_password, self.id)).encode('utf-8') # 即将发送的加密数据
+                '''.replace('\x20', '') % (session_password, self.id)).encode('utf-8')  # 即将发送的加密数据
 
                 ciphertext = cipher_pub.encrypt(message)
 

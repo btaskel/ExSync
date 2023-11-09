@@ -1,4 +1,4 @@
-from server.api.gitcode import GitcodeAPI
+from core.api.gitcode import GitcodeAPI
 
 
 class Updater(GitcodeAPI):

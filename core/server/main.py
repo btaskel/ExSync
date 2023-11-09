@@ -3,13 +3,12 @@ import socket
 import threading
 import time
 
-import socks
-
-from server.client.command import CommandSend as Client
-from server.core.command import RecvCommand
-from server.core.scan import Scan
-from server.tools.status import Status, PermissionEnum
-from server.tools.tools import HashTools
+from core.client.main import Client
+from core.server.command import RecvCommand
+from core.server.proxy import Proxy
+from core.server.scan import Scan
+from core.tools.status import Status, PermissionEnum
+from core.tools.tools import HashTools
 
 """
 客户端实例管理
@@ -63,7 +62,7 @@ class Manage:
         return False
 
 
-class createSocket(Scan, Manage):
+class createSocket(Scan, Manage, Proxy):
     """
     创建命令收发和数据收发套接字
 
@@ -87,19 +86,14 @@ class createSocket(Scan, Manage):
         }
         """
         self.socket_info = {}
-        self.init()
+
+        if self.config['server']['proxy'].get('enabled'):
+            socket.socket = self.setProxyServer(self.config)
         # 持续合并指令与数据传输套接字
         funcs = [self.mergeSocket, self.updateIplist]
         for func in funcs:
             thread = threading.Thread(target=func)
             thread.start()
-
-    def init(self):
-        if self.config['server']['proxy']['enabled']:
-            proxy_host, proxy_port = self.config['server']['proxy']['hostname'], self.config['server']['proxy']['port']
-            socks.set_default_proxy(socks.SOCKS5, proxy_host, proxy_port)
-            # 替换socket
-            socket.socket = socks.socksocket
 
     def createDataSocket(self):
         data_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)

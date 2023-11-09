@@ -2,7 +2,7 @@ import argparse
 import logging
 import sys
 
-from server.config import readConfig
+from core.config import readConfig
 
 
 class Init:

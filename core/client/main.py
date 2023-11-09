@@ -4,29 +4,20 @@ import logging
 import socket
 from ast import literal_eval
 
-import socks
 from Crypto.Cipher import PKCS1_OAEP
 from Crypto.PublicKey import RSA
 
-from server.config import readConfig
-from server.tools.encryption import CryptoTools
-from server.tools.status import Status
-from server.tools.tools import HashTools, SocketTools
+from core.client.command import CommandSend
+from core.server.proxy import Proxy
+from core.tools.encryption import CryptoTools
+from core.tools.status import Status
+from core.tools.tools import HashTools, SocketTools
 
 
-class Config(readConfig):
-    def __init__(self):
-        super().__init__()
-        self.config = readConfig.readJson()
-        self.local_ip: str = self.config['server']['addr'].get('ip')
-        self.encode_type: str = self.config['server']['setting'].get('encode')
-        self.password: str = self.config['server']['addr'].get('password')
-
-
-class Client(Config):
+class Client(CommandSend, Proxy):
     def __init__(self, ip: str, port: int, verified: bool = False):
         super().__init__()
-        self.host_info: dict = {}
+        self.__host_info: dict = {}
         self.client_command_socket = None
         self.client_data_socket = None
         self.verified: bool = verified
@@ -37,15 +28,8 @@ class Client(Config):
         self.command_port: int = port + 1
         self.encode: str = self.config['server']['setting'].get('encode', 'utf-8')
 
-        # 并且初始化代理设置
-        proxy = self.config['server']['proxy']
-        proxy_host = proxy.get('hostname')
-        proxy_port = proxy.get('port')
-        username = proxy.get('username')
-        password = proxy.get('password')
-        socks.set_default_proxy(proxy_type=socks.SOCKS5, addr=proxy_host, port=proxy_port, username=username,
-                                password=password)
-        socket.socket = socks.socksocket
+        if self.config['server']['proxy'].get('enabled'):
+            socket.socket = self.setProxyServer(self.config)
 
     def host_info(self, host_info: dict) -> bool:
         """
@@ -60,7 +44,7 @@ class Client(Config):
         :return:
         """
         if isinstance(host_info, dict) and len(host_info) >= 1:
-            self.host_info = host_info
+            self.__host_info = host_info
             return True
         return False
 
@@ -79,11 +63,16 @@ class Client(Config):
         """
 
         def connectVerify(debug_status: bool = False) -> bool:
+            """
+            有密码验证
+            :param debug_status:
+            :return:
+            """
             # 4.本地发送sha384:发送本地密码sha384
             password_sha384 = hashlib.sha384(self.password.encode('utf-8')).hexdigest()
             encrypt_local_id = CryptoTools(self.password).aes_ctr_encrypt(self.id, 8).decode('utf-8')
             out = SocketTools.sendCommandNoTimeDict(self.client_command_socket,
-            command='''
+                                                    command='''
             {
                 "data": {
                 "password_hash": "%s",
@@ -103,7 +92,7 @@ class Client(Config):
             # 6.远程发送状态和id:获取通过状态和远程id 验证结束
             if status_ == 'success':
                 # 验证成功
-                self.host_info['id'] = remote_id
+                self.__host_info['id'] = remote_id
                 return True
 
             elif status_ == 'fail':
@@ -123,6 +112,12 @@ class Client(Config):
                 return False
 
         def connectVerifyNoPassword(pub_key: str, out: bool = False) -> bool:
+            """
+            无密码验证
+            :param pub_key:
+            :param out:
+            :return:
+            """
             try:
                 rsa_pub = RSA.import_key(pub_key)
             except Exception as err:
@@ -142,7 +137,7 @@ class Client(Config):
             logging.debug('Client_Command_Socket not created.')
             return Status.UNKNOWN_ERROR
 
-        aes_key = self.host_info.get('AES_KEY')
+        aes_key = self.__host_info.get('AES_KEY')
         if aes_key:
             # AES_KEY不为空, 则验证通过, 直接进行连接
 
@@ -261,41 +256,3 @@ class Client(Config):
         self.client_command_socket.shutdown(socket.SHUT_RDWR)
         self.client_command_socket.close()
         return True
-
-    # def createListenSocket(self):
-    #     listen_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    #     listen_socket.listen(128)
-    #     while True:
-    #         if self.uuid:
-    #             listen_socket.close()
-    #             return
-    #         sub_socket, addr = listen_socket.accept()
-    #         if self.uuid:
-    #             listen_socket.close()
-    #             return
-    #         result = sub_socket.recv(1024).decode(self.encode)
-    #         if result == '/_com:comm:sync:get:version:_':
-    #             com_password_hash = SocketTools.sendCommandNoTimeDict(sub_socket, self.config['version'])
-    #             if com_password_hash == '/_com:comm:sync:get:password|hash:_':
-    #                 password = self.config['server']['password']
-    #                 com_password = SocketTools.sendCommandNoTimeDict(sub_socket, xxhash.xxh3_128(password).hexdigest())
-    #                 if com_password == self.config['server']['password']:
-    #                     # 验证通过
-    #                     SocketTools.sendCommandNoTimeDict(sub_socket, 'True', output=False)
-    #                     sub_socket.shutdown(socket.SHUT_RDWR)
-    #                     sub_socket.close()
-    #                     listen_socket.close()
-    #                     break
-    #                 elif com_password == Status.DATA_RECEIVE_TIMEOUT:
-    #                     # todo: 服务端密码验证失败
-    #                     continue
-    #                 else:
-    #                     # todo: 服务端密码验证得到错误参数
-    #                     continue
-    #
-    #             elif com_password_hash == Status.DATA_RECEIVE_TIMEOUT:
-    #                 # todo: 客户端密码哈希验证失败
-    #                 continue
-    #             else:
-    #                 # todo: 客户端密码哈希验证得到错误参数
-    #                 continue

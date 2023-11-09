@@ -5,13 +5,20 @@ from ast import literal_eval
 
 import xxhash
 
-from server.client.main import Config, Client
-from server.tools.status import Status, CommandSet
-from server.tools.timedict import TimeDictInit
-from server.tools.tools import HashTools, SocketTools
+from core.config import readConfig
+from core.tools.status import Status, CommandSet
+from core.tools.timedict import TimeDictInit
+from core.tools.tools import HashTools, SocketTools
 
+class Config(readConfig):
+    def __init__(self):
+        super().__init__()
+        self.config = readConfig.readJson()
+        self.local_ip: str = self.config['server']['addr'].get('ip')
+        self.encode_type: str = self.config['server']['setting'].get('encode')
+        self.password: str = self.config['server']['addr'].get('password')
 
-class CommandSend(Config, Client):
+class CommandSend(Config):
     """客户端指令发送类"""
 
     def __init__(self, data_socket, command_socket):

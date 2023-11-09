@@ -7,9 +7,9 @@ import uuid
 
 import xxhash
 
-from server.config import readConfig
-from server.tools.encryption import CryptoTools
-from server.tools.status import Status
+from core.config import readConfig
+from core.tools.encryption import CryptoTools
+from core.tools.status import Status
 
 
 def createFile(file_path: str, content: str) -> bool:

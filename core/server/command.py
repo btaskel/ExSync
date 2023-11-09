@@ -13,11 +13,11 @@ import xxhash
 from Crypto.Cipher import PKCS1_OAEP
 from Crypto.PublicKey import RSA
 
-from server.core.scan import Scan
-from server.tools.encryption import CryptoTools
-from server.tools.status import Status, CommandSet, PermissionEnum
-from server.tools.timedict import TimeDictInit, TimeDictTools
-from server.tools.tools import SocketTools, HashTools
+from core.server.scan import Scan
+from core.tools.encryption import CryptoTools
+from core.tools.status import Status, CommandSet, PermissionEnum
+from core.tools.timedict import TimeDictInit
+from core.tools.tools import SocketTools, HashTools
 
 
 class BaseCommandSet(Scan):
@@ -41,7 +41,6 @@ class BaseCommandSet(Scan):
         self.system_encode = locale.getpreferredencoding()
 
         self.timedict = TimeDictInit(data_socket, command_socket)
-        self.timeDictTools = TimeDictTools(self.timedict)
         self.closeTimeDict = False
 
     def recvFile(self, data_: dict, mark: str):

@@ -4,7 +4,7 @@ from functools import lru_cache
 import requests
 from bs4 import BeautifulSoup
 
-from ..config import ApiConfig
+from core.config import ApiConfig
 
 
 class GitcodeAPI(ApiConfig):
