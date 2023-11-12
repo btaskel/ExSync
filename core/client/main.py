@@ -8,10 +8,20 @@ from Crypto.Cipher import PKCS1_OAEP
 from Crypto.PublicKey import RSA
 
 from core.client.command import CommandSend
+from core.config import readConfig
 from core.server.proxy import Proxy
 from core.tools.encryption import CryptoTools
 from core.tools.status import Status
 from core.tools.tools import HashTools, SocketTools
+
+
+class Config(readConfig):
+    def __init__(self):
+        super().__init__()
+        self.config = readConfig.readJson()
+        self.local_ip: str = self.config['server']['addr'].get('ip')
+        self.encode_type: str = self.config['server']['setting'].get('encode')
+        self.password: str = self.config['server']['addr'].get('password')
 
 
 class Client(CommandSend, Proxy):
@@ -70,17 +80,14 @@ class Client(CommandSend, Proxy):
             """
             # 4.本地发送sha384:发送本地密码sha384
             password_sha384 = hashlib.sha384(self.password.encode('utf-8')).hexdigest()
-            encrypt_local_id = CryptoTools(self.password).aes_ctr_encrypt(self.id, 8).decode('utf-8')
-            out = SocketTools.sendCommandNoTimeDict(self.client_command_socket,
-                                                    command='''
-            {
+            encrypt_local_id = CryptoTools(self.password).aes_ctr_encrypt(self.id).decode('utf-8')
+            command = {
                 "data": {
-                "password_hash": "%s",
-                "id": "%s"
+                    "password_hash": password_sha384,
+                    "id": encrypt_local_id
                 }
             }
-            '''.replace('\x20', '') % (password_sha384, encrypt_local_id))
-
+            out = SocketTools.sendCommandNoTimeDict(self.client_command_socket, command=command)
             try:
                 output = literal_eval(out[8:])
                 remote_id = CryptoTools(self.password).aes_ctr_decrypt(base64.b64decode(output.get('id')))
@@ -248,6 +255,17 @@ class Client(CommandSend, Proxy):
             else:
                 # 会话验证失败
                 return Status.SESSION_FALSE
+
+    # def commandSet(self, key:str):
+    #     """
+    #
+    #     :param key: 指令与数据加密密钥
+    #     :return: 指令集对象
+    #     """
+    #     if self.client_data_socket and self.client_command_socket:
+    #         command = CommandSend(self.client_data_socket, self.client_command_socket, key)
+    #         return command
+    #     return None
 
     def closeAllSocket(self):
         """结束与服务端的所有会话"""

@@ -4,37 +4,18 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="cf4f83ad-3c2a-4894-b3a1-82f233ce359d" name="变更" comment="Client+Core Completed">
-      <change afterPath="$PROJECT_DIR$/core/api/github.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/core/server/__init__.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/core/server/proxy.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/.gitignore" beforeDir="false" afterPath="$PROJECT_DIR$/.gitignore" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/Sync.iml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/Sync.iml" afterDir="false" />
+    <list default="true" id="cf4f83ad-3c2a-4894-b3a1-82f233ce359d" name="变更" comment="update">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/blueprints/test.py" beforeDir="false" afterPath="$PROJECT_DIR$/blueprints/test.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/server/__init__.py" beforeDir="false" afterPath="$PROJECT_DIR$/core/__init__.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/server/addition/__init__.py" beforeDir="false" afterPath="$PROJECT_DIR$/core/addition/__init__.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/server/addition/iobalance.py" beforeDir="false" afterPath="$PROJECT_DIR$/core/addition/iobalance.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/server/addition/screen.py" beforeDir="false" afterPath="$PROJECT_DIR$/core/addition/screen.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/server/api/__init__.py" beforeDir="false" afterPath="$PROJECT_DIR$/core/api/__init__.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/server/api/gitcode.py" beforeDir="false" afterPath="$PROJECT_DIR$/core/api/gitcode.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/server/client/__init__.py" beforeDir="false" afterPath="$PROJECT_DIR$/core/api/downloader.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/server/client/command.py" beforeDir="false" afterPath="$PROJECT_DIR$/core/client/command.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/server/client/main.py" beforeDir="false" afterPath="$PROJECT_DIR$/core/client/main.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/server/config.py" beforeDir="false" afterPath="$PROJECT_DIR$/core/config.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/server/control.py" beforeDir="false" afterPath="$PROJECT_DIR$/core/control.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/server/core/__init__.py" beforeDir="false" afterPath="$PROJECT_DIR$/core/client/__init__.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/server/core/command.py" beforeDir="false" afterPath="$PROJECT_DIR$/core/server/command.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/server/core/main.py" beforeDir="false" afterPath="$PROJECT_DIR$/core/server/main.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/server/core/scan.py" beforeDir="false" afterPath="$PROJECT_DIR$/core/server/scan.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/server/shell.py" beforeDir="false" afterPath="$PROJECT_DIR$/core/shell.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/server/sync.py" beforeDir="false" afterPath="$PROJECT_DIR$/core/sync.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/server/tools/__init__.py" beforeDir="false" afterPath="$PROJECT_DIR$/core/tools/__init__.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/server/tools/encryption.py" beforeDir="false" afterPath="$PROJECT_DIR$/core/tools/encryption.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/server/tools/status.py" beforeDir="false" afterPath="$PROJECT_DIR$/core/tools/status.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/server/tools/timedict.py" beforeDir="false" afterPath="$PROJECT_DIR$/core/tools/timedict.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/server/tools/tools.py" beforeDir="false" afterPath="$PROJECT_DIR$/core/tools/tools.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/server/updater.py" beforeDir="false" afterPath="$PROJECT_DIR$/core/updater.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/core/api/github.py" beforeDir="false" afterPath="$PROJECT_DIR$/core/api/github.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/core/client/command.py" beforeDir="false" afterPath="$PROJECT_DIR$/core/client/command.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/core/client/main.py" beforeDir="false" afterPath="$PROJECT_DIR$/core/client/main.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/core/control.py" beforeDir="false" afterPath="$PROJECT_DIR$/core/control.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/core/server/command.py" beforeDir="false" afterPath="$PROJECT_DIR$/core/server/command.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/core/server/main.py" beforeDir="false" afterPath="$PROJECT_DIR$/core/server/main.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/core/server/scan.py" beforeDir="false" afterPath="$PROJECT_DIR$/core/server/scan.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/core/tools/encryption.py" beforeDir="false" afterPath="$PROJECT_DIR$/core/tools/encryption.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/core/tools/timedict.py" beforeDir="false" afterPath="$PROJECT_DIR$/core/tools/timedict.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/core/tools/tools.py" beforeDir="false" afterPath="$PROJECT_DIR$/core/tools/tools.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -141,7 +122,7 @@
       <recent name="H:\Python project\ExSync\test\study\ajax get" />
     </key>
   </component>
-  <component name="RunManager" selected="Python.github (1)">
+  <component name="RunManager" selected="Flask 服务器.Sync">
     <configuration name="b" type="PythonConfigurationType" factoryName="Python" temporary="true" nameIsGenerated="true">
       <module name="Sync" />
       <option name="INTERPRETER_OPTIONS" value="" />
@@ -278,9 +259,9 @@
     </list>
     <recent_temporary>
       <list>
+        <item itemvalue="Python.demo" />
         <item itemvalue="Python.github (1)" />
         <item itemvalue="Python.github" />
-        <item itemvalue="Python.demo" />
         <item itemvalue="Python.encryption" />
         <item itemvalue="Python.b" />
       </list>
@@ -434,7 +415,12 @@
       <workItem from="1699412569230" duration="1283000" />
       <workItem from="1699431941536" duration="9705000" />
       <workItem from="1699518117603" duration="5099000" />
-      <workItem from="1699532598851" duration="1980000" />
+      <workItem from="1699532598851" duration="4484000" />
+      <workItem from="1699604941024" duration="13270000" />
+      <workItem from="1699672323476" duration="9874000" />
+      <workItem from="1699691201037" duration="12450000" />
+      <workItem from="1699755000691" duration="7329000" />
+      <workItem from="1699775916184" duration="7410000" />
     </task>
     <task id="LOCAL-00001" summary="fix">
       <created>1693484658275</created>
@@ -765,7 +751,14 @@
       <option name="project" value="LOCAL" />
       <updated>1699409599880</updated>
     </task>
-    <option name="localTasksCounter" value="48" />
+    <task id="LOCAL-00048" summary="update">
+      <created>1699535210757</created>
+      <option name="number" value="00048" />
+      <option name="presentableId" value="LOCAL-00048" />
+      <option name="project" value="LOCAL" />
+      <updated>1699535210757</updated>
+    </task>
+    <option name="localTasksCounter" value="49" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -819,9 +812,9 @@
     <MESSAGE value="命令/指令接收处理方式优化" />
     <MESSAGE value="recvFile su" />
     <MESSAGE value="命令格式更改，本地客户端主动验证完成" />
-    <MESSAGE value="update" />
     <MESSAGE value="Client+Core Completed" />
-    <option name="LAST_COMMIT_MESSAGE" value="Client+Core Completed" />
+    <MESSAGE value="update" />
+    <option name="LAST_COMMIT_MESSAGE" value="update" />
   </component>
   <component name="com.intellij.coverage.CoverageDataManagerImpl">
     <SUITE FILE_PATH="coverage/Sync$sum_of_squares_pyx.coverage" NAME="sum_of_squares.pyx 覆盖结果" MODIFIED="1691302028250" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$" />
@@ -829,7 +822,7 @@
     <SUITE FILE_PATH="coverage/ExSync$a.coverage" NAME="a 覆盖结果" MODIFIED="1693654648779" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/test" />
     <SUITE FILE_PATH="coverage/ExSync$control.coverage" NAME="control 覆盖结果" MODIFIED="1695649981756" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/server" />
     <SUITE FILE_PATH="coverage/ExSync$github__1_.coverage" NAME="github (1) 覆盖结果" MODIFIED="1699521040654" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/core/api" />
-    <SUITE FILE_PATH="coverage/ExSync$demo.coverage" NAME="demo 覆盖结果" MODIFIED="1699440186217" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/test" />
+    <SUITE FILE_PATH="coverage/ExSync$demo.coverage" NAME="demo 覆盖结果" MODIFIED="1699712190407" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/test" />
     <SUITE FILE_PATH="coverage/ExSync$run.coverage" NAME="run 覆盖结果" MODIFIED="1694002892630" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/server" />
     <SUITE FILE_PATH="coverage/Sync$sync.coverage" NAME="sync 覆盖结果" MODIFIED="1692332341815" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/server" />
     <SUITE FILE_PATH="coverage/Sync$Sync.coverage" NAME="Sync 覆盖结果" MODIFIED="1692340145642" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$" />

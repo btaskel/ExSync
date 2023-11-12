@@ -42,8 +42,7 @@ class Github:
             repository_name = url_split[-1]
             url = f'https://api.github.com/repos/{user_name}/{repository_name}'
         else:
-            # 仓库/用户不存在
-            logging.warning(f'The attempted warehouse/user information does not exist!: {self.url}')
+            logging.warning(f'The attempted warehouse/user information does not exist!: {self.url}') # 仓库/用户不存在
             return {}
         try:
             request = requests.get(url, timeout=(10, 10))  # 连接超时3 读取超时10

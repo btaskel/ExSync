@@ -148,16 +148,14 @@ class Scan(readConfig):
 
                 # 4.本地发送sha384:发送本地密码sha384
                 password_sha384 = hashlib.sha384(self.password.encode('utf-8')).hexdigest()  # 获取密码的sha384
-                encrypt_local_id = CryptoTools(self.password).aes_ctr_encrypt(self.id, 8).decode(
-                    'utf-8')  # 获取self.id的加密值
-                result = SocketTools.sendCommandNoTimeDict(test, command='''
-                {
+                encrypt_local_id = CryptoTools(self.password).aes_ctr_encrypt(self.id).decode('utf-8')  # 获取self.id的加密值
+                command = {
                     "data": {
-                    "password_hash": "%s",
-                    "id": "%s"
+                    "password_hash": password_sha384,
+                    "id": encrypt_local_id
                     }
                 }
-                '''.replace('\x20', '') % (password_sha384, encrypt_local_id))
+                result = SocketTools.sendCommandNoTimeDict(test, command=command)
                 # 6.远程发送状态和id:获取通过状态和远程id 验证结束
                 try:
                     cry = CryptoTools(self.password)
@@ -212,6 +210,8 @@ class Scan(readConfig):
                 ciphertext = cipher_pub.encrypt(message)
 
                 SocketTools.sendCommandNoTimeDict(test, ciphertext, output=False)
+
+                # todo: 等待对方返回加密的id
 
                 self.verified_devices.add(ip)
                 self.verify_manage[test.getpeername()[0]] = {

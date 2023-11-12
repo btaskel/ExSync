@@ -1,3 +1,4 @@
+import json
 import logging
 import random
 import string
@@ -210,7 +211,25 @@ class TimeDictInit(TimeDict):
             if not self.hasKey(mark):
                 return mark
 
-    def getRecvData(self, mark: str, decrypt_password: str = None):
+    def getRecvData(self, mark: str, decrypt_password: str = None, timeout:int=2) -> str or bytes:
+        """
+        :param timeout: 超时时间
+        :param mark: 取出指定mark队列第一个值，并且将其弹出
+        :param decrypt_password: 如果此项填写，则取出时将进行解密
+        :return:
+        """
+        result = self.get(mark, pop=True, timeout=timeout)
+        if decrypt_password and self.getCryType(mark) == 'aes-128-ctr':
+            try:
+                result = CryptoTools(decrypt_password).aes_ctr_decrypt(result)
+            except Exception as e:
+                print(e)
+                return
+            return result
+        else:
+            return result
+
+    def getCommand(self, mark: str, decrypt_password: str = None) -> dict:
         """
         :param mark: 取出指定mark队列第一个值，并且将其弹出
         :param decrypt_password: 如果此项填写，则取出时将进行解密
@@ -223,12 +242,12 @@ class TimeDictInit(TimeDict):
             except Exception as e:
                 print(e)
                 return
-            return result
-        else:
-            return result
+            result = result
+        return json.loads(result)
 
     def createRecv(self, mark: str, encryption: str = None):
         """
+        'aes-128-ctr'
         创建一个数据流接收队列
         :param mark: mark头
         :param encryption: 密钥

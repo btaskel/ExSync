@@ -17,7 +17,7 @@ from core.server.scan import Scan
 from core.tools.encryption import CryptoTools
 from core.tools.status import Status, CommandSet, PermissionEnum
 from core.tools.timedict import TimeDictInit
-from core.tools.tools import SocketTools, HashTools
+from core.tools.tools import HashTools, SocketSession
 
 
 class BaseCommandSet(Scan):
@@ -29,18 +29,20 @@ class BaseCommandSet(Scan):
     需传入[filepath, size, hash, mode]
     """
 
-    def __init__(self, command_socket, data_socket):
+    def __init__(self, command_socket, data_socket, key: str = None):
         super().__init__()
         # 数据包传输分块大小(bytes)
 
         self.block = 1024
         self.command_socket = command_socket
         self.data_socket = data_socket
+        self.key = key
         self.address = self.command_socket.getpeername()[0]
 
         self.system_encode = locale.getpreferredencoding()
 
         self.timedict = TimeDictInit(data_socket, command_socket)
+        # self.session = Session(self.timedict, key)
         self.closeTimeDict = False
 
     def recvFile(self, data_: dict, mark: str):
@@ -75,7 +77,7 @@ class BaseCommandSet(Scan):
         remote_file_path: str = str(data_.get('file_path'))
         remote_file_size: int = data_.get('file_size', 0)
         remote_file_hash: str = str(data_.get('file_hash'))
-        mode = data_.get('mode')
+        mode: int = data_.get('mode')
         filemark = str(data_.get('filemark'))  # 用于接下来的文件传输的mark
         nonce_length: int = 8
 
@@ -108,7 +110,7 @@ class BaseCommandSet(Scan):
         reply_mark = mark
 
         # 接收数据初始化
-        self.timedict.createRecv(filemark, )
+        self.timedict.createRecv(filemark, 'aes-128-ctr')
 
         if os.path.exists(remote_file_path):
             local_file_size = os.path.getsize(remote_file_path)
@@ -120,84 +122,75 @@ class BaseCommandSet(Scan):
             exists = False
 
         # 将所需文件信息返回到客户端
-        command = """
-        "data": {
-            "exists": %s,
-            "file_size": %s,
-            "file_hash": %s,
-            "file_date": %s
+        command = {
+            "data": {
+                "exists": exists,
+                "file_size": local_file_size,
+                "file_hash": local_file_hash,
+                "file_date": local_file_date
+            }
         }
-        """ % (exists, local_file_size, local_file_hash, local_file_date)
-        SocketTools.sendCommand(self.timedict, self.data_socket, command, output=False, mark=reply_mark)
+        with SocketSession(self.timedict, data_socket=self.data_socket, mark=reply_mark,
+                           encrypt_password=self.key) as command_session:
+            command_session.send(command, output=False)
 
         # 文件传输切片
         if not local_file_size:
             return
         data_block = self.block - len(filemark) - nonce_length
+
         match mode:
             case 0:
                 # 如果不存在文件，则创建文件。否则不执行操作。
                 if exists:
-                    return
-                file_size = remote_file_size
+                    return False
+                read_data = remote_file_size
                 with open(remote_file_path, mode='ab') as f:
-                    while True:
-                        if file_size > 0:
-                            file_size -= data_block
-                            data = self.timedict.getRecvData(filemark, decrypt_password=self.password)
-                            f.write(data)
+                    while read_data > 0:
+                        read_data -= data_block
+                        data = self.timedict.getRecvData(filemark, decrypt_password=self.key)
+                        f.write(data)
             case 1:
                 # 如果不存在文件，则创建文件。否则重写文件。
                 if exists:
                     os.remove(remote_file_path)
-                    with open(remote_file_path, mode='ab') as f:
-                        read_data = remote_file_size
-                        while True:
-                            if read_data > 0:
-                                read_data -= data_block
-                                data = self.timedict.getRecvData(filemark, decrypt_password=self.password)
-                                f.write(data)
-                else:
-                    file_size = remote_file_size
-                    with open(remote_file_path, mode='ab') as f:
-                        while True:
-                            if file_size > 0:
-                                file_size -= data_block
-                                data = self.timedict.getRecvData(filemark, decrypt_password=self.password)
-                                f.write(data)
-                            else:
-                                # todo: 将接收完毕的文件状态写入本地索引文件
-
-                                break
+                read_data = remote_file_size
+                with open(remote_file_path, mode='ab') as f:
+                    while read_data > 0:
+                        read_data -= data_block
+                        data = self.timedict.getRecvData(filemark, decrypt_password=self.key)
+                        f.write(data)
 
             case 2:
                 # 如果存在文件，并且准备发送的文件字节是对方文件字节的超集(xxh3_128相同)，则续写文件。
-                if exists:
-                    # self.command_socket.send(
-                    #     f'/_com:data:reply:{filemark}|{exists}|{local_file_size}|{local_file_hash}|{local_file_date}'.encode())
-
-                    status = self.timedict.getRecvData(reply_mark)
-                    if status == 'True':
-                        # 对方客户端确认未传输完成，继续接收文件
-                        with open(remote_file_path, mode='ab') as f:
-                            difference = remote_file_size - local_file_size
-                            read_data = 0
-                            self.data_socket.settimeout(2)
-                            while True:
-                                if read_data <= difference:
-                                    try:
-                                        data = self.timedict.getRecvData(filemark, decrypt_password=self.password)
-                                    except Exception as e:
-                                        print(e)
-                                        return Status.DATA_RECEIVE_TIMEOUT
-                                    f.write(data)
-                                    read_data += self.block
-                                else:
-                                    break
-                            return True
-                else:
-                    # 不存在文件，不予传输
+                if not exists:
+                    # 不存在文件，取消传输
                     return False
+
+                file_block = remote_file_size / 1048576  # 计算大约超时时间
+                status = self.timedict.getRecvData(reply_mark, decrypt_password=self.key, timeout=int(file_block))
+                try:
+                    status = json.loads(status).get('data').get('status')
+                except Exception as e:
+                    print(e)
+                    return
+
+                if not status:
+                    return
+                # 对方客户端确认未传输完成，继续接收文件
+                self.data_socket.settimeout(2)
+                with open(remote_file_path, mode='ab') as f:
+                    difference = remote_file_size - local_file_size
+                    read_data = 0
+                    while read_data <= difference:
+                        try:
+                            data = self.timedict.getRecvData(filemark, decrypt_password=self.key)
+                        except Exception as e:
+                            print(e)
+                            return Status.DATA_RECEIVE_TIMEOUT
+                        f.write(data)
+                        read_data += self.block
+                    return True
 
     def sendFile(self, data_: dict, mark: str):
         """
@@ -211,11 +204,9 @@ class BaseCommandSet(Scan):
         """
         block = 1024
         reply_mark = mark
-        # path, remote_file_hash, remote_size, filemark = command[0], command[1], command[2], command[3]
         path = data_.get('path')
-
-        remote_file_hash = data_.get('remote_file_hash', 0)
-        remote_size = data_.get('remote_size', 0)
+        remote_file_hash = data_.get('local_file_hash', 0)
+        remote_size = data_.get('local_file_size', 0)
         filemark = data_.get('filemark')
         if not filemark:
             logging.warning('Core function sendFile: Missing parameter [filemark]!')
@@ -229,53 +220,70 @@ class BaseCommandSet(Scan):
             local_file_size = 0
             local_file_hash = 0
 
-        # 向客户端回复/_com:data:reply:filemark:{remote_size}|{hash_value}
+        # 向客户端回复本地文件状态
+        command = {
+            "data": {
+                "local_file_size": local_file_size,
+                "local_file_hash": local_file_hash
+            }
+        }
+        with SocketSession(self.timedict, data_socket=self.data_socket, mark=reply_mark,
+                           encrypt_password=self.key) as command_session:
+            command_session.send(command, output=False)
+            if not local_file_size:
+                return
 
-        SocketTools.sendCommand(self.timedict, self.data_socket, f'{local_file_size}|{local_file_hash}',
-                                mark=reply_mark,
-                                output=False)
-        if local_file_size == 0:
-            return
+            def update_hash(file, block_size, total_blocks):
+                file_xxh = xxhash.xxh3_128()
+                read_blocks = 0
+                while read_blocks < total_blocks:
+                    f_data = file.read(block_size)
+                    file_xxh.update(f_data)
+                    read_blocks += 1
+                return file_xxh
 
-        if remote_size:
-            read_data = 0
-            breakpoint_hash = xxhash.xxh3_128()
-            block_times, little_block = divmod(remote_size, 8192)
-            with open(path, mode='rb') as f:
+            def send_data(file, block_size, _socket, _filemark):
                 while True:
-                    if read_data < block_times:
-                        data = f.read(8192)
-                        breakpoint_hash.update(data)
-                        read_data += 1
-                    else:
-                        data = f.read(little_block)
-                        breakpoint_hash.update(data)
+                    f_data = file.read(block_size)
+                    if not f_data:
                         break
-            file_block_hash = breakpoint_hash.hexdigest()
+                    f_data = bytes(_filemark, 'utf-8') + f_data
+                    with SocketSession(self.timedict, _socket, mark=_filemark, encrypt_password=self.key) as session:
+                        session.send(f_data)
 
-            if file_block_hash == remote_file_hash:
-                # 确定为中断文件，开始继续传输
-                SocketTools.sendCommand(self.timedict, self.data_socket, 'True', output=False,
-                                        mark=reply_mark)
+            if remote_size < local_file_size:
+                # 检查是否需要续写文件
                 with open(path, mode='rb') as f:
-                    f.seek(remote_size)
-                    while True:
-                        data = f.read(data_block)
-                        if not data:
-                            break
-                        data = bytes(filemark, 'utf-8') + data
-                        self.data_socket.send(data)
+                    file_block, little_block = divmod(remote_size, 8192)
+                    xxh = update_hash(f, 8192, file_block)
+                    data = f.read(little_block)
+                    xxh.update(data)
+                    if remote_file_hash == xxh.hexdigest():
+                        # 确定为需要断点继传
+                        command = {
+                            "data": {
+                                "status": True
+                            }
+                        }
+                        command_session.send(command, output=False)
+                        f.seek(remote_size)
+                        send_data(f, data_block, self.data_socket, filemark)
+                        return True
+                    else:
+                        return False
+            elif remote_size > local_file_size:
+                # 重写远程文件
+                with open(path, mode='rb') as f:
+                    send_data(f, data_block, self.data_socket, filemark)
+                return True
             else:
-                SocketTools.sendCommand(self.timedict, self.data_socket, 'False', output=False,
-                                        mark=reply_mark)
-        else:
-            with open(path, mode='rb') as f:
-                while True:
-                    data = f.read(data_block)
-                    if not data:
-                        break
-                    data = bytes(filemark, 'utf-8') + data
-                    self.data_socket.send(data)
+                # 检查哈希值是否相同
+                if remote_file_hash == local_file_hash:
+                    with open(path, mode='rb') as f:
+                        send_data(f, data_block, self.data_socket, filemark)
+                    return True
+                else:
+                    return False
 
     def postFolder(self, data_: dict):
         """
@@ -307,67 +315,97 @@ class BaseCommandSet(Scan):
             logging.warning(f'Client {self.address} : Missing parameter [path] for execution [getFolder]')
             return False
 
-        if os.path.exists(path):
-            for home, folders, files in os.walk(path):
-                paths.append(folders)
-            SocketTools.sendCommand(self.timedict, self.data_socket, str(paths), output=False, mark=mark)
-            return paths
-        else:
-            SocketTools.sendCommand(self.timedict, self.data_socket, 'pathError', output=False, mark=mark)
-            return
+        with SocketSession(self.timedict, data_socket=self.data_socket, mark=mark,
+                           encrypt_password=self.key) as command_session:
+
+            if os.path.exists(path):
+                for home, folders, files in os.walk(path):
+                    paths.append(folders)
+                command = {
+                    "data": {
+                        "status": 'success',
+                        "paths": paths
+                    }
+                }
+                command_session.send(command)
+                return paths
+            else:
+                command = {
+                    "data": {
+                        "status": 'pathError'
+                    }
+                }
+                command_session.send(command)
+                return
 
     def postIndex(self, data_: dict, mark: str):
         """
         根据远程发送过来的索引数据更新本地同步空间的索引
         """
-        reply_mark = mark
 
         spacename, json_example, isfile = data_.get('spacename'), data_.get('json'), data_.get('isfile')
-        if spacename in self.config['userdata']:
-            path = self.config['userdata'][spacename]['path']
-            files_index_path = os.path.join(path, '\\.sync\\info\\files.json')
-            folders_index_path = os.path.join(path, '\\.sync\\info\\folders.json')
-            for file in [files_index_path, folders_index_path]:
-                if not os.path.exists(file):
-                    SocketTools.sendCommand(self.timedict, self.command_socket,
-                                            'remoteIndexNoExist', output=False, mark=reply_mark)
-                    return False
-            try:
-                json_example = json.loads(json_example)
-            except Exception as e:
-                print(e)
-                logging.warning(f'Failed to load local index: {spacename}')
-                return False
-
-            def __updateIndex(index_path):
-                with open(index_path, mode='r+', encoding=self.encode_type) as f:
-                    try:
-                        data = json.load(f)
-                    except Exception as error:
-                        print(error)
-                        logging.warning(f'Failed to load index file: {index_path}')
-                        SocketTools.sendCommand(self.timedict, self.command_socket,
-                                                'remoteIndexError',
-                                                output=False, mark=reply_mark)
+        with SocketSession(self.timedict, data_socket=self.data_socket, mark=mark,
+                           encrypt_password=self.key) as command_session:
+            if spacename in self.config['userdata']:
+                path = self.config['userdata'][spacename]['path']
+                files_index_path = os.path.join(path, '\\.sync\\info\\files.json')
+                folders_index_path = os.path.join(path, '\\.sync\\info\\folders.json')
+                for file in [files_index_path, folders_index_path]:
+                    if not os.path.exists(file):
+                        command = {
+                            "data": {
+                                "status": 'remoteIndexNoExist'
+                            }
+                        }
+                        command_session.send(command, output=False)
                         return False
-                    data['data'].update(json_example)
-                    f.truncate(0)
-                    json.dump(data, f, indent=4)
+                try:
+                    json_example = json.loads(json_example)
+                except Exception as e:
+                    print(e)
+                    logging.warning(f'Failed to load local index: {spacename}')
+                    return False
 
-            if isfile == 'True':
-                # 写入文件索引
-                __updateIndex(files_index_path)
+                def __updateIndex(index_path):
+                    with open(index_path, mode='r+', encoding=self.encode_type) as f:
+                        try:
+                            data = json.load(f)
+                        except Exception as error:
+                            print(error)
+                            logging.warning(f'Failed to load index file: {index_path}')
+                            command_ = {
+                                "data": {
+                                    "status": 'remoteIndexError'
+                                }
+                            }
+                            command_session.send(command_, output=False)
+                            return False
+                        data['data'].update(json_example)
+                        f.truncate(0)
+                        json.dump(data, f, indent=4)
+
+                if isfile == 'True':
+                    # 写入文件索引
+                    __updateIndex(files_index_path)
+                else:
+                    # 写入文件索引
+                    __updateIndex(folders_index_path)
+
+                command = {
+                    "data": {
+                        "status": 'remoteIndexUpdated'
+                    }
+                }
+                command_session.send(command, output=False)
+                return True
             else:
-                # 写入文件索引
-                __updateIndex(folders_index_path)
-
-            SocketTools.sendCommand(self.timedict, self.command_socket, 'remoteIndexUpdated', output=False,
-                                    mark=reply_mark)
-            return True
-        else:
-            SocketTools.sendCommand(self.timedict, self.command_socket, 'remoteSpaceNameNoExist',
-                                    output=False, mark=reply_mark)
-            return False
+                command = {
+                    "data": {
+                        "status": 'remoteSpaceNameNoExist'
+                    }
+                }
+                command_session.send(command, output=False)
+                return False
 
     def executeCommand(self, data_: dict, mark: str):
         """
@@ -379,34 +417,51 @@ class BaseCommandSet(Scan):
             logging.warning(f'Client {self.address} : Missing parameter [command] for execution [executeCommand]')
             return False
 
-        if command.startswith('/sync'):
-            # sync指令
-            if self.command_socket.permission >= 10:
-                logging.debug(f'Sync level command: {command}')
-                if command == '/sync restart':
-                    # todo:重启服务
-                    pass
-                return 0
-            else:
-                SocketTools.sendCommand(self.timedict, self.command_socket,
-                                        f'[{CommandSet.EXSYNC_INSUFFICIENT_PERMISSION}]', mark=mark)
-                return CommandSet.EXSYNC_INSUFFICIENT_PERMISSION
+        with SocketSession(self.timedict, self.data_socket, mark=mark, encrypt_password=self.key) as session:
+            if command.startswith('/sync'):
+                # sync指令
+                if self.command_socket.permission >= 10:
+                    logging.debug(f'Sync level command: {command}')
+                    if command == '/sync restart':
+                        # todo:重启服务
+                        pass
+                    return 0
+                else:
+                    command = {
+                        "data": {
+                            "status": CommandSet.EXSYNC_INSUFFICIENT_PERMISSION.value
+                        }
+                    }
+                    session.send(command, output=False)
+                    return CommandSet.EXSYNC_INSUFFICIENT_PERMISSION
 
-        else:
-            # 系统指令
-            if self.command_socket.permission >= 20:
-                logging.debug(f'System level command: {command}')
-                process = subprocess.Popen(command.split(' '), stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                                           shell=True)
-                output, error = process.communicate()
-                return_code = process.wait()
-                SocketTools.sendCommand(self.timedict, self.data_socket, f'[{return_code}, {output}, {error}]',
-                                        output=False, mark=mark)
-                return return_code
             else:
-                SocketTools.sendCommand(self.timedict, self.data_socket,
-                                        f'[{CommandSet.EXSYNC_INSUFFICIENT_PERMISSION}]', mark=mark)
-                return CommandSet.EXSYNC_INSUFFICIENT_PERMISSION
+                # 系统指令
+                if self.command_socket.permission >= 20:
+                    logging.debug(f'System level command: {command}')
+                    process = subprocess.Popen(command.split(' '), stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                               shell=True)
+                    output, error = process.communicate()
+                    return_code = process.wait()
+                    command = {
+                        "data": {
+                            "return_code": return_code,
+                            "output": output,
+                            "error": error
+                        }
+                    }
+                    session.send(command, output=False)
+                    # self.session.sendCommand(self.data_socket, f'[{return_code}, {output}, {error}]',
+                    #                          output=False, mark=mark)
+                    return return_code
+                else:
+                    command = {
+                        "data": {
+                            "status": CommandSet.EXSYNC_INSUFFICIENT_PERMISSION.value
+                        }
+                    }
+                    session.send(command, output=False)
+                    return CommandSet.EXSYNC_INSUFFICIENT_PERMISSION
 
 
 class CommandSetExpand(BaseCommandSet):
@@ -414,37 +469,8 @@ class CommandSetExpand(BaseCommandSet):
     对于基本命令的拓展集
     """
 
-    def __init__(self, command_socket, data_socket):
-        super().__init__(command_socket, data_socket)
-
-    def postPasswordHash(self, command: list, mark: str):
-        """
-        对比远程密码sha256是否与本地密码sha256相同
-        :param command:
-        :param mark:
-        :return:
-        """
-        password = self.config['server']['addr']['password']
-        local_password = hashlib.sha256(password.encode('utf-8')).hexdigest()
-        if command[4].split('|')[1] == local_password:
-            SocketTools.sendCommand(self.timedict, self.command_socket,
-                                    'True', output=False, mark=mark)
-
-        else:
-            SocketTools.sendCommand(self.timedict, self.command_socket,
-                                    'False', output=False, mark=mark)
-
-    def getPasswordHash(self, mark: str) -> bool:
-        """
-        远程获取本地密码的sha256
-        :param mark:
-        :return:
-        """
-        password = self.config['server']['addr']['password']
-        password_hash = xxhash.xxh3_128(password).hexdigest()
-        SocketTools.sendCommand(self.timedict, self.command_socket, password_hash, output=False,
-                                mark=mark)
-        return True
+    def __init__(self, command_socket, data_socket, key: str):
+        super().__init__(command_socket, data_socket, key)
 
     def getIndex(self, data_: dict, mark: str) -> bool:
         """
@@ -459,8 +485,12 @@ class CommandSetExpand(BaseCommandSet):
             return False
         for userdata in self.config['userdata']:
             if spacename == userdata['spacename']:
-                SocketTools.sendCommand(self.timedict, self.command_socket, userdata['path'],
-                                        mark=mark)
+                command = {
+                    "data": {
+                        "path": userdata['path']
+                    }
+                }
+                self.session.sendCommand(self.command_socket, command, mark=mark)
                 return True
         return False
 
@@ -502,8 +532,12 @@ class CommandSetExpand(BaseCommandSet):
             public_key = key.publickey().export_key()
 
             # 发送公钥, 等待对方使用公钥加密随机密码
-            result = SocketTools.sendCommand(timedict=self.timedict, socket_=self.command_socket, mark=mark,
-                                             command='''{"data": {"public_key": "%s"}}''' % public_key)
+            command = {
+                "data": {
+                    "public_key": public_key
+                }
+            }
+            result = self.session.sendCommand(socket_=self.command_socket, mark=mark, command=command)
 
             if result == Status.DATA_RECEIVE_TIMEOUT:
                 self.command_socket.shutdown(socket.SHUT_RDWR)
@@ -544,14 +578,13 @@ class CommandSetExpand(BaseCommandSet):
             # 2.验证远程sha256值是否与本地匹配: 发送本地的password_sha256值到远程
             # 如果密码不为空, 则无需进行密钥交换, 只需验证密钥即可
             password_sha256 = hashlib.sha256(self.password.encode('utf-8')).hexdigest()
-            result = SocketTools.sendCommand(timedict=self.timedict, socket_=self.data_socket,
-                                             mark=mark, command='''
-            {
+            command = {
                 "data": {
-                "password_hash": "%s"
+                    "password_hash": password_sha256
                 }
             }
-            '''.replace('\x20', '') % password_sha256)
+            result = self.session.sendCommand(socket_=self.data_socket,
+                                              mark=mark, command=command)
 
             try:
                 data = literal_eval(result).get('data')
@@ -571,15 +604,14 @@ class CommandSetExpand(BaseCommandSet):
             password_sha384 = hashlib.sha384(self.password.encode('utf-8')).hexdigest()
             if remote_password_sha384 == password_sha384:
                 # 验证通过
-                SocketTools.sendCommand(timedict=self.timedict, socket_=self.data_socket, mark=mark,
-                                        command="""
-                {
+                command = {
                     "data": {
                         "status": 'success',
-                        "id": %s
+                        "id": self.id
                     }
                 }
-                """.replace('\x20', '') % self.id, output=False, encrypt_password=self.password)
+                self.session.sendCommand(socket_=self.data_socket, mark=mark,
+                                         command=command, output=False)
 
                 address = self.command_socket.getpeername()[0]
                 self.verify_manage[address] = {
@@ -591,25 +623,25 @@ class CommandSetExpand(BaseCommandSet):
 
             elif remote_password_sha384 == Status.DATA_RECEIVE_TIMEOUT:
                 # todo: 服务端密码验证失败(超时)
-                SocketTools.sendCommand(timedict=self.timedict, socket_=self.data_socket, mark=mark, command="""
-               {
-                   "data": {
-                       "status": 'fail',
-                       "id": %s
-                   }
-               }
-               """.replace('\x20', '') % self.id, output=False)
+                command = {
+                    "data": {
+                        "status": 'fail',
+                        "id": self.id
+                    }
+                }
+                self.session.sendCommand(socket_=self.data_socket, mark=mark, command=command,
+                                         output=False)
 
             else:
                 # todo: 服务端密码验证失败(或得到错误参数)
-                SocketTools.sendCommand(timedict=self.timedict, socket_=self.data_socket, mark=mark, command="""
-                {
+                command = {
                     "data": {
                         "status": 'fail',
-                        "id": %s
+                        "id": self.id
                     }
                 }
-                """.replace('\x20', '') % self.id, output=False)
+                self.session.sendCommand(socket_=self.data_socket, mark=mark, command=command,
+                                         output=False)
 
             self.command_socket.shutdown(socket.SHUT_RDWR)
             self.command_socket.close()
@@ -621,8 +653,8 @@ class RecvCommand(CommandSetExpand):
     异步收发指令
     """
 
-    def __init__(self, command_socket, data_socket):
-        super().__init__(command_socket, data_socket)
+    def __init__(self, command_socket, data_socket, key: str):
+        super().__init__(command_socket, data_socket, key)
         self.command_socket = command_socket
         self.data_socket = data_socket
         self.close = False
@@ -648,12 +680,16 @@ class RecvCommand(CommandSetExpand):
         while True:
             if self.close:
                 return
-            command = self.command_socket.recv(1024).decode(self.encode_type)
+            command = self.command_socket.recv(1024).decode('utf-8')
             if len(command) < 9:
                 continue
             mark, command = command[:8], command[8:]  # 8字节的mark头信息和指令
 
-            command = literal_eval(command)
+            try:
+                command = json.loads(command)
+            except ValueError as e:
+                print(e)
+                continue
             if not isinstance(command, dict):
                 logging.warning(f'Server {self.address}: Missing MARK in {command} command!')
                 continue
@@ -788,12 +824,6 @@ class RecvCommand(CommandSetExpand):
 
         "data": {
             "spacename": ...
-            "json": {
-                file1
-                file2
-                ...
-            }
-            "isfile": Boolean
         }
 
         :param data_:

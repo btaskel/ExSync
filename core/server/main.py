@@ -39,17 +39,15 @@ class Manage:
         return socket_manage
 
     @staticmethod
-    def getDevInfo(attr: str, value) -> dict:
+    def getDevInfo(attr: str) -> str:
         """
         通过某一个设备的属性找到对应的信息内容
         :param attr: 属性
-        :param value: 值
         :return: 设备信息对象
         """
         for dev in socket_manage:
             for info in dev:
-                if info.get(attr) == value:
-                    return dev
+                return info.get(attr)
 
     @staticmethod
     def delDevInfo(client_mark: str) -> bool:
@@ -153,7 +151,7 @@ class createSocket(Scan, Manage, Proxy):
         else:
             # 开始主动验证
             command_socket.permission = PermissionEnum.GUEST
-        command_socket.send('')
+        command_socket.send_command('')
         if address[0] in self.verified_devices:
             self.socket_info[address[0]]['command'] = command_socket
         else:
@@ -172,7 +170,7 @@ class createSocket(Scan, Manage, Proxy):
             for key, value in self.socket_info.items():
                 if value['command'] and value['data']:
                     command_socket, data_socket = self.socket_info.pop(index)
-                    command = RecvCommand(command_socket, data_socket)
+                    command = RecvCommand(command_socket, data_socket, Manage.getDevInfo('AES_KEY'))
                     thread = threading.Thread(target=command.recvCommand)
                     thread.start()
                     index += 1
@@ -195,7 +193,7 @@ class createSocket(Scan, Manage, Proxy):
             'AES_KEY': aes_key
         }
         client.host_info(client_info)
-        client_command = client.createCommandSocket()
+        client_command_socket = client.createCommandSocket()
 
         match client.connectRemoteCommandSocket():  # 连接指令Socket
             case Status.CONNECTED:
@@ -210,24 +208,25 @@ class createSocket(Scan, Manage, Proxy):
                     logging.error(f'Client: {client_mark}, server: {ip} connection failure!')
                     client = None  # 意外退出：
 
-        client_data = client.createClientDataSocket()  # 连接数据Socket
-        if client_data == Status.CONNECT_TIMEOUT:
+        client_data_socket = client.createClientDataSocket()  # 连接数据Socket
+        if client_data_socket == Status.CONNECT_TIMEOUT:
             client.closeAllSocket()  # 连接超时, 关闭客户端连接
-
-        elif client_data == Status.SESSION_FALSE:
+            return
+        elif client_data_socket == Status.SESSION_FALSE:
             client.closeAllSocket()  # 会话验证失败, 关闭客户端连接
-
+            return
         else:
             # 连接成功
+            # command_set = client.commandSet(aes_key) # 设置指令和数据传输的加密方式
             socket_manage[client_mark] = {
                 'ip': ip,
                 'id': self.host_id,
                 'client': client,
-                'command_socket': client_command,
-                'data_socket': client_data,
+                'command_socket': client_command_socket,
                 'permission': PermissionEnum.USER.value,
                 'AES_KEY': aes_key
             }
+            return socket_manage[client_mark]
 
     def updateIplist(self):
         """
