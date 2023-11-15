@@ -44,3 +44,8 @@ class PermissionEnum(enum.Enum):
     ADMIN = 20
     USER = 10
     GUEST = 0
+
+
+if __name__ == '__main__':
+   if '回复错误' == Status.REPLY_ERROR.value:
+       print('e')

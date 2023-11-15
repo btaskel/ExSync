@@ -33,7 +33,7 @@ class CryptoTools:
             ciphertext = cipher.encrypt(message.encode('utf-8'))
         return cipher.nonce + ciphertext
 
-    def aes_ctr_decrypt(self, ciphertext: bytes):
+    def aes_ctr_decrypt(self, ciphertext: bytes) -> bytes:
         """aes-128-ctr 解密"""
         if len(ciphertext) > 8:
             content, nonce = ciphertext[8:], ciphertext[:8]
@@ -44,31 +44,30 @@ class CryptoTools:
             except Exception as e:
                 print(e)
                 logging.debug('Core : AES_Ctr_Decrypt decryption failed!')
-                return
+                return b''
 
-            return plaintext.decode('utf-8')
+            return plaintext
         else:
             logging.debug('Core : AES_Ctr_Decrypt execution failed!')
-            return
+            raise ValueError('aes_ctr_decrypt decrypt error!')
 
+    def b64_ctr_encrypt(self, message: bytes) -> str:
+        """
+        使用aes-ctr加密并转换为base64
+        :param message: 最初数据
+        :return:
+        """
+        encry_message = self.aes_ctr_encrypt(message)
+        return base64.b64encode(encry_message).decode('utf-8')
 
-class AESSession(CryptoTools):
-    """加密套件会话"""
-
-    def __init__(self, key: str, method: str = 'aes-ctr'):
-        super().__init__(key, method)
-
-    def encry(self, message: str or bytes) -> bytes:
-        return self.aes_ctr_encrypt(message)
-
-    def decry(self, ciphertext: bytes) -> str:
-        return self.aes_ctr_decrypt(ciphertext)
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        pass
+    def b64_ctr_decrypt(self, message:str) -> bytes:
+        """
+        解密一个使用aes-ctr base64转码的字符串
+        :param message: b64_ctr_encrypt加密后的数据
+        :return:
+        """
+        b64 = base64.b64decode(message)
+        return self.aes_ctr_decrypt(b64)
 
 
 if __name__ == '__main__':

@@ -189,24 +189,15 @@ class createSocket(Scan, Manage, Proxy):
         client_info = {
             'client_mark': client_mark,
             'ip': ip,
-            'id': self.host_id,
+            'id': None,
             'AES_KEY': aes_key
         }
         client.host_info(client_info)
         client_command_socket = client.createCommandSocket()
 
-        match client.connectRemoteCommandSocket():  # 连接指令Socket
-            case Status.CONNECTED:
-                # 连接成功
-                pass
-            case Status.CONNECT_TIMEOUT:
-                if client.closeAllSocket():
-                    logging.error(f'Client: {client_mark}, server: {ip} connection timeout!')
-                    client = None  # 超时退出：
-            case _:
-                if client.closeAllSocket():
-                    logging.error(f'Client: {client_mark}, server: {ip} connection failure!')
-                    client = None  # 意外退出：
+        if not client.connectRemoteCommandSocket():  # 连接指令Socket
+            logging.error(f'Client: {client_mark}, server: {ip} connection failure!')
+            return
 
         client_data_socket = client.createClientDataSocket()  # 连接数据Socket
         if client_data_socket == Status.CONNECT_TIMEOUT:

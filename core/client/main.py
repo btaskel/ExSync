@@ -1,8 +1,8 @@
 import base64
 import hashlib
+import json
 import logging
 import socket
-from ast import literal_eval
 
 from Crypto.Cipher import PKCS1_OAEP
 from Crypto.PublicKey import RSA
@@ -66,7 +66,7 @@ class Client(CommandSend, Proxy):
         self.client_command_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         return self.client_command_socket
 
-    def connectRemoteCommandSocket(self):
+    def connectRemoteCommandSocket(self) -> bool:
         """
         尝试连接ip_list,连接成功返回连接的ip，并且增加进connected列表
         连接至对方的server-command_socket
@@ -79,24 +79,26 @@ class Client(CommandSend, Proxy):
             :return:
             """
             # 4.本地发送sha384:发送本地密码sha384
-            password_sha384 = hashlib.sha384(self.password.encode('utf-8')).hexdigest()
-            encrypt_local_id = CryptoTools(self.password).aes_ctr_encrypt(self.id).decode('utf-8')
-            command = {
+            password_sha384: str = hashlib.sha384(self.password.encode('utf-8')).hexdigest()
+            encrypt_local_id: bytes = CryptoTools(self.password).aes_ctr_encrypt(self.id)
+            b64_encrypt_local_id: str = base64.b64encode(encrypt_local_id).decode('utf-8')
+
+            _command = {
                 "data": {
                     "password_hash": password_sha384,
-                    "id": encrypt_local_id
+                    "id": b64_encrypt_local_id
                 }
             }
-            out = SocketTools.sendCommandNoTimeDict(self.client_command_socket, command=command)
+            out = SocketTools.sendCommandNoTimeDict(self.client_command_socket, command=_command)
+            # 6.远程发送状态和id:获取通过状态和远程id 验证结束
             try:
-                output = literal_eval(out[8:])
+                output = json.loads(out[8:]).get('data')
                 remote_id = CryptoTools(self.password).aes_ctr_decrypt(base64.b64decode(output.get('id')))
+                status_ = output.get('status')
             except Exception as w:
                 print(w)
                 return False
-            status_ = output.get('status')
 
-            # 6.远程发送状态和id:获取通过状态和远程id 验证结束
             if status_ == 'success':
                 # 验证成功
                 self.__host_info['id'] = remote_id
@@ -126,7 +128,7 @@ class Client(CommandSend, Proxy):
             :return:
             """
             try:
-                rsa_pub = RSA.import_key(pub_key)
+                rsa_pub = RSA.import_key(base64.b64decode(pub_key))
             except Exception as err:
                 print(err)
                 if out:
@@ -135,14 +137,40 @@ class Client(CommandSend, Proxy):
                     return False
                 return False
             cipher_pub = PKCS1_OAEP.new(rsa_pub)
-            message = HashTools.getRandomStr(8).encode('utf-8')
-            ciphertext = cipher_pub.encrypt(message)
-            SocketTools.sendCommandNoTimeDict(self.client_command_socket, ciphertext, output=False)
+
+            # 生成临时会话密码
+            session_password = HashTools.getRandomStr(8)
+            encry_session_password: bytes = cipher_pub.encrypt(session_password.encode('utf-8'))
+            base64_encry_session_password: str = base64.b64encode(encry_session_password).decode('utf-8')
+
+            # 获取加密当前主机id发送至对方
+            encry_session_id: bytes = cipher_pub.encrypt(self.id.encode('utf-8'))
+            base64_encry_session_id: str = base64.b64encode(encry_session_id).decode('utf-8')
+
+            _command = {
+                "data": {
+                    "session_password": base64_encry_session_password,
+                    "id": base64_encry_session_id
+                }
+            }
+
+            _result = SocketTools.sendCommandNoTimeDict(self.client_command_socket, _command)
+            try:
+                _data = json.loads(_result[8:]).get('data')
+                remote_id = _data.get('id')
+            except Exception as a:
+                print(a)
+                return False
+            remote_id = CryptoTools(session_password).b64_ctr_decrypt(remote_id)
+            # todo: 保存远程id到本地-无密码验证
+            self.__host_info['AES_KEY'] = session_password
+            self.__host_info['id'] = remote_id
+
             return True
 
         if not self.client_command_socket:
             logging.debug('Client_Command_Socket not created.')
-            return Status.UNKNOWN_ERROR
+            return False
 
         aes_key = self.__host_info.get('AES_KEY')
         if aes_key:
@@ -157,18 +185,22 @@ class Client(CommandSend, Proxy):
                 #     SocketTools.sendCommandNoTimeDict(self.client_socket, )
                 # todo:
 
-                data = self.client_command_socket.recv(1024)
-                cry = CryptoTools(aes_key)
-                cry.aes_ctr_decrypt(data)
-                if not data or data == 'validationFailed':
-                    return
-
+                # data = self.client_command_socket.recv(1024)
+                # cry = CryptoTools(aes_key)
+                # cry.aes_ctr_decrypt(data)
+                # if not data or data == 'validationFailed':
+                #     return
+                return True
             elif status == 10061:
                 # 超时
-                return Status.CONNECT_TIMEOUT
+                logging.info(
+                    f'''Connect to {self.__host_info['ip']}:A timeout error occurred while confirming the verification status of the linked device!''')
+                return False
             else:
                 # 其它错误
-                return Status.UNKNOWN_ERROR
+                logging.info(
+                    f'''Connect to {self.__host_info['ip']}:An unknown error occurred while confirming the verification status of the linked device!''')
+                return False
         else:
             # AES_KEY 为空, 进行验证连接.
             self.client_command_socket.settimeout(2)
@@ -179,16 +211,16 @@ class Client(CommandSend, Proxy):
                 if self.client_command_socket.connect_ex((self.local_ip, self.command_port)) != 0:
                     continue
                 # 1.本地发送验证指令:发送指令开始进行验证
-                result = SocketTools.sendCommandNoTimeDict(self.client_command_socket,
-                                                           '''{
-                                                               "command": "comm",
-                                                               "type": "verifyconnect",
-                                                               "method": "post",
-                                                               "data": {"version": "%s"}
-                                                           }'''.replace('\x20', '') % self.config.get('version'))
+                command = {
+                    "command": "comm",
+                    "type": "verifyconnect",
+                    "method": "post",
+                    "data": {"version": str(self.config.get('version'))}
+                }
+                result = SocketTools.sendCommandNoTimeDict(self.client_command_socket, command)
                 # 3.远程发送sha256值:验证远程sha256值是否与本地匹配
                 try:
-                    data = literal_eval(result[8:]).get('data')
+                    data = json.loads(result[8:]).get('data')
                 except Exception as e:
                     print(e)
                     self.client_command_socket.shutdown(socket.SHUT_RDWR)
@@ -196,20 +228,18 @@ class Client(CommandSend, Proxy):
                     continue
                 public_key = data.get('public_key')
                 remote_password_sha256 = data.get('password_hash')
-                if remote_password_sha256 == hashlib.sha256(self.password.encode('utf-8')).hexdigest():
-                    debug = (i == count)
 
-                    if connectVerify(debug):
+                if remote_password_sha256 == hashlib.sha256(self.password.encode('utf-8')).hexdigest():
+                    if connectVerify((i == count)):
                         # 验证通过
                         return True
                     else:
-                        continue
+                        return False
 
                 elif not remote_password_sha256 and public_key:
                     # 对方密码为空，示意任何设备均可连接, 首先使用RSA发送一个随机字符串给予对方
                     logging.info(f'Target server {self.local_ip} has no password set.')
-                    debug = (i == count)
-                    if connectVerifyNoPassword(public_key, debug):
+                    if connectVerifyNoPassword(public_key, (i == count)):
                         # 验证通过
                         return True
                     else:
@@ -219,7 +249,7 @@ class Client(CommandSend, Proxy):
                     # 验证客户端密码哈希超时
                     if i == count:
                         logging.error(f'Connection to server {self.local_ip} timed out!')
-                        return Status.CONNECT_TIMEOUT
+                        return False
                     else:
                         continue
 
@@ -228,7 +258,7 @@ class Client(CommandSend, Proxy):
                     if i == count:
                         logging.error(
                             f'Unknown parameter obtained while verifying server {self.local_ip} password hash value!')
-                        return Status.PARAMETER_ERROR
+                        return False
                     else:
                         continue
 
@@ -255,17 +285,6 @@ class Client(CommandSend, Proxy):
             else:
                 # 会话验证失败
                 return Status.SESSION_FALSE
-
-    # def commandSet(self, key:str):
-    #     """
-    #
-    #     :param key: 指令与数据加密密钥
-    #     :return: 指令集对象
-    #     """
-    #     if self.client_data_socket and self.client_command_socket:
-    #         command = CommandSend(self.client_data_socket, self.client_command_socket, key)
-    #         return command
-    #     return None
 
     def closeAllSocket(self):
         """结束与服务端的所有会话"""

@@ -1,4 +1,3 @@
-import json
 import logging
 import random
 import string
@@ -30,24 +29,23 @@ class TimeDict:
         thread = threading.Thread(target=self.__release)
         thread.start()
 
-    def set(self, key: str, value: str = None, encryption: str = None):
+    def set(self, key: str, value: bytes = None, encryption: str = None):
         """
         设置键值对
-        :param key: 键
         :param value: 值
+        :param key: 键
         :param encryption: 加密方式
         :return:
         """
         with self.lock:
             if key in self.__dict:
+                # raise KeyError(f'timedict: 增加mark {key} 失败！')
                 self.__dict[key].append(value)
                 self.__dict[key][0] = time.time()
-                # self.dict[key].insert(-1, value)
-                # self.dict[key][-1] = time.time()
             else:
                 self.__dict[key] = [time.time(), encryption]
 
-    def get(self, key: str, pop: bool = True, timeout: int = 2):
+    def get(self, key: str, pop: bool = True, timeout: int = 2) -> bytes:
         """
         获取键值对
         如果pop=True则获取完元素立即弹出该元素(如果元素内容被读取完毕，则返回False)
@@ -63,7 +61,7 @@ class TimeDict:
                 if len(self.__dict[key]) > 2:
                     return self.__dict.get(key)[2:]
                 else:
-                    return []
+                    return b''
             tic = time.time()
             while True:
                 result = self.__dict[key]
@@ -71,9 +69,9 @@ class TimeDict:
                     return result.pop(2)
                 time.sleep(0.0005)
                 if time.time() - tic > timeout:
-                    return []
+                    return b''
 
-    def getCryType(self, mark: str):
+    def getCryType(self, mark: str) -> str:
         """
         获取数据流的加密类型
         :param mark:要获取的键
@@ -81,7 +79,7 @@ class TimeDict:
         """
         if self.hasKey(mark):
             return self.__dict.get(mark)[1]
-        return
+        return ''
 
     def delKey(self, key: str):
         """
@@ -89,9 +87,9 @@ class TimeDict:
         :param key: 要删除的键
         :return:
         """
-        return self.__dict.pop(key)
+        self.__dict.pop(key)
 
-    def hasKey(self, key: str):
+    def hasKey(self, key: str) -> bool:
         """判断键是否已经存在"""
         with self.lock:
             if key in self.__dict:
@@ -131,11 +129,11 @@ class TimeDictInit(TimeDict):
     disableEncry : 关闭当前服务端timedict即时解密
     """
 
-    def __init__(self, data_socket, command_socket):
+    def __init__(self, data_socket, command_socket, key: str):
         super().__init__()
         self.data_socket = data_socket
         self.command_socket = command_socket
-        self.password: str = ''
+        self.key: str = key
         self.close_all: bool = False
         self.encry: bool = False
 
@@ -155,7 +153,8 @@ class TimeDictInit(TimeDict):
         如果在开启加密时, 发送方累计超过十次发送无效数据, 则停止接收数据
         :return:
         """
-        count = 0
+        count: int = 0
+        crypto = CryptoTools(self.key)
         while True:
             if not self.close_all:
                 result = self.data_socket.recv(1024)
@@ -164,7 +163,16 @@ class TimeDictInit(TimeDict):
                     continue
                 try:
                     # 分流数据内容
-                    mark, data = result[:8], result[8:]
+                    try:
+                        result = crypto.aes_ctr_decrypt(result)
+                    except ValueError:
+                        pass
+                    try:
+                        mark: str = result[:8].decode('utf-8')
+                    except ValueError:
+                        continue
+                    data: bytes = result[8:]
+
                     if self.hasKey(mark):
                         self.set(mark, data)
                 except Exception as e:
@@ -211,39 +219,38 @@ class TimeDictInit(TimeDict):
             if not self.hasKey(mark):
                 return mark
 
-    def getRecvData(self, mark: str, decrypt_password: str = None, timeout:int=2) -> str or bytes:
+    def getRecvData(self, mark: str, timeout: int = 2) -> bytes:
         """
         :param timeout: 超时时间
         :param mark: 取出指定mark队列第一个值，并且将其弹出
-        :param decrypt_password: 如果此项填写，则取出时将进行解密
         :return:
         """
-        result = self.get(mark, pop=True, timeout=timeout)
-        if decrypt_password and self.getCryType(mark) == 'aes-128-ctr':
-            try:
-                result = CryptoTools(decrypt_password).aes_ctr_decrypt(result)
-            except Exception as e:
-                print(e)
-                return
-            return result
-        else:
-            return result
+        return self.get(mark, pop=True, timeout=timeout)
+        # if decrypt_password and self.getCryType(mark) == 'aes-128-ctr':
+        #     try:
+        #         result = CryptoTools(decrypt_password).aes_ctr_decrypt(result)
+        #     except Exception as e:
+        #         print(e)
+        #         return
+        #     return result
+        # else:
+        #     return result
 
-    def getCommand(self, mark: str, decrypt_password: str = None) -> dict:
-        """
-        :param mark: 取出指定mark队列第一个值，并且将其弹出
-        :param decrypt_password: 如果此项填写，则取出时将进行解密
-        :return:
-        """
-        result = self.get(mark, pop=True)
-        if decrypt_password and self.getCryType(mark) == 'aes-128-ctr':
-            try:
-                result = CryptoTools(decrypt_password).aes_ctr_decrypt(result)
-            except Exception as e:
-                print(e)
-                return
-            result = result
-        return json.loads(result)
+    # def getCommand(self, mark: str, decrypt_password: str = None) -> dict:
+    #     """
+    #     :param mark: 取出指定mark队列第一个值，并且将其弹出
+    #     :param decrypt_password: 如果此项填写，则取出时将进行解密
+    #     :return:
+    #     """
+    #     result = self.get(mark, pop=True)
+    #     if decrypt_password and self.getCryType(mark) == 'aes-128-ctr':
+    #         try:
+    #             result = CryptoTools(decrypt_password).aes_ctr_decrypt(result)
+    #         except Exception as e:
+    #             print(e)
+    #             return
+    #         result = result
+    #     return json.loads(result)
 
     def createRecv(self, mark: str, encryption: str = None):
         """
@@ -254,19 +261,10 @@ class TimeDictInit(TimeDict):
         :return:
         """
         if 4 < len(mark) < 8:
-            self.set(mark, encryption)
+            self.set(mark, encryption=encryption)
         else:
             raise ValueError(f'Mark: {mark} set error!!')
 
     def closeRecv(self):
         """销毁所有数据并停止持续接收数据"""
         self.close_all = True
-
-    def enableEncry(self, password: str):
-        """开启加密"""
-        self.encry = True
-        self.password = password
-
-    def disableEncry(self):
-        """关闭加密"""
-        self.encry = False

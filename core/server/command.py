@@ -7,7 +7,6 @@ import os
 import socket
 import subprocess
 import threading
-from ast import literal_eval
 
 import xxhash
 from Crypto.Cipher import PKCS1_OAEP
@@ -17,7 +16,7 @@ from core.server.scan import Scan
 from core.tools.encryption import CryptoTools
 from core.tools.status import Status, CommandSet, PermissionEnum
 from core.tools.timedict import TimeDictInit
-from core.tools.tools import HashTools, SocketSession
+from core.tools.tools import HashTools, SocketSession, Session
 
 
 class BaseCommandSet(Scan):
@@ -41,7 +40,7 @@ class BaseCommandSet(Scan):
 
         self.system_encode = locale.getpreferredencoding()
 
-        self.timedict = TimeDictInit(data_socket, command_socket)
+        self.timedict = TimeDictInit(data_socket, command_socket, self.key)
         # self.session = Session(self.timedict, key)
         self.closeTimeDict = False
 
@@ -148,7 +147,7 @@ class BaseCommandSet(Scan):
                 with open(remote_file_path, mode='ab') as f:
                     while read_data > 0:
                         read_data -= data_block
-                        data = self.timedict.getRecvData(filemark, decrypt_password=self.key)
+                        data = self.timedict.getRecvData(filemark)
                         f.write(data)
             case 1:
                 # 如果不存在文件，则创建文件。否则重写文件。
@@ -158,7 +157,7 @@ class BaseCommandSet(Scan):
                 with open(remote_file_path, mode='ab') as f:
                     while read_data > 0:
                         read_data -= data_block
-                        data = self.timedict.getRecvData(filemark, decrypt_password=self.key)
+                        data = self.timedict.getRecvData(filemark)
                         f.write(data)
 
             case 2:
@@ -168,7 +167,7 @@ class BaseCommandSet(Scan):
                     return False
 
                 file_block = remote_file_size / 1048576  # 计算大约超时时间
-                status = self.timedict.getRecvData(reply_mark, decrypt_password=self.key, timeout=int(file_block))
+                status = self.timedict.getRecvData(reply_mark, timeout=int(file_block))
                 try:
                     status = json.loads(status).get('data').get('status')
                 except Exception as e:
@@ -184,7 +183,7 @@ class BaseCommandSet(Scan):
                     read_data = 0
                     while read_data <= difference:
                         try:
-                            data = self.timedict.getRecvData(filemark, decrypt_password=self.key)
+                            data = self.timedict.getRecvData(filemark)
                         except Exception as e:
                             print(e)
                             return Status.DATA_RECEIVE_TIMEOUT
@@ -471,6 +470,7 @@ class CommandSetExpand(BaseCommandSet):
 
     def __init__(self, command_socket, data_socket, key: str):
         super().__init__(command_socket, data_socket, key)
+        self.session = Session(self.timedict)
 
     def getIndex(self, data_: dict, mark: str) -> bool:
         """
@@ -487,14 +487,15 @@ class CommandSetExpand(BaseCommandSet):
             if spacename == userdata['spacename']:
                 command = {
                     "data": {
-                        "path": userdata['path']
+                        "path": userdata.get('path')
                     }
                 }
-                self.session.sendCommand(self.command_socket, command, mark=mark)
+                with SocketSession(self.timedict, self.data_socket, mark=mark, encrypt_password=self.key) as session:
+                    session.send(command, output=False)
                 return True
         return False
 
-    def verifyConnect(self, data_: dict, mark: str):
+    def verifyConnect(self, data_: dict, mark: str) -> bool:
         """
         被验证：验证对方服务端TestSocket发送至本地服务端CommandSocket的连接是否合法
         如果合法则加入可信任设备列表
@@ -519,7 +520,7 @@ class CommandSetExpand(BaseCommandSet):
 
         if not self.config['version'] == version:
             # todo: 客户方与服务端验证版本不一致
-            return
+            return False
 
         if not self.password:
             # 如果密码为空, 则与客户端交换AES密钥
@@ -534,43 +535,60 @@ class CommandSetExpand(BaseCommandSet):
             # 发送公钥, 等待对方使用公钥加密随机密码
             command = {
                 "data": {
-                    "public_key": public_key
+                    "public_key": base64.b64encode(public_key)
                 }
             }
-            result = self.session.sendCommand(socket_=self.command_socket, mark=mark, command=command)
+            with SocketSession(self.timedict, data_socket=self.data_socket, mark=mark) as command_session:
+                result = command_session.send(command)
 
-            if result == Status.DATA_RECEIVE_TIMEOUT:
-                self.command_socket.shutdown(socket.SHUT_RDWR)
-                self.command_socket.close()
-                return
+                if result == Status.DATA_RECEIVE_TIMEOUT.value:
+                    self.command_socket.shutdown(socket.SHUT_RDWR)
+                    self.command_socket.close()
+                    return False
+                else:
+                    try:
+                        data = json.loads(result).get('data')
+                    except Exception as e:
+                        print(e)
+                        return False
+                session_password: str = data.get('session_password')
+                session_id: str = data.get('id')
+                if not session_id and not session_password:
+                    return False
+                # 加载公钥和私钥
+                private_key = RSA.import_key(private_key)
+                # public_key = RSA.import_key(public_key)
 
-            # 加载公钥和私钥
-            private_key = RSA.import_key(private_key)
-            # public_key = RSA.import_key(public_key)
+                # 创建一个新的cipher实例
+                # cipher_pub = PKCS1_OAEP.new(public_key)
+                private_key = PKCS1_OAEP.new(private_key)
 
-            # 创建一个新的cipher实例
-            # cipher_pub = PKCS1_OAEP.new(public_key)
-            private_key = PKCS1_OAEP.new(private_key)
+                # # 加密一条消息
+                # message = b'This is a secret message'
+                # ciphertext = cipher_pub.encrypt(message)
 
-            # # 加密一条消息
-            # message = b'This is a secret message'
-            # ciphertext = cipher_pub.encrypt(message)
+                # 解密这条消息
+                # 字符串 -> byte(utf-8) -> encry -> base64 -> str
+                base64_session_password = base64.b64decode(session_password)
+                base64_session_id = base64.b64decode(session_id)
 
-            # 解密这条消息
-            source = private_key.decrypt(result).decode('utf-8')
+                de_session_password = private_key.decrypt(base64_session_password).decode('utf-8')
+                de_session_id = private_key.decrypt(base64_session_id).decode('utf-8')
 
-            try:
-                data = literal_eval(source)['data']
-                session_password = data.get('session_password')
-                remote_id = data.get('id')
-            except Exception as e:
-                print(e)
-                return
+                crypt_id = CryptoTools(de_session_password).b64_ctr_encrypt(self.id.encode('utf-8'))
+
+                command = {
+                    "data": {
+                        "status": "success",
+                        "id": crypt_id
+                    }
+                }
+                command_session.send(command, output=False)
 
             address = self.command_socket.getpeername()[0]
             self.verify_manage[address] = {
-                "REMOTE_ID": remote_id,
-                "AES_KEY": session_password
+                "REMOTE_ID": de_session_id,
+                "AES_KEY": de_session_password
             }
             self.command_socket.permission = PermissionEnum.USER
 
@@ -583,35 +601,38 @@ class CommandSetExpand(BaseCommandSet):
                     "password_hash": password_sha256
                 }
             }
-            result = self.session.sendCommand(socket_=self.data_socket,
-                                              mark=mark, command=command)
+            result = self.session.sendCommand(socket_=self.data_socket, mark=mark, command=command)
 
             try:
-                data = literal_eval(result).get('data')
-                remote_password_sha384 = data.get('password_hash')
-                remote_id_cry = data.get('id')
+                data = json.loads(result).get('data')
             except Exception as e:
                 print(e)
-                return
+                return False
+
+            remote_password_sha384: str = data.get('password_hash')
+            remote_id_cry_b64: str = data.get('id')
+
             try:
-                remote_id_cry = base64.b64decode(remote_id_cry.encode('utf-8'))
+                remote_id_cry = base64.b64decode(remote_id_cry_b64)
                 remote_id = CryptoTools(self.password).aes_ctr_decrypt(remote_id_cry)
             except Exception as e:
                 print(e)
-                return
+                return False
 
             # 5.验证本地sha384值是否与远程匹配匹配: 接收对方的密码sha384值, 如果通过返回id和验证状态
-            password_sha384 = hashlib.sha384(self.password.encode('utf-8')).hexdigest()
+            password_sha384: str = hashlib.sha384(self.password.encode('utf-8')).hexdigest()
+            encry_local_password: bytes = CryptoTools(self.password).aes_ctr_encrypt(self.id)
+            base64_encry_local_password: str = base64.b64encode(encry_local_password).decode()
+
             if remote_password_sha384 == password_sha384:
                 # 验证通过
                 command = {
                     "data": {
                         "status": 'success',
-                        "id": self.id
+                        "id": base64_encry_local_password
                     }
                 }
-                self.session.sendCommand(socket_=self.data_socket, mark=mark,
-                                         command=command, output=False)
+                self.session.sendCommand(socket_=self.data_socket, mark=mark, command=command, output=False)
 
                 address = self.command_socket.getpeername()[0]
                 self.verify_manage[address] = {
@@ -620,6 +641,7 @@ class CommandSetExpand(BaseCommandSet):
                     "PERMISSION": PermissionEnum.USER.value
                 }
                 self.command_socket.permission = PermissionEnum.USER
+                return True
 
             elif remote_password_sha384 == Status.DATA_RECEIVE_TIMEOUT:
                 # todo: 服务端密码验证失败(超时)
@@ -629,8 +651,7 @@ class CommandSetExpand(BaseCommandSet):
                         "id": self.id
                     }
                 }
-                self.session.sendCommand(socket_=self.data_socket, mark=mark, command=command,
-                                         output=False)
+                self.session.sendCommand(socket_=self.data_socket, mark=mark, command=command, output=False)
 
             else:
                 # todo: 服务端密码验证失败(或得到错误参数)
@@ -640,12 +661,11 @@ class CommandSetExpand(BaseCommandSet):
                         "id": self.id
                     }
                 }
-                self.session.sendCommand(socket_=self.data_socket, mark=mark, command=command,
-                                         output=False)
+                self.session.sendCommand(socket_=self.data_socket, mark=mark, command=command, output=False)
 
             self.command_socket.shutdown(socket.SHUT_RDWR)
             self.command_socket.close()
-            return
+            return False
 
 
 class RecvCommand(CommandSetExpand):
@@ -681,9 +701,14 @@ class RecvCommand(CommandSetExpand):
             if self.close:
                 return
             command = self.command_socket.recv(1024).decode('utf-8')
-            if len(command) < 9:
+            if len(command) < 16:
                 continue
             mark, command = command[:8], command[8:]  # 8字节的mark头信息和指令
+
+            try:
+                command = CryptoTools(self.key).aes_ctr_decrypt(command)
+            except Exception as e:
+                print(e)
 
             try:
                 command = json.loads(command)

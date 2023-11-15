@@ -1,5 +1,6 @@
 import base64
 import hashlib
+import json
 import logging
 import os
 import re
@@ -130,19 +131,26 @@ class Scan(readConfig):
                 continue
             # 1.本地发送验证指令:发送指令开始进行验证
             version = self.config.get('version')
-            result = SocketTools.sendCommandNoTimeDict(test, '''{"command": "comm","type": "verifyconnect",
-            "method": "post","data": {"version": %s}}'''.replace('\x20', '') % version)
+            command = {
+                "command": "comm",
+                "type": "verifyconnect",
+                "method": "post",
+                "data": {
+                    "version": version
+                }
+            }
+            result = SocketTools.sendCommandNoTimeDict(test, command)
 
             # 3.远程发送sha256值:验证远程sha256值是否与本地匹配
             try:
-                dict_result = literal_eval(result[8:]).get('data')  # 去除mark头
-                remote_password_sha256 = dict_result.get('password_hash')
-                public_key = dict_result.get('public_key')
+                dict_result = json.loads(result[8:]).get('data')  # 去除mark头
             except Exception as e:
                 print(e)
                 test.shutdown(socket.SHUT_RDWR)
                 test.close()
                 continue
+            remote_password_sha256 = dict_result.get('password_hash')
+            public_key = dict_result.get('public_key')
 
             if remote_password_sha256 == hashlib.sha256(self.password.encode('utf-8')).hexdigest():  # 密码不为空，验证是否与本地密码相同
 
@@ -151,8 +159,8 @@ class Scan(readConfig):
                 encrypt_local_id = CryptoTools(self.password).aes_ctr_encrypt(self.id).decode('utf-8')  # 获取self.id的加密值
                 command = {
                     "data": {
-                    "password_hash": password_sha384,
-                    "id": encrypt_local_id
+                        "password_hash": password_sha384,
+                        "id": encrypt_local_id
                     }
                 }
                 result = SocketTools.sendCommandNoTimeDict(test, command=command)
@@ -192,27 +200,26 @@ class Scan(readConfig):
 
             elif not remote_password_sha256 and public_key:
                 # 对方密码为空，示意任何设备均可连接
-                rsa_pub = RSA.import_key(public_key)  # 首先使用RSA发送一个随机字符串给予对方
+                rsa_pub = RSA.import_key(base64.b64decode(public_key))  # 首先使用RSA发送一个随机字符串给予对方
 
                 cipher_pub = PKCS1_OAEP.new(rsa_pub)
+                # 字符串 -> byte(utf-8) -> encry -> base64 -> str
+                session_password:str = HashTools.getRandomStr(8)
+                session_password_encry: bytes = cipher_pub.encrypt(session_password.encode('utf-8'))
+                session_password_encry_base64: bytes = base64.b64encode(session_password_encry)
 
-                session_password = HashTools.getRandomStr(8)
-
-                message = ('''
-                {
+                session_id_encry: bytes = cipher_pub.encrypt(self.id.encode('utf-8'))
+                session_id_encry_base64: bytes = base64.b64encode(session_id_encry)
+                message = {
                     "data": {
-                        "session_password": "%s",
-                        "id": "%s"
+                        "session_password": session_password_encry_base64.decode(),
+                        "id": session_id_encry_base64.decode()
                     }
                 }
-                '''.replace('\x20', '') % (session_password, self.id)).encode('utf-8')  # 即将发送的加密数据
 
-                ciphertext = cipher_pub.encrypt(message)
-
-                SocketTools.sendCommandNoTimeDict(test, ciphertext, output=False)
+                SocketTools.sendCommandNoTimeDict(test, message, output=False)
 
                 # todo: 等待对方返回加密的id
-
                 self.verified_devices.add(ip)
                 self.verify_manage[test.getpeername()[0]] = {
                     "REMOTE_ID": remote_id,
