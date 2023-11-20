@@ -74,8 +74,6 @@ class createSocket(Scan, Manage, Proxy):
     def __init__(self):
         super().__init__()
         # Socks5代理设置
-        self.host_id = self.config['server']['addr']['id']
-
         """
         Socket套接字连接成功实例存储
         address : {
@@ -94,8 +92,8 @@ class createSocket(Scan, Manage, Proxy):
             thread.start()
 
     def createDataSocket(self):
-        data_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        data_socket.bind((self.config["server"]["addr"]["ip"], int(self.config["server"]["addr"]["port"])))
+        data_socket = socket.socket(self.socket_family, socket.SOCK_STREAM)
+        data_socket.bind((self.local_ip, self.data_port))
         data_socket.listen(128)
 
         while True:
@@ -128,8 +126,8 @@ class createSocket(Scan, Manage, Proxy):
 
     def createCommandSocket(self):
         """创建指令传输套接字"""
-        command_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        command_socket.bind((self.config['server']['addr']['ip'], self.command_port))
+        command_socket = socket.socket(self.socket_family, socket.SOCK_STREAM)
+        command_socket.bind((self.local_ip, self.command_port))
         command_socket.listen(128)
         while True:
             sub_socket, addr = command_socket.accept()
@@ -183,7 +181,8 @@ class createSocket(Scan, Manage, Proxy):
         :return:
         """
         client_mark = HashTools.getRandomStr(8)
-        aes_key = self.verify_manage[ip].get('aes_key')
+        aes_key = self.verify_manage[ip].get('AES_KEY')
+        remote_id = self.verify_manage[ip].get('REMOTE_ID')
 
         client = Client(ip, self.data_port)
         client_info = {
@@ -206,17 +205,21 @@ class createSocket(Scan, Manage, Proxy):
         elif client_data_socket == Status.SESSION_FALSE:
             client.closeAllSocket()  # 会话验证失败, 关闭客户端连接
             return
-        else:
+        elif client_command_socket.permission >= PermissionEnum.USER.value:
             # 连接成功
-            # command_set = client.commandSet(aes_key) # 设置指令和数据传输的加密方式
+
+            control = client.createCommand() # 初始化指令控制对象
+
             socket_manage[client_mark] = {
                 'ip': ip,
-                'id': self.host_id,
+                'id': remote_id,
                 'client': client,
                 'command_socket': client_command_socket,
                 'permission': PermissionEnum.USER.value,
+                'control': control,
                 'AES_KEY': aes_key
             }
+
             return socket_manage[client_mark]
 
     def updateIplist(self):

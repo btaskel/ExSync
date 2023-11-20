@@ -5,32 +5,24 @@ import logging
 import os
 import re
 import socket
-from ast import literal_eval
 
 from Crypto.Cipher import PKCS1_OAEP
 from Crypto.PublicKey import RSA
 
-from core.config import readConfig
+from core.config import Config
 from core.tools.encryption import CryptoTools
 from core.tools.status import Status
 from core.tools.tools import SocketTools, HashTools
 
 
-class Scan(readConfig):
+class Scan(Config):
     """
     对局域网/指定网段进行扫描和添加设备
     """
 
     def __init__(self):
         super().__init__()
-        self.config: dict = readConfig.readJson()
         self.ip_list: list = []
-        self.data_port: int = self.config['server']['addr']['port']
-        self.command_port: int = self.config['server']['addr']['port'] + 1
-        self.listen_port: int = self.config['server']['addr']['port'] + 2
-        self.password: str = self.config["server"]["addr"]["password"]
-        self.id: str = self.config['server']['addr']['id']
-        self.encode_type: str = self.config['server']['setting'].get('encode')
         self.verified_devices: set = set()
 
         """
@@ -43,7 +35,7 @@ class Scan(readConfig):
         verify_manage = {
             "1.1.1.1": {
                 "AES_KEY": "123456"
-                "MARK": "aBcDeFGh"
+                "REMOTE_ID": "aBcDeFGh"
             }
         }
         """
@@ -93,7 +85,7 @@ class Scan(readConfig):
             """
             for value in self.config['server']['scan']['device']:
                 ip_list.append(value)
-            logging.info('White List: Search for IP completed')
+            logging.info('Pre scan: White List: Search for IP completed')
 
         elif scan['type'].lower() == 'black':
             """
@@ -101,7 +93,7 @@ class Scan(readConfig):
             """
             for value in self.config['server']['scan']['device']:
                 ip_list.append(value)
-            logging.info('Black List: Search for IP completed')
+            logging.info('Pre scan: Black List: Search for IP completed')
 
         remove_ip = ['192.168.1.1', socket.gethostbyname(socket.gethostname())]
         if ip_list:
@@ -121,7 +113,7 @@ class Scan(readConfig):
         for ip in ip_list:
             if ip in self.verify_manage:
                 continue
-            test = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            test = socket.socket(self.socket_family, socket.SOCK_STREAM)
             test.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             test.settimeout(2)
             # 连接设备的指定端口
@@ -166,14 +158,12 @@ class Scan(readConfig):
                 result = SocketTools.sendCommandNoTimeDict(test, command=command)
                 # 6.远程发送状态和id:获取通过状态和远程id 验证结束
                 try:
-                    cry = CryptoTools(self.password)
-                    result = cry.aes_ctr_decrypt(result[8:])
-                    data = literal_eval(result).get('data')
+                    data = json.loads(result).get('data')
                     status = data.get('status')
                     remote_id = CryptoTools(self.password).aes_ctr_decrypt(base64.b64decode(data.get('id')))
                 except Exception as e:
                     print(e)
-                    logging.error(f'Unknown status returned while scanning server {ip}')
+                    logging.error(f'Pre scan: Unknown status returned while scanning server {ip}')
                     test.shutdown(socket.SHUT_RDWR)
                     test.close()
                     continue
@@ -188,11 +178,11 @@ class Scan(readConfig):
 
                 elif status == 'fail':
                     # 验证服务端密码失败
-                    logging.debug(f'Verification failed when connecting to server {ip}')
+                    logging.info(f'Pre scan: Verification failed when connecting to server {ip}')
 
                 elif status == Status.DATA_RECEIVE_TIMEOUT:
                     # 验证服务端密码超时
-                    logging.debug(f'Timed out connecting to server {ip}')
+                    logging.info(f'Pre scan: Timed out connecting to server {ip}')
 
                 test.shutdown(socket.SHUT_RDWR)
                 test.close()
@@ -200,11 +190,16 @@ class Scan(readConfig):
 
             elif not remote_password_sha256 and public_key:
                 # 对方密码为空，示意任何设备均可连接
-                rsa_pub = RSA.import_key(base64.b64decode(public_key))  # 首先使用RSA发送一个随机字符串给予对方
-
+                try:
+                    rsa_pub = RSA.import_key(base64.b64decode(public_key))  # 首先使用RSA发送一个随机字符串给予对方
+                except Exception as err:
+                    print(err)
+                    logging.error(
+                        f'''Pre scan: When connecting to server {ip}, the other party's RSA public key is incorrect''')
+                    continue
                 cipher_pub = PKCS1_OAEP.new(rsa_pub)
                 # 字符串 -> byte(utf-8) -> encry -> base64 -> str
-                session_password:str = HashTools.getRandomStr(8)
+                session_password: str = HashTools.getRandomStr(8)
                 session_password_encry: bytes = cipher_pub.encrypt(session_password.encode('utf-8'))
                 session_password_encry_base64: bytes = base64.b64encode(session_password_encry)
 
@@ -217,11 +212,20 @@ class Scan(readConfig):
                     }
                 }
 
-                SocketTools.sendCommandNoTimeDict(test, message, output=False)
+                result = SocketTools.sendCommandNoTimeDict(test, message)
+                try:
+                    data: dict = json.loads(result).get('data')
+                except Exception as e:
+                    print(e)
+                    continue
+                remote_id = data.get('id')
+                if not remote_id:
+                    logging.info('Pre scan: Failed to receive server ID.')
+                    continue
 
-                # todo: 等待对方返回加密的id
+                remote_id = CryptoTools(session_password).b64_ctr_decrypt(remote_id)
                 self.verified_devices.add(ip)
-                self.verify_manage[test.getpeername()[0]] = {
+                self.verify_manage[ip] = {
                     "REMOTE_ID": remote_id,
                     "AES_KEY": session_password
                 }

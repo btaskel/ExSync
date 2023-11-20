@@ -8,23 +8,14 @@ from Crypto.Cipher import PKCS1_OAEP
 from Crypto.PublicKey import RSA
 
 from core.client.command import CommandSend
-from core.config import readConfig
+from core.config import Config
 from core.server.proxy import Proxy
 from core.tools.encryption import CryptoTools
 from core.tools.status import Status
 from core.tools.tools import HashTools, SocketTools
 
 
-class Config(readConfig):
-    def __init__(self):
-        super().__init__()
-        self.config = readConfig.readJson()
-        self.local_ip: str = self.config['server']['addr'].get('ip')
-        self.encode_type: str = self.config['server']['setting'].get('encode')
-        self.password: str = self.config['server']['addr'].get('password')
-
-
-class Client(CommandSend, Proxy):
+class Client(Config, Proxy):
     def __init__(self, ip: str, port: int, verified: bool = False):
         super().__init__()
         self.__host_info: dict = {}
@@ -33,10 +24,8 @@ class Client(CommandSend, Proxy):
         self.verified: bool = verified
 
         self.ip: str = ip
-        self.id: str = self.config['server']['addr'].get('id')
         self.data_port: int = port
         self.command_port: int = port + 1
-        self.encode: str = self.config['server']['setting'].get('encode', 'utf-8')
 
         if self.config['server']['proxy'].get('enabled'):
             socket.socket = self.setProxyServer(self.config)
@@ -47,8 +36,8 @@ class Client(CommandSend, Proxy):
         {
             'client_mark': client_mark,
             'ip': ip,
-            'id': self.host_id,
-            'AES_KEY': aes_key
+            'id': id,
+            'AES_KEY': aes_key,
         }
         :param host_info:
         :return:
@@ -63,7 +52,7 @@ class Client(CommandSend, Proxy):
         创建客户端的指令套接字
         :return: 指令Socket
         """
-        self.client_command_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.client_command_socket = socket.socket(self.socket_family, socket.SOCK_STREAM)
         return self.client_command_socket
 
     def connectRemoteCommandSocket(self) -> bool:
@@ -102,22 +91,23 @@ class Client(CommandSend, Proxy):
             if status_ == 'success':
                 # 验证成功
                 self.__host_info['id'] = remote_id
+                self.__host_info['AES_KEY'] = self.password
                 return True
 
             elif status_ == 'fail':
                 # 验证服务端密码失败
-                debug_status and logging.error(f'Failed to verify server {self.local_ip} password!')
+                debug_status and logging.error(f'Failed to verify server {self.ip} password!')
                 return False
 
             elif status_ == Status.DATA_RECEIVE_TIMEOUT:
                 # 验证服务端密码超时
-                debug_status and logging.error(f'Verifying server {self.local_ip} password timeout!')
+                debug_status and logging.error(f'Verifying server {self.ip} password timeout!')
                 return False
 
             else:
                 # 验证服务端密码时得到未知参数
                 debug_status and logging.error(
-                    f'Unknown parameter obtained while verifying server {self.local_ip} password!')
+                    f'Unknown parameter obtained while verifying server {self.ip} password!')
                 return False
 
         def connectVerifyNoPassword(pub_key: str, out: bool = False) -> bool:
@@ -133,7 +123,7 @@ class Client(CommandSend, Proxy):
                 print(err)
                 if out:
                     logging.error(
-                        f'''When connecting to server {self.local_ip}, the other party's RSA public key is incorrect''')
+                        f'''When connecting to server {self.ip}, the other party's RSA public key is incorrect''')
                     return False
                 return False
             cipher_pub = PKCS1_OAEP.new(rsa_pub)
@@ -156,40 +146,27 @@ class Client(CommandSend, Proxy):
 
             _result = SocketTools.sendCommandNoTimeDict(self.client_command_socket, _command)
             try:
-                _data = json.loads(_result[8:]).get('data')
+                _data: dict = json.loads(_result[8:]).get('data')
                 remote_id = _data.get('id')
             except Exception as a:
                 print(a)
                 return False
             remote_id = CryptoTools(session_password).b64_ctr_decrypt(remote_id)
-            # todo: 保存远程id到本地-无密码验证
-            self.__host_info['AES_KEY'] = session_password
+            # 保存远程id到本地-无密码验证
             self.__host_info['id'] = remote_id
-
+            self.__host_info['AES_KEY'] = session_password
             return True
 
-        if not self.client_command_socket:
-            logging.debug('Client_Command_Socket not created.')
-            return False
-
-        aes_key = self.__host_info.get('AES_KEY')
-        if aes_key:
-            # AES_KEY不为空, 则验证通过, 直接进行连接
-
+        def direct() -> bool:
+            """
+            AES_KEY不为空, 则预验证通过, 直接进行连接
+            :return: 连接认证成功返回True，否则为False
+            """
             self.client_command_socket.settimeout(2)
             status = self.client_command_socket.connect_ex((self.ip, self.command_port))
             if status == 0:
                 # 连接成功
-                # with AESSession(aes_key) as aes:
-                #     aes_message = aes.aes_ctr_encrypt('hello')
-                #     SocketTools.sendCommandNoTimeDict(self.client_socket, )
-                # todo:
 
-                # data = self.client_command_socket.recv(1024)
-                # cry = CryptoTools(aes_key)
-                # cry.aes_ctr_decrypt(data)
-                # if not data or data == 'validationFailed':
-                #     return
                 return True
             elif status == 10061:
                 # 超时
@@ -201,14 +178,18 @@ class Client(CommandSend, Proxy):
                 logging.info(
                     f'''Connect to {self.__host_info['ip']}:An unknown error occurred while confirming the verification status of the linked device!''')
                 return False
-        else:
-            # AES_KEY 为空, 进行验证连接.
+
+        def check() -> bool:
+            """
+            AES_KEY为空, 则预验证未通过, 进行验证连接
+            :return: 连接认证成功返回True，否则为False
+            """
             self.client_command_socket.settimeout(2)
 
             count = 3  # 连接失败重试次数
             for i in range(count):
                 logging.debug(f'Connecting to server {self.ip} for the {i}th time')
-                if self.client_command_socket.connect_ex((self.local_ip, self.command_port)) != 0:
+                if self.client_command_socket.connect_ex((self.ip, self.command_port)) != 0:
                     continue
                 # 1.本地发送验证指令:发送指令开始进行验证
                 command = {
@@ -238,7 +219,7 @@ class Client(CommandSend, Proxy):
 
                 elif not remote_password_sha256 and public_key:
                     # 对方密码为空，示意任何设备均可连接, 首先使用RSA发送一个随机字符串给予对方
-                    logging.info(f'Target server {self.local_ip} has no password set.')
+                    logging.info(f'Target server {self.ip} has no password set.')
                     if connectVerifyNoPassword(public_key, (i == count)):
                         # 验证通过
                         return True
@@ -248,7 +229,7 @@ class Client(CommandSend, Proxy):
                 elif remote_password_sha256 == Status.DATA_RECEIVE_TIMEOUT:
                     # 验证客户端密码哈希超时
                     if i == count:
-                        logging.error(f'Connection to server {self.local_ip} timed out!')
+                        logging.error(f'Connection to server {self.ip} timed out!')
                         return False
                     else:
                         continue
@@ -257,7 +238,7 @@ class Client(CommandSend, Proxy):
                     # 验证客户端密码哈希得到未知参数
                     if i == count:
                         logging.error(
-                            f'Unknown parameter obtained while verifying server {self.local_ip} password hash value!')
+                            f'Unknown parameter obtained while verifying server {self.ip} password hash value!')
                         return False
                     else:
                         continue
@@ -266,25 +247,41 @@ class Client(CommandSend, Proxy):
             self.client_command_socket.close()
             return False
 
+        if not self.client_command_socket:
+            logging.debug('Client_Command_Socket not created.')
+            return False
+
+        aes_key = self.__host_info.get('AES_KEY')
+        return direct() if aes_key else check()
+
     def createClientDataSocket(self):
         """
         创建并连接client_data_socket - server_command_socket
+        :return: client_data_socket
         """
-        if self.client_command_socket:
-            self.client_data_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            self.client_data_socket.bind((self.local_ip, 0))
-            status = self.client_data_socket.connect_ex((self.ip, self.data_port))
-            if status == 0:
-                # 会话验证成功
-                return self.client_data_socket
+        if not self.client_command_socket:
+            raise AttributeError('未进行Command_socket连接，无法创建Data_socket')
+        self.client_data_socket = socket.socket(self.socket_family, socket.SOCK_STREAM)
+        self.client_data_socket.bind((self.local_ip, 0))
+        status = self.client_data_socket.connect_ex((self.ip, self.data_port))
+        if status == 0:
+            # 会话验证成功
+            return self.client_data_socket
 
-            elif status == 10061:
-                # 超时关闭连接
-                return Status.CONNECT_TIMEOUT
+        elif status == 10061:
+            # 超时关闭连接
+            return Status.CONNECT_TIMEOUT
 
-            else:
-                # 会话验证失败
-                return Status.SESSION_FALSE
+        else:
+            # 会话验证失败
+            return Status.SESSION_FALSE
+
+    def createCommand(self):
+        """
+        创建指令控制对象
+        :return: 指令控制对象
+        """
+        return CommandSend(self.client_data_socket, self.client_command_socket, self.__host_info.get('AES_KEY'))
 
     def closeAllSocket(self):
         """结束与服务端的所有会话"""

@@ -216,44 +216,44 @@ class SocketTools:
             print(e)
             raise ValueError('sendCommandNoTimeDict: 格式化指令时失败')
 
-        if output:
-            if encrypt_password:
-                if len(command) > 1008:
-                    raise ValueError('sendCommandNoTimeDict: 指令发送时大于1008个字节')
-
-                data = CryptoTools(encrypt_password).aes_ctr_encrypt(HashTools.getRandomStr(8) + command)
-            else:
-                if len(command) > 1016:
-                    raise ValueError('sendCommandNoTimeDict: 指令发送时大于1016个字节')
-                data = (HashTools.getRandomStr(8) + command).encode('utf-8')
-
+        if not output:
             try:
-                socket_.send_command(data)
-                with concurrent.futures.ThreadPoolExecutor() as excutor:
-                    try:
-                        data = socket_.recv(1024)[8:]
-                    except ValueError as e:
-                        print(e)
-                        raise ValueError('sendCommandNoTimeDict: 获取的data数据少于8个字节，无法分离出mark')
-                    if encrypt_password:
-                        future = excutor.submit(CryptoTools(encrypt_password).aes_ctr_decrypt(data))
-                    else:
-                        future = excutor.submit(data)
-                    try:
-                        # 没有超时2000ms则返回接收值
-                        result = future.result(timeout=timeout)
-                        return result
-                    except concurrent.futures.TimeoutError:
-                        # 超时返回错误
-                        return Status.DATA_RECEIVE_TIMEOUT.value
+                socket_.send_command(command.encode(socket_encode))
             except Exception as e:
-                print(e)
-                raise Exception('sendCommandNoTimeDict: 发生未知错误')
+                raise TimeoutError('Socket错误: ', e)
+            return ''
+        if encrypt_password:
+            if len(command) > 1008:
+                raise ValueError('sendCommandNoTimeDict: 指令发送时大于1008个字节')
+
+            data = CryptoTools(encrypt_password).aes_ctr_encrypt(HashTools.getRandomStr(8) + command)
+        else:
+            if len(command) > 1016:
+                raise ValueError('sendCommandNoTimeDict: 指令发送时大于1016个字节')
+            data = (HashTools.getRandomStr(8) + command).encode('utf-8')
 
         try:
-            socket_.send_command(command.encode(socket_encode))
+            socket_.send_command(data)
+            with concurrent.futures.ThreadPoolExecutor() as excutor:
+                try:
+                    data = socket_.recv(1024)[8:]
+                except ValueError as e:
+                    print(e)
+                    raise ValueError('sendCommandNoTimeDict: 获取的data数据少于8个字节，无法分离出mark')
+                if encrypt_password:
+                    future = excutor.submit(CryptoTools(encrypt_password).aes_ctr_decrypt(data))
+                else:
+                    future = excutor.submit(data)
+                try:
+                    # 没有超时2000ms则返回接收值
+                    result = future.result(timeout=timeout)
+                    return result
+                except concurrent.futures.TimeoutError:
+                    # 超时返回错误
+                    return Status.DATA_RECEIVE_TIMEOUT.value
         except Exception as e:
-            raise TimeoutError('Socket错误: ', e)
+            print(e)
+            raise Exception('sendCommandNoTimeDict: 发生未知错误')
 
     @staticmethod
     def sendData(data_socket, data: bytes or str, mark: str, encrypt_password: str = None):

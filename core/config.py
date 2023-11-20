@@ -265,6 +265,26 @@ class readConfig:
             json.dump(json_str, f, indent=4)
 
 
+class Config(readConfig):
+    def __init__(self):
+        super().__init__()
+        self.config = readConfig.readJson()
+
+        self.local_ip: str = self.config['server']['addr'].get('ip')
+        self.password: str = self.config['server']['addr'].get('password')
+        self.ip_type: str = self.config['server']['addr'].get('ip_type')
+        self.id: str = self.config['server']['addr'].get('id')
+        self.data_port: int = self.config['server']['addr'].get('port')
+        self.command_port: int = self.config['server']['addr'].get('port') + 1
+        self.listen_port: int = self.config['server']['addr'].get('port') + 2
+
+
+        self.encode: str = self.config['server']['setting'].get('encode', 'utf-8')
+
+        # 设置ip类型(ipv4 / ipv6)
+        self.socket_family: int = socket.AF_INET if self.ip_type == 'ipv4' else socket.AF_INET6
+
+
 if __name__ == '__main__':
     # r = readConfig()
     # config = r.readJson()
