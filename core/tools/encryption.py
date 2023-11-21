@@ -71,14 +71,14 @@ class CryptoTools:
 
 
 if __name__ == '__main__':
-    # cry = CryptoTools('123')
-    # encry = cry.aes_ctr_encrypt('awdhawdihawdoiw')
+    cry = CryptoTools('123')
+    encry = cry.aes_ctr_encrypt('awdhawdihawdoiw')
     # print(encry)
-    # print(base64.b64encode(encry).decode())
+    print(base64.b64encode(encry).decode())
     # decry = cry.aes_ctr_decrypt(encry)
     # print(decry)
 
-    string = b'\x939\xca|\xc1\x19J\x7fE\x19_\xde\xde_\xbc\xed\xc6zj\x11\x95\xf1;'
-    string = base64.b64encode(string).decode()
-    print(string)
+    # string = b'\x939\xca|\xc1\x19J\x7fE\x19_\xde\xde_\xbc\xed\xc6zj\x11\x95\xf1;'
+    # string = base64.b64encode(string).decode()
+    # print(string)
     # awdhawdihawdoiw

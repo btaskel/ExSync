@@ -30,11 +30,11 @@ class CommandSend(Config, Session):
         # 数据包发送分块大小(含filemark, AES_)
         self.block = 1024
 
-        self.timedict = TimeDictInit(data_socket, command_socket)
-        self.session = Session(self.timedict, key)
+        self.timedict = TimeDictInit(data_socket, command_socket, key)
+        self.session = Session(self.timedict)
         self.key = key
 
-    def post_File(self, path: str, key: str, mode: int = 1):
+    def post_File(self, path: str, mode: int = 1):
         """
         输入文件路径，发送文件至服务端
         data_socket: 与服务端连接的socket
@@ -170,7 +170,7 @@ class CommandSend(Config, Session):
                             self.session.sendCommand(self.data_socket, command=command, output=False, mark=reply_mark)
                             return False
 
-    def get_File(self, path: str, key: str, output_path: str = None) -> bool:
+    def get_File(self, path: str, output_path: str = None) -> bool:
         """
         获取远程文件
         传入获取文件的路径，如果本地文件已经存在则会检查是否为意外中断文件，如果是则继续传输；
@@ -179,7 +179,6 @@ class CommandSend(Config, Session):
 
         output_path: 写入路径（如果未填写则按path参数写入）
         :param path:
-        :param key:
         :param output_path:
         :return:
         """
@@ -380,22 +379,28 @@ class CommandSend(Config, Session):
             logging.debug(f'{spacename} getIndex finish.')
             return save_folder_path
 
-    def post_Index(self, spacename, json_example, is_file):
+    def post_Index(self, spacename: str, json_example: dict, is_file: bool) -> str:
         """
         更新远程设备指定同步空间 文件/文件夹 索引
         发送成功返回 True 否则 False
+        :param spacename: 同步空间名称
+        :param json_example: 所要同步的json字符串
+        :param is_file: 是否为文件索引
+        :return: 状态码
         """
-        if is_file:
-            is_file = 'True'
-        else:
-            is_file = 'False'
+        is_file = True if is_file else False
+        json_data = json.dumps(json_example)
+        if not 0 < len(json_data) <= 879:
+            # 发送字节应该在(0,879]个字节之间
+            logging.warning(f'postIndex {spacename}:The bytes sent should be between 0 and 879 bytes')
+            return False
         command = {
             "command": "data",
             "type": "index",
             "method": "post",
             "data": {
                 "spacename": spacename,
-                "json": json_example,
+                "json": json_data,  # 应该在879个字节以内
                 "isfile": is_file
             }
         }
@@ -405,30 +410,38 @@ class CommandSend(Config, Session):
             data = json.loads(result).get('data')
         except Exception as e:
             print(e)
-            return
+            return 'formatError'
         status = data.get('status')
 
         match status:
             case 'remoteIndexNoExist':
                 # 远程索引文件不存在
-                return
+                logging.warning(f'postIndex {spacename}: No index files were found during state synchronization.')
+                return 'remoteIndexNoExist'
             case 'remoteIndexError':
                 # 远程索引文件内容并非是json
-                return
+                logging.warning(f'postIndex {spacename}: Failed to parse JSON string during state synchronization.')
+                return 'remoteIndexError'
             case 'remoteSpaceNameNoExist':
                 # 远程同步空间不存在此索引文件
-                return
+                logging.warning(
+                    f'postIndex {spacename}: During state synchronization, it was found that the index file does not exist.')
+                return 'remoteSpaceNameNoExist'
             case Status.UNKNOWN_ERROR:
                 # 未知错误
-                return
+                logging.warning(f'postIndex {spacename}: Unknown error.')
+                return 'unknown'
             case Status.DATA_RECEIVE_TIMEOUT:
                 # 超时错误
-                return
+                logging.warning(f'postIndex {spacename}: A timeout error occurred during state synchronization.')
+                return 'timeout'
             case 'remoteIndexUpdated':
                 # 远程同步空间同步完毕
-                return True
+                logging.debug(f'postIndex {spacename}: Successfully synchronized status.')
+                return 'remoteIndexUpdated'
             case _:
-                return
+                logging.warning(f'postIndex {spacename}: Unknown error.')
+                return 'unknown'
 
     def send_Command(self, command: str, timeout: int = 2):
         """

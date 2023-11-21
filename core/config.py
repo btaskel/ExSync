@@ -185,10 +185,13 @@ class readConfig:
                 if spacename == '':
                     logging.error(f'The {count} th sync space is named empty! This space will not start!')
                     sys.exit(1)
-                if spacename in dc:
+                elif spacename in dc:
                     logging.error(f'Duplicate naming of synchronization space {spacename}!')
                     sys.exit(1)
-                dc[spacename] = dc.get(spacename, 0) + 1
+                elif 2 < len(spacename) < 20:
+                    logging.error(
+                        f'The length of the synchronization space X name should be between 2 and 20 characters!')
+                    dc[spacename] = dc.get(spacename, 0) + 1
                 if not os.path.exists(userdata.get('path', '')):
                     logging.error(f'The sync space path named {spacename} is invalid, it will not work!')
                 if not isinstance(userdata.get('interval'), int):
@@ -277,7 +280,6 @@ class Config(readConfig):
         self.data_port: int = self.config['server']['addr'].get('port')
         self.command_port: int = self.config['server']['addr'].get('port') + 1
         self.listen_port: int = self.config['server']['addr'].get('port') + 2
-
 
         self.encode: str = self.config['server']['setting'].get('encode', 'utf-8')
 

@@ -81,25 +81,34 @@ class createSocket(Scan, Manage, Proxy):
             data: data_socket
         }
         """
-        self.socket_info = {}
+        self.merge_socket = {}
 
         if self.config['server']['proxy'].get('enabled'):
             socket.socket = self.setProxyServer(self.config)
         # 持续合并指令与数据传输套接字
-        funcs = [self.mergeSocket, self.updateIplist]
+        funcs = [self.__mergeSocket, self.__updateIplist]
         for func in funcs:
             thread = threading.Thread(target=func)
             thread.start()
 
-    def createDataSocket(self):
+        # 创建Command / Data Socket
+        socket_types = {
+            self.command_port: self.verifyCommandSocket,
+            self.data_port: self.verifyDataSocket
+        }
+        for port, verify_func in socket_types.items():
+            thread = threading.Thread(target=self.createSocket, args=(port,verify_func))
+            thread.start()
+
+    def createSocket(self, port: int, verifyFunc):
         data_socket = socket.socket(self.socket_family, socket.SOCK_STREAM)
-        data_socket.bind((self.local_ip, self.data_port))
+        data_socket.bind((self.local_ip, port))
         data_socket.listen(128)
 
         while True:
             # 等待客户端连接服务端
             sub_socket, addr = data_socket.accept()
-            thread = threading.Thread(target=self.verifyDataSocket, args=(sub_socket, addr))
+            thread = threading.Thread(target=verifyFunc, args=(sub_socket, addr))
             thread.start()
 
     def verifyDataSocket(self, data_socket, address):
@@ -117,22 +126,12 @@ class createSocket(Scan, Manage, Proxy):
             data_socket.close()
         # 如果指令套接字存在则添加
         if address[0] in self.verified_devices:
-            self.socket_info[address[0]]["data"] = data_socket
+            self.merge_socket[address[0]]["data"] = data_socket
         else:
-            self.socket_info[address[0]] = {
+            self.merge_socket[address[0]] = {
                 "command": None,
                 "data": data_socket
             }
-
-    def createCommandSocket(self):
-        """创建指令传输套接字"""
-        command_socket = socket.socket(self.socket_family, socket.SOCK_STREAM)
-        command_socket.bind((self.local_ip, self.command_port))
-        command_socket.listen(128)
-        while True:
-            sub_socket, addr = command_socket.accept()
-            thread = threading.Thread(target=self.verifyCommandSocket, args=(sub_socket, addr))
-            thread.start()
 
     def verifyCommandSocket(self, command_socket, address):
         """
@@ -151,23 +150,23 @@ class createSocket(Scan, Manage, Proxy):
             command_socket.permission = PermissionEnum.GUEST
         command_socket.send_command('')
         if address[0] in self.verified_devices:
-            self.socket_info[address[0]]['command'] = command_socket
+            self.merge_socket[address[0]]['command'] = command_socket
         else:
-            self.socket_info[address[0]] = {
+            self.merge_socket[address[0]] = {
                 "command": command_socket,
                 "data": None
             }
 
-    def mergeSocket(self):
+    def __mergeSocket(self):
         """
         当远程客户端同时连接上data_socket和command_socket后开始指令与数据的收发
         :return:
         """
         while True:
             index = 0
-            for key, value in self.socket_info.items():
+            for key, value in self.merge_socket.items():
                 if value['command'] and value['data']:
-                    command_socket, data_socket = self.socket_info.pop(index)
+                    command_socket, data_socket = self.merge_socket.pop(index)
                     command = RecvCommand(command_socket, data_socket, Manage.getDevInfo('AES_KEY'))
                     thread = threading.Thread(target=command.recvCommand)
                     thread.start()
@@ -208,7 +207,7 @@ class createSocket(Scan, Manage, Proxy):
         elif client_command_socket.permission >= PermissionEnum.USER.value:
             # 连接成功
 
-            control = client.createCommand() # 初始化指令控制对象
+            control = client.createCommand()  # 初始化指令控制对象
 
             socket_manage[client_mark] = {
                 'ip': ip,
@@ -222,7 +221,7 @@ class createSocket(Scan, Manage, Proxy):
 
             return socket_manage[client_mark]
 
-    def updateIplist(self):
+    def __updateIplist(self):
         """
         持续更新设备列表, 并主动连接已验证的设备
         :return:
@@ -239,8 +238,9 @@ class createSocket(Scan, Manage, Proxy):
 
 
 if __name__ == '__main__':
-    s = createSocket()
-    s.createCommandSocket()
-    s.createDataSocket()
+    # s = createSocket()
+    # s.createCommandSocket()
+    # s.createDataSocket()
     # s = Scan()
     # print(s.start())
+    pass

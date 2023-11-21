@@ -342,11 +342,16 @@ class BaseCommandSet(Scan):
         根据远程发送过来的索引数据更新本地同步空间的索引
         """
 
-        spacename, json_example, isfile = data_.get('spacename'), data_.get('json'), data_.get('isfile')
+        spacename: str = data_.get('spacename')
+        json_example: dict = data_.get('json')
+        isfile: bool = data_.get('isfile')
+        if not spacename and not json_example and not isfile:
+            return False
+
         with SocketSession(self.timedict, data_socket=self.data_socket, mark=mark,
                            encrypt_password=self.key) as command_session:
             if spacename in self.config['userdata']:
-                path = self.config['userdata'][spacename]['path']
+                path = self.config['userdata'][spacename].get('path')
                 files_index_path = os.path.join(path, '\\.sync\\info\\files.json')
                 folders_index_path = os.path.join(path, '\\.sync\\info\\folders.json')
                 for file in [files_index_path, folders_index_path]:
@@ -358,15 +363,9 @@ class BaseCommandSet(Scan):
                         }
                         command_session.send(command, output=False)
                         return False
-                try:
-                    json_example = json.loads(json_example)
-                except Exception as e:
-                    print(e)
-                    logging.warning(f'Failed to load local index: {spacename}')
-                    return False
 
                 def __updateIndex(index_path):
-                    with open(index_path, mode='r+', encoding=self.encode_type) as f:
+                    with open(index_path, mode='r+', encoding='utf-8') as f:
                         try:
                             data = json.load(f)
                         except Exception as error:
@@ -380,15 +379,11 @@ class BaseCommandSet(Scan):
                             command_session.send(command_, output=False)
                             return False
                         data['data'].update(json_example)
-                        f.truncate(0)
+                        f.seek(0)
+                        f.truncate()
                         json.dump(data, f, indent=4)
 
-                if isfile == 'True':
-                    # 写入文件索引
-                    __updateIndex(files_index_path)
-                else:
-                    # 写入文件索引
-                    __updateIndex(folders_index_path)
+                __updateIndex(files_index_path) if isfile else __updateIndex(folders_index_path)
 
                 command = {
                     "data": {

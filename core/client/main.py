@@ -16,16 +16,15 @@ from core.tools.tools import HashTools, SocketTools
 
 
 class Client(Config, Proxy):
-    def __init__(self, ip: str, port: int, verified: bool = False):
+    def __init__(self, ip: str, port: int):
         super().__init__()
         self.__host_info: dict = {}
         self.client_command_socket = None
         self.client_data_socket = None
-        self.verified: bool = verified
 
         self.ip: str = ip
-        self.data_port: int = port
-        self.command_port: int = port + 1
+        self.data_port: int = port if port else self.data_port
+        self.command_port: int = port + 1 if port else self.command_port
 
         if self.config['server']['proxy'].get('enabled'):
             socket.socket = self.setProxyServer(self.config)
@@ -145,13 +144,19 @@ class Client(Config, Proxy):
             }
 
             _result = SocketTools.sendCommandNoTimeDict(self.client_command_socket, _command)
+
             try:
                 _data: dict = json.loads(_result[8:]).get('data')
                 remote_id = _data.get('id')
             except Exception as a:
                 print(a)
                 return False
-            remote_id = CryptoTools(session_password).b64_ctr_decrypt(remote_id)
+            try:
+                remote_id = CryptoTools(session_password).b64_ctr_decrypt(remote_id)
+            except Exception as e:
+                print(e)
+                return False
+
             # 保存远程id到本地-无密码验证
             self.__host_info['id'] = remote_id
             self.__host_info['AES_KEY'] = session_password

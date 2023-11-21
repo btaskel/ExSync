@@ -148,11 +148,12 @@ class Scan(Config):
 
                 # 4.本地发送sha384:发送本地密码sha384
                 password_sha384 = hashlib.sha384(self.password.encode('utf-8')).hexdigest()  # 获取密码的sha384
-                encrypt_local_id = CryptoTools(self.password).aes_ctr_encrypt(self.id).decode('utf-8')  # 获取self.id的加密值
+                encrypt_local_id = CryptoTools(self.password).aes_ctr_encrypt(self.id)  # 获取self.id的加密值
+                b64_encrypt_local_id: str = base64.b64encode(encrypt_local_id).decode('utf-8')
                 command = {
                     "data": {
                         "password_hash": password_sha384,
-                        "id": encrypt_local_id
+                        "id": b64_encrypt_local_id
                     }
                 }
                 result = SocketTools.sendCommandNoTimeDict(test, command=command)
@@ -196,34 +197,51 @@ class Scan(Config):
                     print(err)
                     logging.error(
                         f'''Pre scan: When connecting to server {ip}, the other party's RSA public key is incorrect''')
+                    test.shutdown(socket.SHUT_RDWR)
+                    test.close()
                     continue
                 cipher_pub = PKCS1_OAEP.new(rsa_pub)
+
                 # 字符串 -> byte(utf-8) -> encry -> base64 -> str
                 session_password: str = HashTools.getRandomStr(8)
                 session_password_encry: bytes = cipher_pub.encrypt(session_password.encode('utf-8'))
                 session_password_encry_base64: bytes = base64.b64encode(session_password_encry)
 
-                session_id_encry: bytes = cipher_pub.encrypt(self.id.encode('utf-8'))
-                session_id_encry_base64: bytes = base64.b64encode(session_id_encry)
-                message = {
+                encry_session_id: bytes = cipher_pub.encrypt(self.id.encode('utf-8'))
+                base64_encry_session_id: bytes = base64.b64encode(encry_session_id)
+
+                _command = {
                     "data": {
                         "session_password": session_password_encry_base64.decode(),
-                        "id": session_id_encry_base64.decode()
+                        "id": base64_encry_session_id.decode()
                     }
                 }
 
-                result = SocketTools.sendCommandNoTimeDict(test, message)
+                result = SocketTools.sendCommandNoTimeDict(test, _command)
+
                 try:
                     data: dict = json.loads(result).get('data')
                 except Exception as e:
                     print(e)
+                    test.shutdown(socket.SHUT_RDWR)
+                    test.close()
                     continue
+
                 remote_id = data.get('id')
                 if not remote_id:
                     logging.info('Pre scan: Failed to receive server ID.')
+                    test.shutdown(socket.SHUT_RDWR)
+                    test.close()
                     continue
 
-                remote_id = CryptoTools(session_password).b64_ctr_decrypt(remote_id)
+                try:
+                    remote_id = CryptoTools(session_password).b64_ctr_decrypt(remote_id)
+                except Exception as e:
+                    print(e)
+                    test.shutdown(socket.SHUT_RDWR)
+                    test.close()
+                    continue
+
                 self.verified_devices.add(ip)
                 self.verify_manage[ip] = {
                     "REMOTE_ID": remote_id,

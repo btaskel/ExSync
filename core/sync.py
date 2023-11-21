@@ -95,6 +95,12 @@ class Index(readConfig):
         space_config = f'{self.path}\\.sync\\config.ini'
 
         # 创建索引文件
+        # file_index = {
+        #     "base": {
+        #         d:
+        #     },
+        #     "data": {}
+        # }
         createFile(files_path, '{\n"data":{\n}\n}')
         createFile(folder_path, '{\n"data":{\n}\n}')
 
@@ -102,7 +108,6 @@ class Index(readConfig):
         config_file['main'] = {
             'overwrite': False,
             'priority': '',
-
         }
 
         return self.createIndex(folder_path, files_path)
@@ -260,7 +265,7 @@ class SyncData(Index, Control):
         相当于多路复用减少延迟的效果
         """
 
-    def updateLocalIndex(self, spacename, json_example, isFile=True):
+    def updateLocalIndex(self, spacename: str, json_example, isFile=True):
         """
         更新本地指定同步空间的索引文件
         :param json_example:
@@ -274,27 +279,25 @@ class SyncData(Index, Control):
             if spacename == userdata['spacename']:
                 space = userdata
 
-        if space:
-            if isFile:
-                index_json = os.path.join(space['path'], '\\.sync\\info\\files.json')
-            else:
-                index_json = os.path.join(space['path'], '\\.sync\\info\\folders.json')
-
-            with open(index_json, mode='r+', encoding='utf-8') as f:
-                try:
-                    data = json.load(f)
-                except Exception as error:
-                    print(error)
-                    logging.warning(f'Failed to load index file: {index_json}')
-                    return False
-                data['data'].update(json_example)
-                f.truncate(0)
-                json.dump(data, f, indent=4)
-        else:
+        if not space:
             logging.warning(f'No synchronization space was found in the configuration file: {spacename}')
             return False
 
-    def syncFiles(self, device, spacename):
+        index_json = os.path.join(space['path'], '\\.sync\\info\\files.json') if isFile else os.path.join(space['path'],
+                                                                                                          '\\.sync\\info\\folders.json')
+
+        with open(index_json, mode='r+', encoding='utf-8') as f:
+            try:
+                data = json.load(f)
+            except Exception as error:
+                print(error)
+                logging.warning(f'Failed to load index file: {index_json}')
+                return False
+            data['data'].update(json_example)
+            f.truncate(0)
+            json.dump(data, f, indent=4)
+
+    def syncFiles(self, device: str, spacename: str):
         """
         device 同步的设备id
         """
@@ -336,7 +339,13 @@ class SyncData(Index, Control):
                             # 更新文件至远程
                             Control.postFile(device, key, mode=2)
                             value = local_file_index['data'].get(key)
-                            Control.postIndex(device, spacename, f"{{'{key}': {value}}}")
+                            index = {
+                                "data": {
+                                    key: value
+                                }
+                            }
+                            Control.postIndex(device, spacename, index)
+
 
                     else:
                         # 无操作

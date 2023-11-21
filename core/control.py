@@ -4,7 +4,6 @@ import os
 import sys
 import threading
 
-from core.client.command import CommandSend
 from core.server.main import createSocket, socket_manage
 from core.tools.tools import relToAbs
 
@@ -17,24 +16,25 @@ class Control:
     def __init__(self):
         super().__init__()
 
-    @staticmethod
-    def _idToIp(device_id: str):
-        """
-        :param device_id:
-        :return device_ip:
-        """
-        return socket_manage[device_id]['ip']
-
-    @staticmethod
-    def _get_command_send(device_ip: str):
-        if device_ip in socket_manage:
-            client_example = socket_manage[device_ip]  # ip映射为唯一的客户端实例
-            data_socket = client_example['data_socket']  # data Socket
-            command_socket = client_example['command_socket']  # command Socket
-            aes_key = client_example.get('AES_KEY')
-            return CommandSend(data_socket, command_socket,aes_key)
-        else:
-            return False
+    # @staticmethod
+    # def _idToIp(device_id: str) -> str:
+    #     """
+    #     :param device_id:
+    #     :return device_ip:
+    #     """
+    #     return socket_manage[device_id].get('ip')
+    #
+    # @staticmethod
+    # def _get_command_send(device_ip: str):
+    #     """
+    #     根据ip获取客户端指令控制
+    #     :param device_ip: IP address.
+    #     :return:
+    #     """
+    #     for dev in socket_manage:
+    #         if dev.get(device_ip) == device_ip:
+    #             return dev.get('control')
+    #     return None
 
     @staticmethod
     def getAllDevice():
@@ -45,6 +45,19 @@ class Control:
         for value in socket_manage.values():
             ipList.append(value['ip'])
         return ipList
+
+    @staticmethod
+    def getDevice(device_id: str):
+        """
+        根据设备id获取对应的设备控制客户端
+        :param device_id:
+        :return:
+        """
+        device = socket_manage.get(device_id)
+        if device:
+            command_send = device.get('control')
+            return command_send
+        return None
 
     @staticmethod
     def postFile(device_id: str, path: str, mode: int = 1):
@@ -66,8 +79,8 @@ class Control:
         :param mode:
         :return:
         """
-        command_send = Control._get_command_send(Control._idToIp(device_id))
-        return command_send.post_File(relToAbs(path), mode)
+        command_send = Control.getDevice(device_id)
+        return command_send.post_File(relToAbs(path), mode) if command_send else None
 
     @staticmethod
     def getFile(device_id: str, path: str, output_path: str = None):
@@ -80,8 +93,8 @@ class Control:
         :param path:
         :return:
         """
-        command_send = Control._get_command_send(Control._idToIp(device_id))
-        return command_send.get_File(relToAbs(path), output_path)
+        command_send = Control.getDevice(device_id)
+        return command_send.get_File(relToAbs(path), output_path) if command_send else None
 
     @staticmethod
     def postFolder(device_id: str, path: str):
@@ -91,8 +104,8 @@ class Control:
         :param path:
         :return:
         """
-        command_send = Control._get_command_send(Control._idToIp(device_id))
-        command_send.post_Folder(relToAbs(path))
+        command_send = Control.getDevice(device_id)
+        return command_send.post_Folder(relToAbs(path)) if command_send else None
 
     @staticmethod
     def getFolder(device_id: str, path: str):
@@ -102,8 +115,8 @@ class Control:
         :param path:
         :return paths:
         """
-        command_send = Control._get_command_send(Control._idToIp(device_id))
-        command_send.get_Folder(relToAbs(path))
+        command_send = Control.getDevice(device_id)
+        return command_send.get_Folder(relToAbs(path)) if command_send else None
 
     @staticmethod
     def getIndex(device_id: str, spacename: str):
@@ -113,11 +126,11 @@ class Control:
         :param spacename:
         :return:
         """
-        command_send = Control._get_command_send(Control._idToIp(device_id))
-        return command_send.get_Index(spacename)
+        command_send = Control.getDevice(device_id)
+        return command_send.get_Index(spacename) if command_send else None
 
     @staticmethod
-    def postIndex(device_id: str, spacename: str, json_object, is_file: bool = True):
+    def postIndex(device_id: str, spacename: str, json_object: dict, is_file: bool = True):
         """
         接收同步空间名，将dict_example更新到远程索引中
         :param is_file:
@@ -131,8 +144,8 @@ class Control:
             xxxx......
 
         """
-        command_send = Control._get_command_send(Control._idToIp(device_id))
-        return command_send.post_Index(spacename, json_object, is_file)
+        command_send = Control.getDevice(device_id)
+        return command_send.post_Index(spacename, json_object, is_file) if command_send else None
 
     @staticmethod
     def sendCommand(device_id: str, command: str):
@@ -146,8 +159,8 @@ class Control:
         :param command:
         :return:
         """
-        command_send = Control._get_command_send(Control._idToIp(device_id))
-        return command_send.send_Command(command)
+        command_send = Control.getDevice(device_id)
+        return command_send.send_Command(command) if command_send else None
 
 
 class Plugin:
