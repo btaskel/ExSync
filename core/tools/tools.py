@@ -535,7 +535,7 @@ class SocketSession(SocketTools):
                 print(e)
                 return ''
 
-    def recv(self) -> str:
+    def recv(self) -> bytes:
         """
         接收数据
         :return: 指定mark队列的数据

@@ -28,7 +28,6 @@ PS:
 * 服务端：
 * 数据传输端口：`[server_port]`
 * 指令端口：`[server_port + 1]`
-* 监听端口：`[server_port + 2]`
 
 核心权限分级：
 

@@ -20,8 +20,10 @@ class Config(readConfig):
         self.password: str = self.config['server']['addr'].get('password')
 
 
-class CommandSend(Config, Session):
-    """客户端指令发送类"""
+class BaseCommandSet(Config, Session):
+    """
+    客户端指令发送类
+    """
 
     def __init__(self, data_socket, command_socket, key: str):
         super().__init__()
@@ -323,6 +325,70 @@ class CommandSend(Config, Session):
             # 路径不存在
             return []
 
+    def post_Index(self, spacename: str, json_example: dict, is_file: bool) -> str:
+        """
+        更新远程设备指定同步空间 文件/文件夹 索引
+        发送成功返回 True 否则 False
+        :param spacename: 同步空间名称
+        :param json_example: 所要同步的json字符串
+        :param is_file: 是否为文件索引
+        :return: 状态码
+        """
+        is_file = True if is_file else False
+        json_data = json.dumps(json_example)
+        if not 0 < len(json_data) <= 879:
+            # 发送字节应该在(0,879]个字节之间
+            logging.warning(f'postIndex {spacename}:The bytes sent should be between 0 and 879 bytes')
+            return 'dataOverload'
+        command = {
+            "command": "data",
+            "type": "index",
+            "method": "post",
+            "data": {
+                "spacename": spacename,
+                "json": json_data,  # 应该在879个字节以内
+                "isfile": is_file
+            }
+        }
+        result = self.session.sendCommand(self.command_socket, command, output=False)
+
+        try:
+            data = json.loads(result).get('data')
+            status = data.get('status')
+        except Exception as e:
+            print(e)
+            return 'formatError'
+
+        match status:
+            case 'remoteIndexNoExist':
+                # 远程索引文件不存在
+                logging.warning(f'postIndex {spacename}: No index files were found during state synchronization.')
+                return 'remoteIndexNoExist'
+            case 'remoteIndexError':
+                # 远程索引文件内容并非是json
+                logging.warning(f'postIndex {spacename}: Failed to parse JSON string during state synchronization.')
+                return 'remoteIndexError'
+            case 'remoteSpaceNameNoExist':
+                # 远程同步空间不存在此索引文件
+                logging.warning(
+                    f'postIndex {spacename}: During state synchronization, it was found that the index file does not exist.')
+                return 'remoteSpaceNameNoExist'
+            case Status.UNKNOWN_ERROR:
+                # 未知错误
+                logging.warning(f'postIndex {spacename}: Unknown error.')
+                return 'unknown'
+            case Status.DATA_RECEIVE_TIMEOUT:
+                # 超时错误
+                logging.warning(f'postIndex {spacename}: A timeout error occurred during state synchronization.')
+                return 'timeout'
+            case 'remoteIndexUpdated':
+                # 远程同步空间同步完毕
+                logging.debug(f'postIndex {spacename}: Successfully synchronized status.')
+                return 'remoteIndexUpdated'
+            case _:
+                logging.warning(f'postIndex {spacename}: Unknown error.')
+                return 'unknown'
+
     def get_Index(self, spacename: str):
         """
         传入spacename，获取对方指定同步空间的索引文件
@@ -379,70 +445,6 @@ class CommandSend(Config, Session):
             logging.debug(f'{spacename} getIndex finish.')
             return save_folder_path
 
-    def post_Index(self, spacename: str, json_example: dict, is_file: bool) -> str:
-        """
-        更新远程设备指定同步空间 文件/文件夹 索引
-        发送成功返回 True 否则 False
-        :param spacename: 同步空间名称
-        :param json_example: 所要同步的json字符串
-        :param is_file: 是否为文件索引
-        :return: 状态码
-        """
-        is_file = True if is_file else False
-        json_data = json.dumps(json_example)
-        if not 0 < len(json_data) <= 879:
-            # 发送字节应该在(0,879]个字节之间
-            logging.warning(f'postIndex {spacename}:The bytes sent should be between 0 and 879 bytes')
-            return False
-        command = {
-            "command": "data",
-            "type": "index",
-            "method": "post",
-            "data": {
-                "spacename": spacename,
-                "json": json_data,  # 应该在879个字节以内
-                "isfile": is_file
-            }
-        }
-        result = self.session.sendCommand(self.command_socket, command, output=False)
-
-        try:
-            data = json.loads(result).get('data')
-        except Exception as e:
-            print(e)
-            return 'formatError'
-        status = data.get('status')
-
-        match status:
-            case 'remoteIndexNoExist':
-                # 远程索引文件不存在
-                logging.warning(f'postIndex {spacename}: No index files were found during state synchronization.')
-                return 'remoteIndexNoExist'
-            case 'remoteIndexError':
-                # 远程索引文件内容并非是json
-                logging.warning(f'postIndex {spacename}: Failed to parse JSON string during state synchronization.')
-                return 'remoteIndexError'
-            case 'remoteSpaceNameNoExist':
-                # 远程同步空间不存在此索引文件
-                logging.warning(
-                    f'postIndex {spacename}: During state synchronization, it was found that the index file does not exist.')
-                return 'remoteSpaceNameNoExist'
-            case Status.UNKNOWN_ERROR:
-                # 未知错误
-                logging.warning(f'postIndex {spacename}: Unknown error.')
-                return 'unknown'
-            case Status.DATA_RECEIVE_TIMEOUT:
-                # 超时错误
-                logging.warning(f'postIndex {spacename}: A timeout error occurred during state synchronization.')
-                return 'timeout'
-            case 'remoteIndexUpdated':
-                # 远程同步空间同步完毕
-                logging.debug(f'postIndex {spacename}: Successfully synchronized status.')
-                return 'remoteIndexUpdated'
-            case _:
-                logging.warning(f'postIndex {spacename}: Unknown error.')
-                return 'unknown'
-
     def send_Command(self, command: str, timeout: int = 2):
         """
         发送指令：以/sync开头的指令为EXSync指令
@@ -486,3 +488,73 @@ class CommandSend(Config, Session):
                 return CommandSet.FORMAT_ERROR
 
             return return_code, output, error
+
+
+class CommandSend(BaseCommandSet):
+    """
+    指令拓展
+    """
+
+    def syncFile(self, spacename, path) -> bool:
+        """
+        在服务端收到文件后，并将文件索引进行更新
+        自动判断文件操作模式：
+            1.当远程文件存在时判断是否为需断点继传文件，是则继续写入。
+            2.当远程文件存在并判断为并非需要断点继传文件，则重写该文件。
+            3.当远程文件不存在时则创建文件。
+            4.当远程文件存在时重写该文件。
+        :param spacename: 同步空间名称
+        :param path: 文件路径
+        :return: 文件状态
+        """
+        file_size: int = os.path.getsize(path)
+        file_hash: str = HashTools.getFileHash(path)
+        file_date: float = os.path.getmtime(path)
+
+        with SocketSession(self.timedict, self.data_socket, encrypt_password=self.key) as session:
+            command = {
+                'command': 'data',
+                'type': 'syncfile',
+                'method': 'post',
+                'data': {
+                    'spacename': spacename,
+                    'file_path': path,
+                    'file_size': file_size,
+                    'file_hash': file_hash,
+                    'file_date': file_date
+                }
+            }
+            result = session.send(command)
+
+            try:
+                data = json.loads(result).get('data')
+                status = data.get('status')
+                remote_file_size = data.get('file_size')
+                remote_file_hash = data.get('file_hash')
+                remote_file_date = data.get('file_date')
+            except Exception as e:
+                print(e)
+                return False
+
+            sync_space: dict = {}
+            for space in self.config.get('userdata'):
+                if space.get('spacename') == spacename:
+                    sync_space = space
+                    break
+
+            if not sync_space:
+                logging.error(f'syncFile {spacename}: This sync space name does not exist!')
+                return False
+
+            # 获取spacename的索引文件目录
+            index_path = sync_space.get('path')
+
+            if status == 'sameFile':
+                # 不予传输，并比较更新本地文件修改日期
+                return True
+
+            elif status == 'localFileTooLarge':
+                return True
+
+            elif status == 'remoteFileTooLarge':
+                return True

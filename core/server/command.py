@@ -662,6 +662,74 @@ class CommandSetExpand(BaseCommandSet):
             self.command_socket.close()
             return False
 
+    def syncFile(self, data_: dict, mark: str) -> bool:
+        """
+        在服务端收到文件后，并将文件索引进行更新
+        自动判断文件操作模式：
+            1.当远程文件存在时判断是否为需断点继传文件，是则继续写入。
+            2.当远程文件存在并判断为并非需要断点继传文件，则重写该文件。
+            3.当远程文件不存在时则创建文件。
+            4.当远程文件存在时重写该文件。
+        :return: 执行状态
+        """
+        path = data_.get('path')
+        spacename = data_.get('spacename')
+        remote_file_size = data_.get('file_size')
+        remote_file_hash = data_.get('file_hash')
+        remote_file_date = data_.get('file_date')
+
+        for para in [path, spacename, remote_file_size, remote_file_hash, remote_file_date]:
+            if not para:
+                return False
+
+        local_file_size = os.path.getsize(path)
+        local_file_hash = HashTools.getFileHash(path)
+        local_file_date = os.path.getmtime(path)
+
+        with SocketSession(self.timedict, data_socket=self.data_socket, mark=mark,
+                           encrypt_password=self.key) as session:
+
+            if local_file_hash == remote_file_hash:
+                # 文件相同不予传输
+                status = {
+                    'data': {
+                        'status': 'sameFile'
+                    }
+                }
+                session.send(status)
+                return True
+
+            elif local_file_size > remote_file_size:
+                # 本地文件大于远程文件，发送停止传输原因
+                status = {
+                    'data': {
+                        'file_size': local_file_size,
+                        'file_hash': local_file_hash,
+                        'file_date': local_file_date,
+                        'status': 'localFileTooLarge'
+                    }
+                }
+                session.send(status)
+                return True
+
+            elif local_file_size < remote_file_size:
+                # 远程文件大于本地文件开始检查相同大小xxhash128是否相同
+                # todo:
+                status = {
+                    'data': {
+                        'file_size': local_file_size,
+                        'file_hash': local_file_hash,
+                        'file_date': local_file_date,
+                        'status': 'remoteFileTooLarge'
+                    }
+                }
+                session.send(status)
+                return True
+
+            if os.path.exists(path):
+                with open(path, mode='rb') as f:
+                    data = f.read(8192)
+
 
 class RecvCommand(CommandSetExpand):
     """
@@ -748,6 +816,9 @@ class RecvCommand(CommandSetExpand):
 
             elif command_ == 'comm' and type_ == 'command' and method_ == 'post':
                 self.commPostCommand(data_, mark)
+
+            elif command_ == 'data' and type_ == 'syncfile' and method_ == 'post':
+                self.dataPostSyncFile(data_, mark)
 
     def dataGetFile(self, data_: dict, mark: str) -> bool:
         """
@@ -881,6 +952,30 @@ class RecvCommand(CommandSetExpand):
             return True
         else:
             logging.warning(f'Client {self.address}: Cancel receiving [Index] due to insufficient permissions!')
+            return False
+
+    def dataPostSyncFile(self, data_: dict, mark: str) -> bool:
+        """
+        "data": {
+            "spacename": ... # 同步空间名称
+            "path": ... # 文件路径名称
+            "file_size": ... # 文件大小
+            "file_hash": ... # 文件xxhash值
+            "file_date": ... # 文件修改日期
+        }
+
+        :param data_:
+        :param mark:
+        :return:
+        """
+        if self.command_socket.permission >= 10:
+            thread = threading.Thread(target=self.syncFile, args=(data_, mark))
+            thread.daemon = True
+            thread.start()
+            logging.debug(f'Client {self.address}: dataPostSyncFile executing')
+            return True
+        else:
+            logging.warning(f'Client {self.address}: Cancel receiving [SyncFile] due to insufficient permissions!')
             return False
 
     def commPostVerifyConnect(self, data_: dict, mark: str) -> bool:

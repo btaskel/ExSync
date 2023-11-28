@@ -1,4 +1,3 @@
-import configparser
 import json
 import logging
 import os
@@ -7,49 +6,46 @@ import time
 from datetime import datetime
 
 import ntplib
-import xxhash
 
 from core.config import readConfig
 from core.control import Control
-from core.tools.tools import createFile, relToAbs
+from core.tools.tools import createFile, relToAbs, HashTools
 
 
-class Index(readConfig):
-    """
-    建立索引，并且扫描文件是否需要同步
-    首先传入：同步目录的路径
-    """
-
-    def __init__(self, path: str):
-        super().__init__()
+class IndexBase(readConfig):
+    def __init__(self):
         self.config = self.readJson()
-        # 同步目录的路径
-        self.path = os.path.abspath(path)
-        # run()
+
+    def pathToSpaceName(self, path: str) -> str:
+        """
+        根据路径获取当前spacename, 如果不存在返回空字符串
+        :param path: spacename 所在路径
+        :return: spacename 名称
+        """
+        userdata: dict = self.config.get('userdata')
+        for space in userdata:
+            if space.get('path') == path:
+                return space.get('spacename')
+        return ''
+
+    def getSyncSpace(self, spacename: str) -> dict:
+        """
+        获取同步空间对象, 如果不存在返回空字典
+        :param spacename: 同步空间名称
+        :return: space对象
+        """
+        userdata: dict = self.config.get('userdata')
+        for space in userdata:
+            if spacename == space.get('spacename'):
+                return space
+        return {}
 
     @staticmethod
-    def hashFile(file_path):
-        """
-        获取文件的XXHash哈希值
-        :param file_path:
-        :return: hash
-        """
-
-        hash_object = xxhash.xxh3_128()
-        with open(file_path, 'rb') as f:
-            while True:
-                data = f.read(8192)
-                if not data:
-                    break
-                hash_object.update(data)
-        return hash_object.hexdigest()
-
-    @staticmethod
-    def updateJson(path, table):
+    def _updateJson(path: str, table: dict) -> bool:
         """
         更新本地文件索引
-        :param path:
-        :param table:
+        :param path: 更新的索引文件路径
+        :param table: 将更新 json 字符串的 dict 数据表
         :return:
         """
         with open(path, mode='r+', encoding='utf-8') as f:
@@ -58,142 +54,36 @@ class Index(readConfig):
             except Exception as e:
                 print(e)
                 logging.warning(f'Failed to load index file: {path}')
+                return False
             data['data'].update(table)
+            f.seek(0)
             f.truncate(0)
             json.dump(data, f, indent=4)
+        return True
 
-    @staticmethod
-    def writeIndex(path, json_path):
-        """更新单个文件的索引"""
-        table = {
-            "data": {
-                path: {
-                    "type": "folder",
-                    "system_date": datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
-                    "file_date": datetime.fromtimestamp(os.path.getmtime(path)).strftime(
-                        "%Y-%m-%d %H:%M:%S"),
-                    "state": ""
-                }
-            }
-        }
-        Index.updateJson(json_path, table)
+    # def _writeIndex(self, path: str, json_path: str):
+    #     """
+    #     更新单个文件的索引
+    #     :param path:
+    #     :param json_path:
+    #     :return:
+    #     """
+    #
 
-    def initIndex(self):
+    def _readIndex(self, spacename: str) -> tuple:
         """
-        本地ExSync索引初始化
-        :return:
+        读取索引文件，返回 文件夹索引 与 文件索引 对象。
+        :param spacename:
+        :return: 如果存在：读取并返回索引文件的json对象；如果不存在：返回空元组
         """
-        folders = ['.sync\\base', '.sync\\info']
-        for folder in folders:
-            path_ = os.path.join(self.path, folder)
-            if not os.path.exists(path_):
-                os.makedirs(path_)
-
-        # 创建索引
-        files_path = f'{self.path}\\.sync\\info\\files.json'
-        folder_path = f'{self.path}\\.sync\\info\\folders.json'
-        space_config = f'{self.path}\\.sync\\config.ini'
-
-        # 创建索引文件
-        # file_index = {
-        #     "base": {
-        #         d:
-        #     },
-        #     "data": {}
-        # }
-        createFile(files_path, '{\n"data":{\n}\n}')
-        createFile(folder_path, '{\n"data":{\n}\n}')
-
-        config_file = configparser.ConfigParser()
-        config_file['main'] = {
-            'overwrite': False,
-            'priority': '',
-        }
-
-        return self.createIndex(folder_path, files_path)
-
-    def createIndex(self, folder_path=None, files_path=None):
-        """
-        同步路径
-        folder_path：文件夹索引文件路径
-        files_path：文件索引文件路径
-        :param folder_path:
-        :param files_path:zz
-        :return:
-        """
-        # 如果没有指定路径，则默认选择此路径
-        if not folder_path:
-            folder_path = os.path.join(self.path, '.sync\\info\\folders.json')
-        if not files_path:
-            files_path = os.path.join(self.path, '.sync\\info\\files.json')
-
-        abspath = os.path.abspath(self.path)
-        for home, folders, files in os.walk(abspath):
-            # 建立文件夹索引
-            for folder in folders:
-                folder = os.path.join(home, folder)
-                logging.debug(f'Created index for {folder} folder.')
-                Index.writeIndex(folder, folder_path)
-
-            # 建立文件索引
-            for file in files:
-                file = os.path.join(home, file)
-                # folder = os.path.join(home,)
-                logging.debug(f'Created index for {file} file.')
-                Index.writeIndex(file, files_path)
-
-        return
-
-    def updateIndex(self, path):
-
-        ls = ['files.json', 'folders.json']
-        abspath = os.path.abspath(path)
-        for index in ls:
-            index_file = f'{path}\\{index}'
-            with open(index_file, mode='r+', encoding='utf-8') as f:
-                index_dict = json.loads(f.read())
-
-            # 遍历同步目录
-            for home, folders, files in os.walk(abspath):
-                for file in files:
-                    file = os.path.join(abspath, file)
-
-                    if file in index_dict['data']:
-                        # 如果存在记录，则更新记录
-                        file = os.path.join(home, file)
-                        file_table = {
-                            "data": {
-                                file: {
-                                    "type": "file",
-                                    "system_date": datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
-                                    "file_edit_date": os.path.getmtime(file),
-                                    "file_create_date": os.path.getctime(file),
-                                    "file_read_date": os.path.getatime(file),
-                                    "hash": Index.hashFile(file),
-                                    "size": os.path.getsize(file),
-                                    "state": ""
-                                }
-                            }
-                        }
-                        Index.updateJson(index_file, file_table)
-
-                    else:
-                        # 如果没有记录，则创建记录
-                        # self.createIndex(index_file, )
-                        pass
-
-    def readIndex(self):
-        """
-        如果存在：读取并返回索引文件的json对象
-        如果不存在：返回False
-        """
-
-        index_path = os.path.join(self.path, '.sync\\info\\')
+        space = self.getSyncSpace(spacename)
+        space_path: str = space.get('path')
+        index_path = os.path.join(space_path, '.sync\\info\\')
         dirs = ['files.json', 'folders.json']
         for i in dirs:
             path = os.path.join(index_path, i)
             if not os.path.exists(path):
-                return False
+                return None, None
 
         with open(os.path.join(index_path, 'files.json'), mode='r') as f:
             files_json = json.load(f)
@@ -201,14 +91,106 @@ class Index(readConfig):
             folders_json = json.load(f)
         return files_json, folders_json
 
-    def analyseFiles(self, remote_data):
+
+class Index(IndexBase):
+    """
+    建立索引，并且扫描文件是否需要同步
+    首先传入：同步目录的路径
+    """
+
+    def __init__(self):
+        super().__init__()
+
+    def initIndex(self, spacename: str) -> bool:
+        """
+        本地ExSync索引初始化
+        :param spacename: 同步空间名称
+        :return: 完成状态
+        """
+        space = self.getSyncSpace(spacename)
+        space_path = space.get('path')
+
+        if not space:
+            return False
+
+        folders = ['.sync\\base', '.sync\\info']
+        for folder in folders:
+            path_ = os.path.join(space_path, folder)
+            if not os.path.exists(path_):
+                os.makedirs(path_)
+
+        # 创建索引
+        files_path = f'{space_path}\\.sync\\info\\files.json'
+        folder_path = f'{space_path}\\.sync\\info\\folders.json'
+
+        if not createFile(files_path, '{\n"data":{\n}\n}') and not createFile(folder_path, '{\n"data":{\n}\n}'):
+            return False
+
+        return self.updateIndex(spacename)
+
+    def updateIndex(self, spacename: str) -> bool:
+        """
+        更新指定路径的同步空间索引
+        :param spacename: 同步空间名称
+        :return:
+        """
+        space = self.getSyncSpace(spacename)
+        space_path = space.get(spacename)
+        if not space_path:
+            return False
+
+        # 文件索引更新
+        index_path = os.path.join(space_path, 'files.json')
+        for home, folders, files in os.walk(space_path):
+            for file in files:
+                file_path = os.path.join(home, file)
+                file_table = {
+                    "data": {
+                        file_path: {
+                            "type": "file",
+                            "system_date": datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                            "file_edit_date": os.path.getmtime(file),
+                            "file_create_date": os.path.getctime(file),
+                            "file_read_date": os.path.getatime(file),
+                            "hash": HashTools.getFileHash(file),
+                            "size": os.path.getsize(file),
+                            "state": ""
+                        }
+                    }
+                }
+                if not self._updateJson(index_path, file_table):
+                    return False
+
+        # 建立文件夹索引
+        index_path = os.path.join(space_path, 'folders.json')
+        for home, folders, files in os.walk(space_path):
+            for folder in folders:
+                folder_path = os.path.join(home, folder)
+                logging.debug(f'Created index for {folder} folder.')
+                table = {
+                    folder: {
+                        "type": "folder",
+                        "system_date": datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                        "file_date": datetime.fromtimestamp(os.path.getmtime(folder_path)).strftime(
+                            "%Y-%m-%d %H:%M:%S"),
+                        "state": ""
+                    }
+                }
+                if not self._updateJson(index_path, table):
+                    return False
+        return True
+
+    def analyseFiles(self, spacename: str, remote_data: list) -> dict:
         """
         分析双方文件索引是否需要同步
         remote_data [file_index_path, folder_index_path]
         0: 双方文件不同; 1: 本地文件不存在; 2: 远程文件不存在;
+        :param spacename: 同步空间名称
+        :param remote_data: 文件索引 & 文件夹索引 路径
+        :return:
         """
 
-        result = self.readIndex()
+        result = self._readIndex(spacename)
         local_file_index = result[0]
         local_folder_index = result[1]
         with open(relToAbs(remote_data[0]), mode='r', encoding='utf-8') as f:
@@ -232,7 +214,14 @@ class Index(readConfig):
             for remote_key in remote_index:
                 if remote_key not in local_index:
                     change_info[remote_key] = 2
-        return change_info, local_file_index, local_folder_index, remote_file_index, remote_folder_index
+
+        return {
+            'change_info': change_info,
+            'local_file_index': local_file_index,
+            'local_folder_index': local_folder_index,
+            'remote_file_index': remote_file_index,
+            'remote_folder_index': remote_folder_index
+        }
 
 
 class SyncData(Index, Control):
@@ -265,105 +254,121 @@ class SyncData(Index, Control):
         相当于多路复用减少延迟的效果
         """
 
-    def updateLocalIndex(self, spacename: str, json_example, isFile=True):
+    def updateLocalIndex(self, spacename: str, json_example: dict, isFile=True) -> bool:
         """
         更新本地指定同步空间的索引文件
-        :param json_example:
-        :param isFile:
+        :param json_example: json更新内容
+        :param isFile: 是否为文件索引
+        :param spacename: 同步空间
+        :return: 写入成功返回True，否则False
+        """
+        userdata_list = self.config['userdata']
+        for userdata in userdata_list:
+            if spacename == userdata['spacename']:
+                index_json = os.path.join(userdata['path'], '\\.sync\\info\\files.json') if isFile else os.path.join(
+                    userdata['path'], '\\.sync\\info\\folders.json')
+
+                with open(index_json, mode='r+', encoding='utf-8') as f:
+                    try:
+                        data = json.load(f)
+                    except Exception as error:
+                        print(error)
+                        logging.error(f'Failed to load index file: {index_json}')
+                        return False
+                    try:
+                        data['data'].update(json_example)
+                    except Exception as e:
+                        print(e)
+                        logging.error(f'When updating index file {index_json}, no data object was found')
+                    f.truncate(0)
+                    json.dump(data, f, indent=4)
+                return True
+
+        logging.warning(f'No synchronization space was found in the configuration file: {spacename}')
+        return False
+
+    def syncFiles(self, device_id: str, spacename: str):
+        """
+        单线程同步指定的同步空间
+        :param device_id: 同步的设备id
         :param spacename:
         :return:
         """
-        space = None
-        config = self.config['userdata']
-        for userdata in config['userdata']:
-            if spacename == userdata['spacename']:
-                space = userdata
-
-        if not space:
-            logging.warning(f'No synchronization space was found in the configuration file: {spacename}')
-            return False
-
-        index_json = os.path.join(space['path'], '\\.sync\\info\\files.json') if isFile else os.path.join(space['path'],
-                                                                                                          '\\.sync\\info\\folders.json')
-
-        with open(index_json, mode='r+', encoding='utf-8') as f:
-            try:
-                data = json.load(f)
-            except Exception as error:
-                print(error)
-                logging.warning(f'Failed to load index file: {index_json}')
-                return False
-            data['data'].update(json_example)
-            f.truncate(0)
-            json.dump(data, f, indent=4)
-
-    def syncFiles(self, device: str, spacename: str):
-        """
-        device 同步的设备id
-        """
         ls = []
         for i in ['files.json', 'folders.json']:
-            index_path = Control.getIndex(device, spacename)
+            index_path = Control.getIndex(device_id, spacename)
             ls.append(os.path.join(index_path, i))
-        result = self.analyseFiles(ls)
+        result = self.analyseFiles(spacename, ls)
 
-        change_info, local_file_index, local_folder_index, remote_file_index, remote_folder_index = result[0], result[
-            1], result[2], result[3], result[4]
-        logging.info(f'syncFiles: {device} Synchronize files between both parties.')
+        # change_info, local_file_index, local_folder_index, remote_file_index, remote_folder_index = result[0], result[
+        #     1], result[2], result[3], result[4]
+        change_info: dict = result.get('change_info')
+        local_file_index: dict = result.get('local_file_index')
+        local_folder_index: dict = result.get('local_folder_index')
+        remote_file_index: dict = result.get('remote_file_index')
+        remote_folder_index: dict = result.get('remote_folder_index')
+
+        logging.info(f'syncFiles: {device_id} Synchronize files between both parties.')
         for key, value in change_info.items():
             if value == 0:
                 # 0: 文件时间不同, 开始进行判断
-                tic = 5  # 文件修改时间在 tic 秒以内的文件，不进行同步
-                local_file_start_time, local_file_end_time = float(
-                    local_file_index['data'][key]['file_edit_date']) - tic, float(
-                    local_file_index['data'][key]['file_edit_date']) + tic
-                remote_file_start_time, remote_file_end_time = float(
-                    remote_file_index['data'][key]['file_edit_date']) - tic, float(
-                    remote_file_index['data'][key]['file_edit_date']) + tic
+                tic: int = 5  # 文件修改时间在 tic 秒以内的文件，不进行同步
+                try:
+                    file_edit_date = local_file_index['data'][key]['file_edit_date']
+                except Exception as e:
+                    print(e)
+                    return False
+
+                local_file_start_time, local_file_end_time = float(file_edit_date) - tic, float(file_edit_date) + tic
+                remote_file_start_time, remote_file_end_time = float(file_edit_date) - tic, float(file_edit_date) + tic
                 # 如果文件修改的时间差在5s以内则进行同步
                 if abs(remote_file_end_time - local_file_end_time) < tic and abs(
                         remote_file_start_time - local_file_start_time) < tic:
 
-                    if local_file_index['data'][key]['file_edit_date'] < remote_file_index['data'][key][
+                    local_file_hash: str = local_file_index['data'][key]['hash']
+
+                    if file_edit_date < remote_file_index['data'][key][
                         'file_edit_date']:
-                        if local_file_index['data'][key]['hash'] != remote_file_index['data'][key]['hash']:
+                        if local_file_hash != remote_file_index['data'][key][
+                            'hash'] and Control.getFile(device_id, key):
                             # 更新文件至本地
-                            Control.getFile(device, key)
                             value = remote_file_index['data'].get(key)
-                            self.updateLocalIndex(spacename, f"{{'{key}': {value}}}")
+                            self.updateLocalIndex(spacename, {key: value})
 
 
-                    elif local_file_index['data'][key]['file_edit_date'] > remote_file_index['data'][key][
+                    elif file_edit_date > remote_file_index['data'][key][
                         'file_edit_date']:
-                        if local_file_index['data'][key]['hash'] != remote_file_index['data'][key]['hash']:
+                        if local_file_hash != remote_file_index['data'][key]['hash']:
                             # 更新文件至远程
-                            Control.postFile(device, key, mode=2)
+                            Control.postFile(device_id, key, mode=2)
                             value = local_file_index['data'].get(key)
                             index = {
                                 "data": {
                                     key: value
                                 }
                             }
-                            Control.postIndex(device, spacename, index)
+                            Control.postIndex(device_id, spacename, index)
 
 
                     else:
                         # 无操作
                         pass
+                else:
+                    pass
 
             elif value == 1:
                 # 1: 本地文件不存在;
                 value = remote_file_index['data'].get(key)
-                Control.getFile(device, key)
+                Control.getFile(device_id, key)
                 self.updateLocalIndex(spacename, f"{{'{key}': {value}}}")
 
             elif value == 2:
                 # 2: 远程文件不存在;
                 value = local_file_index['data'].get(key)
-                Control.postFile(device, key, mode=2)
-                Control.postIndex(device, spacename, f"{{'key': {value}}}")
+                Control.postFile(device_id, key, mode=2)
+                Control.postIndex(device_id, spacename, {key: {value}})
 
-    def syncFilesToAllDevices(self, spacename, method=0):
+    def syncFilesToAllDevices(self, spacename: str, method: int = 0):
         """
         同步所有设备的文件
 
@@ -371,6 +376,9 @@ class SyncData(Index, Control):
         （拟）method = 1; 实现逻辑：本机首先发送给第一个需要同步设备IP名单，如果名单中的IP也在对方的同步列表中，
         那么对方设备会为IP名单中的设备进行文件同步，以此类推。（过程中本机也会继续同步其它设备文件）
 
+        :param spacename:
+        :param method:
+        :return:
         """
         if method:
             pass
@@ -390,7 +398,14 @@ class SyncData(Index, Control):
 
 
 if __name__ == '__main__':
-    p = '.\\test\\space'
-    s = Index(p)
-    # s.updateIndex(p)
-    s.initIndex()
+    # p = '.\\test\\space'
+    # s = Index(p)
+    # # s.updateIndex(p)
+    # s.initIndex()
+    # table = {
+    #     'a': 1,
+    #     'b': 6,
+    #     'aa': 5
+    # }
+    # Index._updateJson('test\\index.json', table)
+    pass
