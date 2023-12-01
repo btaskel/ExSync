@@ -7,16 +7,15 @@ import os
 import socket
 import subprocess
 import threading
+import time
 
 import xxhash
 from Crypto.Cipher import PKCS1_OAEP
 from Crypto.PublicKey import RSA
+from xxhash import xxh3_128
 
 from core.server.scan import Scan
-from core.tools.encryption import CryptoTools
-from core.tools.status import Status, CommandSet, PermissionEnum
-from core.tools.timedict import TimeDictInit
-from core.tools.tools import HashTools, SocketSession, Session
+from core.tools import CryptoTools, Status, CommandSet, PermissionEnum, TimeDictInit, HashTools, SocketSession, Session
 
 
 class BaseCommandSet(Scan):
@@ -28,24 +27,42 @@ class BaseCommandSet(Scan):
     需传入[filepath, size, hash, mode]
     """
 
-    def __init__(self, command_socket, data_socket, key: str = None):
+    def __init__(self, command_socket: socket, data_socket: socket, key: str = None):
         super().__init__()
         # 数据包传输分块大小(bytes)
 
-        self.block = 1024
-        self.command_socket = command_socket
-        self.data_socket = data_socket
-        self.key = key
-        self.address = self.command_socket.getpeername()[0]
+        self.block: int = 1024
+        self.command_socket: socket = command_socket
+        self.data_socket: socket = data_socket
+        self.key: str = key
+        self.address: str = self.command_socket.getpeername()[0]
 
-        self.system_encode = locale.getpreferredencoding()
+        self.system_encode: str = locale.getpreferredencoding()
 
         self.timedict = TimeDictInit(data_socket, command_socket, self.key)
         # self.session = Session(self.timedict, key)
         self.closeTimeDict = False
 
+    # @staticmethod
+    # def checkTimeout(filesize: int, method: int):
+    #     """
+    #     根据传入的文件大小与判断方式来确定具体的超时时间
+    #     :param filesize: 文件大小
+    #     :param method: 判断方式: 1: xxh128, 2: 对文件读取, 3: 对文件写入
+    #     :return:
+    #     """
+    #
+    #     def decorator(func):
+    #         def wrapper():
+    #             return
+    #
+    #         return wrapper
+    #
+    #     return decorator
+
     def recvFile(self, data_: dict, mark: str):
         """
+
         客户端发送文件至服务端
         文件与文件夹的传输指令:
         /_com:data:file(folder):get:filepath|size|hash|mode:_
@@ -72,6 +89,10 @@ class BaseCommandSet(Scan):
                 "filemark": "%s"
             }
         }
+
+        :param data_:
+        :param mark:
+        :return:
         """
         remote_file_path: str = str(data_.get('file_path'))
         remote_file_size: int = data_.get('file_size', 0)
@@ -80,27 +101,15 @@ class BaseCommandSet(Scan):
         filemark = str(data_.get('filemark'))  # 用于接下来的文件传输的mark
         nonce_length: int = 8
 
-        if not remote_file_path:
-            logging.warning('Core function recvFile: Missing parameter [file_path]!')
-            return Status.PARAMETER_ERROR
+        parameters = {'file_path': remote_file_path, 'file_size': remote_file_size, 'file_hash': remote_file_hash,
+                      'mode': mode, 'filemark': filemark}
 
-        elif not remote_file_size:
-            logging.warning('Core function recvFile: Missing parameter [file_size]!')
-            return Status.PARAMETER_ERROR
+        for param, value in parameters.items():
+            if not value:
+                logging.warning(f'Core function recvFile: Missing parameter [{param}]!')
+                return Status.PARAMETER_ERROR
 
-        elif not remote_file_hash:
-            logging.warning('Core function recvFile: Missing parameter [file_hash]!')
-            return Status.PARAMETER_ERROR
-
-        elif not mode:
-            logging.warning('Core function recvFile: Missing parameter [mode]!')
-            return Status.PARAMETER_ERROR
-
-        elif not filemark:
-            logging.warning('Core function recvFile: Missing parameter [filemark]!')
-            return Status.PARAMETER_ERROR
-
-        elif len(filemark) == 8 and isinstance(remote_file_size, int) and isinstance(mode, int) and len(
+        if len(filemark) == 8 and isinstance(remote_file_size, int) and isinstance(mode, int) and len(
                 remote_file_hash) == 32:
             logging.warning('Core function recvFile: parameter error!')
             return Status.PARAMETER_ERROR
@@ -109,7 +118,7 @@ class BaseCommandSet(Scan):
         reply_mark = mark
 
         # 接收数据初始化
-        self.timedict.createRecv(filemark, 'aes-128-ctr')
+        self.timedict.createRecv(filemark)
 
         if os.path.exists(remote_file_path):
             local_file_size = os.path.getsize(remote_file_path)
@@ -133,9 +142,6 @@ class BaseCommandSet(Scan):
                            encrypt_password=self.key) as command_session:
             command_session.send(command, output=False)
 
-        # 文件传输切片
-        if not local_file_size:
-            return
         data_block = self.block - len(filemark) - nonce_length
 
         match mode:
@@ -172,27 +178,24 @@ class BaseCommandSet(Scan):
                     status = json.loads(status).get('data').get('status')
                 except Exception as e:
                     print(e)
-                    return
+                    return False
 
                 if not status:
-                    return
+                    return False
                 # 对方客户端确认未传输完成，继续接收文件
                 self.data_socket.settimeout(2)
                 with open(remote_file_path, mode='ab') as f:
                     difference = remote_file_size - local_file_size
                     read_data = 0
                     while read_data <= difference:
-                        try:
-                            data = self.timedict.getRecvData(filemark)
-                        except Exception as e:
-                            print(e)
-                            return Status.DATA_RECEIVE_TIMEOUT
+                        data = self.timedict.getRecvData(filemark)
                         f.write(data)
                         read_data += self.block
                     return True
 
     def sendFile(self, data_: dict, mark: str):
         """
+
         服务端发送文件至客户端
 
         mode = 0;
@@ -200,6 +203,10 @@ class BaseCommandSet(Scan):
 
         mode = 1;
         根据客户端发送的文件哈希值，判断是否是意外中断传输的文件，如果是则继续传输。
+
+        :param data_:
+        :param mark:
+        :return:
         """
         block = 1024
         reply_mark = mark
@@ -232,16 +239,40 @@ class BaseCommandSet(Scan):
             if not local_file_size:
                 return
 
-            def update_hash(file, block_size, total_blocks):
+            def update_hash(file, block_size: int, total_blocks: int) -> xxh3_128:
+                """
+                更新文件哈希值
+                :param file:
+                :param block_size:
+                :param total_blocks:
+                :return:
+                """
+                disk_cache: dict = {
+                    'start_time': time.time(),
+                    'end_time': None,
+                    'size': local_file_size,
+                    'output': None
+                }
                 file_xxh = xxhash.xxh3_128()
                 read_blocks = 0
                 while read_blocks < total_blocks:
                     f_data = file.read(block_size)
                     file_xxh.update(f_data)
                     read_blocks += 1
+
+                disk_cache['output']: float = local_file_size / (time.time() - disk_cache.get('start_time'))
+
                 return file_xxh
 
-            def send_data(file, block_size, _socket, _filemark):
+            def send_data(file, block_size: int, _socket, _filemark: str):
+                """
+                发送数据
+                :param file:
+                :param block_size:
+                :param _socket:
+                :param _filemark:
+                :return:
+                """
                 while True:
                     f_data = file.read(block_size)
                     if not f_data:
@@ -457,13 +488,24 @@ class BaseCommandSet(Scan):
                     session.send(command, output=False)
                     return CommandSet.EXSYNC_INSUFFICIENT_PERMISSION
 
+    def postStopMark(self, data_: dict, mark: str) -> str:
+        """
+        停止某个mark队列的执行
+        :param data_:
+        :param mark:
+        :return:
+        """
+        data_mark = data_.get('mark')
+        if not data_mark:
+            return ''
+
 
 class CommandSetExpand(BaseCommandSet):
     """
     对于基本命令的拓展集
     """
 
-    def __init__(self, command_socket, data_socket, key: str):
+    def __init__(self, command_socket: socket, data_socket: socket, key: str):
         super().__init__(command_socket, data_socket, key)
         self.session = Session(self.timedict)
 
@@ -736,7 +778,7 @@ class RecvCommand(CommandSetExpand):
     异步收发指令
     """
 
-    def __init__(self, command_socket, data_socket, key: str):
+    def __init__(self, command_socket: socket, data_socket: socket, key: str):
         super().__init__(command_socket, data_socket, key)
         self.command_socket = command_socket
         self.data_socket = data_socket
@@ -757,7 +799,7 @@ class RecvCommand(CommandSetExpand):
                 ....
             }
         }
-
+        指令执行前的hook操作
         :return:
         """
         while True:
@@ -768,10 +810,9 @@ class RecvCommand(CommandSetExpand):
                 continue
             mark, command = command[:8], command[8:]  # 8字节的mark头信息和指令
 
-            try:
-                command = CryptoTools(self.key).aes_ctr_decrypt(command)
-            except Exception as e:
-                print(e)
+            command = CryptoTools(self.key).aes_ctr_decrypt(command)
+            if not command:
+                continue
 
             try:
                 command = json.loads(command)
@@ -819,6 +860,8 @@ class RecvCommand(CommandSetExpand):
 
             elif command_ == 'data' and type_ == 'syncfile' and method_ == 'post':
                 self.dataPostSyncFile(data_, mark)
+            elif command_ == 'comm' and type_ == 'stop' and method_ == 'post':
+                self.commPostStop()
 
     def dataGetFile(self, data_: dict, mark: str) -> bool:
         """
@@ -1008,6 +1051,26 @@ class RecvCommand(CommandSetExpand):
             "command": ...
         }
 
+        :param data_:
+        :param mark:
+        :return:
+        """
+        if self.command_socket.permission >= 10:
+            thread = threading.Thread(target=self.executeCommand, args=(data_, mark))
+            thread.daemon = True
+            thread.start()
+            logging.debug(f'Client {self.address}: commPostCommand executing')
+            return True
+        else:
+            logging.warning(f'Client {self.address}: Cancel [postCommand] due to insufficient permissions!')
+            return False
+
+    def commPostStop(self, data_: dict, mark: str) -> bool:
+        """
+        停止某个mark队列的指令执行
+        data:{
+            "mark": ...
+        }
         :param data_:
         :param mark:
         :return:

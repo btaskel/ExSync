@@ -2,6 +2,7 @@ import json
 import logging
 import os
 import shutil
+from socket import socket
 
 import xxhash
 
@@ -25,12 +26,12 @@ class BaseCommandSet(Config, Session):
     客户端指令发送类
     """
 
-    def __init__(self, data_socket, command_socket, key: str):
+    def __init__(self, data_socket: socket, command_socket: socket, key: str):
         super().__init__()
         self.data_socket = data_socket
         self.command_socket = command_socket
         # 数据包发送分块大小(含filemark, AES_)
-        self.block = 1024
+        self.block: int = 1024
 
         self.timedict = TimeDictInit(data_socket, command_socket, key)
         self.session = Session(self.timedict)
@@ -55,9 +56,9 @@ class BaseCommandSet(Config, Session):
         # 获取8位数长度的文件头标识,用于保证文件的数据唯一性
         filemark = HashTools.getRandomStr(8)
         reply_mark = HashTools.getRandomStr(8)
-
-        local_size = os.path.getsize(path)
-        hash_value = HashTools.getFileHash(path)
+        # 本地文件大小，本地文件hash值，本地文件日期
+        local_size, local_filehash, local_filedate = os.path.getsize(path), HashTools.getFileHash(
+            path), os.path.getmtime(path)
         data_block = self.block - len(filemark)
         # 远程服务端初始化接收文件
         # 服务端返回信息格式：exist | filesize | filehash | filedate
@@ -69,7 +70,7 @@ class BaseCommandSet(Config, Session):
             "data": {
                 "file_path": path,
                 "file_size": local_size,
-                "file_hash": hash_value,
+                "file_hash": local_filehash,
                 "mode": mode,
                 "filemark": filemark
             }
@@ -81,28 +82,16 @@ class BaseCommandSet(Config, Session):
             print(e)
             return Status.PARAMETER_ERROR
 
-        exist = data.get('exists')
-        # 远程文件大小, 远程文件hash值，远程文件日期
-        remote_size = data.get('file_size')
-        remote_filehash = data.get('file_hash')
-        remote_filedate = data.get('file_date')
+        exist: bool = data.get('exists')
+        remote_size: int = data.get('file_size')
+        remote_filehash: str = data.get('file_hash')
+        remote_filedate: float = data.get('file_date')
 
         if not isinstance(exist, bool) or not isinstance(remote_size, int) or not isinstance(remote_filehash,
                                                                                              str) or not isinstance(
-            remote_filedate, str):
+            remote_filedate, float):
             return Status.PARAMETER_ERROR
 
-        # # 服务端准备完毕，开始传输文件
-        # if result == Status.DATA_RECEIVE_TIMEOUT:
-        #     return Status.DATA_RECEIVE_TIMEOUT
-        # try:
-        #     values = result.split('|')
-        # except Exception as e:
-        #     print(e)
-        #     return Status.PARAMETER_ERROR
-
-        # 本地文件大小，本地文件hash值，本地文件日期
-        local_size, local_filehash, local_filedate = local_size, hash_value, os.path.getmtime(path)
         with SocketSession(self.timedict, data_socket=self.data_socket, encrypt_password=self.key,
                            mark=filemark) as session:
             match mode:
@@ -187,7 +176,7 @@ class BaseCommandSet(Config, Session):
         filemark = HashTools.getRandomStr(8)
         reply_mark = HashTools.getRandomStr(8)
 
-        self.timedict.createRecv(filemark, self.password)  # 接下来的文件数据将会加密
+        self.timedict.createRecv(filemark)  # 接下来的文件数据将会加密
         data_block = self.block - len(filemark) - 8  # 加密nonce 损耗8
 
         if os.path.exists(path):

@@ -3,6 +3,7 @@ import random
 import string
 import threading
 import time
+from socket import socket
 
 from core.tools.encryption import CryptoTools
 
@@ -15,26 +16,22 @@ class TimeDict:
     """
 
     def __init__(self, release: int = 4, scan: int = 4):
-        self.__dict: dict = {}
         self.lock = threading.Lock()
-        try:
-            self.release_time: int = int(release)
-            self.scan: float = float(scan)
-        except Exception as e:
-            print(e)
-            self.release_time: int = 4
-            self.scan: int = 4
+        self.condition = threading.Condition(self.lock)
+
+        self.__dict: dict = {}
+        self.release_time: int = int(release)
+        self.scan: float = float(scan)
 
         self.close_flag: bool = False
         thread = threading.Thread(target=self.__release)
         thread.start()
 
-    def set(self, key: str, value: bytes = None, encryption: str = None):
+    def set(self, key: str, value: bytes = None):
         """
         设置键值对
         :param value: 值
         :param key: 键
-        :param encryption: 加密方式
         :return:
         """
         with self.lock:
@@ -43,43 +40,30 @@ class TimeDict:
                 self.__dict[key].append(value)
                 self.__dict[key][0] = time.time()
             else:
-                self.__dict[key] = [time.time(), encryption]
+                self.__dict[key] = [time.time()]
+            self.condition.notify_all()
 
     def get(self, key: str, pop: bool = True, timeout: int = 2) -> bytes:
         """
         获取键值对
-        如果pop=True则获取完元素立即弹出该元素(如果元素内容被读取完毕，则返回False)
-        如果无法获取到则会阻塞到有数据再继续返回, 如果超过2000ms则解除阻塞
-        结构：[数据流修改时间刻, 加密方式, 数据流...]
+        结构：[数据流修改时间刻, 数据流...]
         :param key: 获取的键
         :param pop: 是否弹出数据流
-        :param timeout: 超时时间
+        :param timeout: 超时时间, 如果无法获取到则会阻塞到有数据再继续返回, 如果超过2000ms则解除阻塞
         :return:
         """
         with self.lock:
             if not pop:
                 if len(self.__dict[key]) > 2:
-                    return self.__dict.get(key)[2:]
+                    return self.__dict.get(key)[1]
                 else:
                     return b''
-            tic = time.time()
-            while True:
+            else:
                 result = self.__dict[key]
-                if len(result) > 2:
-                    return result.pop(2)
-                time.sleep(0.0005)
-                if time.time() - tic > timeout:
-                    return b''
-
-    def getCryType(self, mark: str) -> str:
-        """
-        获取数据流的加密类型
-        :param mark:要获取的键
-        :return:
-        """
-        if self.hasKey(mark):
-            return self.__dict.get(mark)[1]
-        return ''
+                while len(result) <= 2:
+                    if not self.condition.wait(timeout):
+                        return b''
+                return result.pop(1)
 
     def delKey(self, key: str):
         """
@@ -87,10 +71,15 @@ class TimeDict:
         :param key: 要删除的键
         :return:
         """
-        self.__dict.pop(key)
+        with self.lock:
+            self.__dict.pop(key)
 
     def hasKey(self, key: str) -> bool:
-        """判断键是否已经存在"""
+        """
+        判断键是否已经存在
+        :param key:
+        :return:
+        """
         with self.lock:
             if key in self.__dict:
                 return True
@@ -98,26 +87,40 @@ class TimeDict:
                 return False
 
     def close(self):
-        self.close_flag = True
+        with self.lock:
+            self.close_flag = True
+            self.condition.notify_all()
 
     def __release(self):
-        """周期性扫描过期键值对并删除"""
+        """
+        周期性扫描过期键值对并删除
+        :return:
+        """
         while True:
-            if self.close_flag:
-                del self.__dict
-                return
-            time.sleep(self.scan)
-            keys_to_delete = []
             with self.lock:
+                # 如果关闭标志被设置，删除字典并返回
+                if self.close_flag:
+                    del self.__dict
+                    return
+
+                # 创建一个空列表来存储要删除的键
+                keys_to_delete = []
+
+                # 遍历字典中的每一个键值对
                 for key, value in self.__dict.items():
-                    try:
-                        if time.time() - value[0] > self.release_time:
-                            keys_to_delete.append(key)
-                    except Exception as e:
-                        print(e)
-                        logging.warning(f'TimeDict: release key {key} error!')
+                    # 获取值中的时间戳
+                    time_stamp = value[0]
+
+                    # 如果当前时间与时间戳的差大于释放时间，将键添加到要删除的键的列表中
+                    if time.time() - time_stamp > self.release_time:
+                        keys_to_delete.append(key)
+
+                # 遍历要删除的键的列表，从字典中删除这些键
                 for key in keys_to_delete:
                     self.__dict.pop(key)
+
+            # 等待一段时间再进行下一次扫描
+            time.sleep(self.scan)
 
 
 class TimeDictInit(TimeDict):
@@ -129,7 +132,7 @@ class TimeDictInit(TimeDict):
     disableEncry : 关闭当前服务端timedict即时解密
     """
 
-    def __init__(self, data_socket, command_socket, key: str):
+    def __init__(self, data_socket: socket, command_socket: socket, key: str):
         super().__init__()
         self.data_socket = data_socket
         self.command_socket = command_socket
@@ -150,61 +153,28 @@ class TimeDictInit(TimeDict):
         以mark头来区分数据流，如果接收到发现数据流的标识不存在则丢弃数据流
         EXSync的mark头为数据流的前8位
 
-        如果在开启加密时, 发送方累计超过十次发送无效数据, 则停止接收数据
         :return:
         """
-        count: int = 0
         crypto = CryptoTools(self.key)
         while True:
             if not self.close_all:
-                result = self.data_socket.recv(1024)
+                result: bytes = self.data_socket.recv(1024)
                 # 确保接收到的数据有效
                 if len(result) <= 16:
                     continue
-                try:
-                    # 分流数据内容
-                    try:
-                        result = crypto.aes_ctr_decrypt(result)
-                    except ValueError:
-                        pass
-                    try:
-                        mark: str = result[:8].decode('utf-8')
-                    except ValueError:
-                        continue
-                    data: bytes = result[8:]
+                # 分流数据内容
+                decrypt_data = crypto.aes_ctr_decrypt(result)
+                if decrypt_data:
+                    result = decrypt_data
 
-                    if self.hasKey(mark):
-                        self.set(mark, data)
-                except Exception as e:
-                    print(e)
-                    count += 1
-                    if count >= 20:
-                        # 获取到20次的, 连续的未知数据, 断开连接
-                        self.close_all = True
+                mark: str = result[:8].decode('utf-8')
+                data: bytes = result[8:]
+
+                if self.hasKey(mark):
+                    self.set(mark, data)
             else:
                 self.close()
                 return
-
-    # def _recvCommand(self):
-    #     """
-    #     接收远程指令
-    #     持续接收数据等待接下来的方法处理指令，同时遵循TimeDict的元素生命周期
-    #     以mark头来区分数据流，如果接收到发现数据流的标识不存在则丢弃数据流
-    #     EXSync的mark头为数据流的前8位
-    #     """
-    #
-    #     while True:
-    #         if self.close:
-    #             self.timedict.close()
-    #             return
-    #         else:
-    #             result = self.command_socket.recv(1024)
-    #             try:
-    #                 mark, data = result[:8], result[8:]
-    #                 if self.timedict.hasKey(mark):
-    #                     self.timedict.set(mark, data)
-    #             except:
-    #                 pass
 
     def getMark(self, length: int = 8) -> str:
         """
@@ -226,45 +196,22 @@ class TimeDictInit(TimeDict):
         :return:
         """
         return self.get(mark, pop=True, timeout=timeout)
-        # if decrypt_password and self.getCryType(mark) == 'aes-128-ctr':
-        #     try:
-        #         result = CryptoTools(decrypt_password).aes_ctr_decrypt(result)
-        #     except Exception as e:
-        #         print(e)
-        #         return
-        #     return result
-        # else:
-        #     return result
 
-    # def getCommand(self, mark: str, decrypt_password: str = None) -> dict:
-    #     """
-    #     :param mark: 取出指定mark队列第一个值，并且将其弹出
-    #     :param decrypt_password: 如果此项填写，则取出时将进行解密
-    #     :return:
-    #     """
-    #     result = self.get(mark, pop=True)
-    #     if decrypt_password and self.getCryType(mark) == 'aes-128-ctr':
-    #         try:
-    #             result = CryptoTools(decrypt_password).aes_ctr_decrypt(result)
-    #         except Exception as e:
-    #             print(e)
-    #             return
-    #         result = result
-    #     return json.loads(result)
-
-    def createRecv(self, mark: str, encryption: str = None):
+    def createRecv(self, mark: str):
         """
         'aes-128-ctr'
         创建一个数据流接收队列
         :param mark: mark头
-        :param encryption: 密钥
         :return:
         """
         if 4 < len(mark) < 8:
-            self.set(mark, encryption=encryption)
+            self.set(mark)
         else:
             raise ValueError(f'Mark: {mark} set error!!')
 
     def closeRecv(self):
-        """销毁所有数据并停止持续接收数据"""
+        """
+        销毁所有数据并停止持续接收数据
+        :return:
+        """
         self.close_all = True

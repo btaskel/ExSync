@@ -239,6 +239,7 @@ class SyncData(Index, Control):
         """
         EXSync依赖系统时间进行文件同步
         同步系统时间
+        :return:
         """
         ntp_client = ntplib.NTPClient()
         response = ntp_client.request("pool.ntp.org")
@@ -360,7 +361,10 @@ class SyncData(Index, Control):
                 # 1: 本地文件不存在;
                 value = remote_file_index['data'].get(key)
                 Control.getFile(device_id, key)
-                self.updateLocalIndex(spacename, f"{{'{key}': {value}}}")
+                index_json_update: dict = {
+                    key: value
+                }
+                self.updateLocalIndex(spacename, index_json_update)
 
             elif value == 2:
                 # 2: 远程文件不存在;

@@ -7,19 +7,18 @@ from core.client.main import Client
 from core.server.command import RecvCommand
 from core.server.proxy import Proxy
 from core.server.scan import Scan
-from core.tools.status import Status, PermissionEnum
-from core.tools.tools import HashTools
+from core.tools import Status, PermissionEnum, HashTools
 
 """
 客户端实例管理
 client_mark : {
-    'ip': ip,
-    'id': self.host_id,
-    'client': client,
-    'command_socket': client_command,
-    'data_socket': client_data,
-    'permission': permission,
-    'AES_KEY': aes_key
+        'ip': ip,
+        'id': remote_id,
+        'client': client,
+        'command_socket': client_command_socket,
+        'permission': PermissionEnum.USER.value,
+        'control': control,
+        'AES_KEY': aes_key
     }
 """
 socket_manage: dict = {}
@@ -81,7 +80,7 @@ class createSocket(Scan, Manage, Proxy):
             data: data_socket
         }
         """
-        self.merge_socket = {}
+        self.merge_socket: dict = {}
 
         if self.config['server']['proxy'].get('enabled'):
             socket.socket = self.setProxyServer(self.config)
@@ -97,7 +96,7 @@ class createSocket(Scan, Manage, Proxy):
             self.data_port: self.verifyDataSocket
         }
         for port, verify_func in socket_types.items():
-            thread = threading.Thread(target=self.createSocket, args=(port,verify_func))
+            thread = threading.Thread(target=self.createSocket, args=(port, verify_func))
             thread.start()
 
     def createSocket(self, port: int, verifyFunc):
@@ -111,7 +110,7 @@ class createSocket(Scan, Manage, Proxy):
             thread = threading.Thread(target=verifyFunc, args=(sub_socket, addr))
             thread.start()
 
-    def verifyDataSocket(self, data_socket, address):
+    def verifyDataSocket(self, data_socket: socket, address: str):
         """
         验证数据套接字；
         验证连接对象是否已经通过验证
@@ -133,7 +132,7 @@ class createSocket(Scan, Manage, Proxy):
                 "data": data_socket
             }
 
-    def verifyCommandSocket(self, command_socket, address):
+    def verifyCommandSocket(self, command_socket: socket, address: str):
         """
         验证指令套接字，验证连接对象是否已经通过验证
         主动验证：当对方客户端主动连接，但本机并未扫描验证对方，就会触发此模式。

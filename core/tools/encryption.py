@@ -9,6 +9,11 @@ class CryptoTools:
     """加解密套件"""
 
     def __init__(self, key: str, method: str = 'aes-ctr', textLength: int = 1024):
+        """
+        :param key: 密码
+        :param method: 加密方式(默认AES-CTR)
+        :param textLength: 文本长度
+        """
         if method.lower() == 'aes-ctr':
             self.key = sha256(key.encode('utf-8')).hexdigest()[:16]
         else:
@@ -33,7 +38,7 @@ class CryptoTools:
             ciphertext = cipher.encrypt(message.encode('utf-8'))
         return cipher.nonce + ciphertext
 
-    def aes_ctr_decrypt(self, ciphertext: bytes) -> bytes:
+    def aes_ctr_decrypt(self, ciphertext: bytes, source: bool=False) -> bytes:
         """aes-128-ctr 解密"""
         if len(ciphertext) > 8:
             content, nonce = ciphertext[8:], ciphertext[:8]
@@ -49,7 +54,7 @@ class CryptoTools:
             return plaintext
         else:
             logging.debug('Core : AES_Ctr_Decrypt execution failed!')
-            raise ValueError('aes_ctr_decrypt decrypt error!')
+            return b''
 
     def b64_ctr_encrypt(self, message: bytes) -> str:
         """

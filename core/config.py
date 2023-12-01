@@ -36,7 +36,8 @@ class readConfig:
         :return:
         """
         config: dict = {}
-        with open('.\\config\\config.json', mode='r', encoding='utf-8') as f:
+        path = os.path.join(os.getcwd(), 'config', 'config.json')
+        with open(path, mode='r', encoding='utf-8') as f:
             json_file = json.loads(f.read())
 
             # log-loglevel
@@ -264,8 +265,13 @@ class readConfig:
 
     @staticmethod
     def createJson():
+        """
+        创建json文件
+        :return:
+        """
+        path = os.path.join(os.getcwd(), 'config', 'config.json')
         json_str = readConfig.jsonData()
-        with open('.\\config\\config.json', mode='w', encoding='utf-8') as f:
+        with open(path, mode='w', encoding='utf-8') as f:
             json.dump(json_str, f, indent=4)
 
 

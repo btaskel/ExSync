@@ -4,6 +4,7 @@ import os
 import sys
 import threading
 
+from core.client.command import CommandSend
 from core.server.main import createSocket, socket_manage
 from core.tools.tools import relToAbs
 
@@ -37,7 +38,7 @@ class Control:
     #     return None
 
     @staticmethod
-    def getAllDevice():
+    def getAllDevice() -> list:
         """
         :return 返回所有设备id:
         """
@@ -47,7 +48,7 @@ class Control:
         return ipList
 
     @staticmethod
-    def getDevice(device_id: str):
+    def getDevice(device_id: str) -> CommandSend | None:
         """
         根据设备id获取对应的设备控制客户端
         :param device_id:
@@ -167,8 +168,7 @@ class Plugin:
     """插件初始化载入"""
 
     def __init__(self):
-        self.path = os.getcwd()
-        self.__plugins = os.path.join(os.path.join(self.path, 'plugins'))
+        self.__plugins = os.path.join(os.getcwd(), 'data', 'plugins')
 
     def read_plugins(self):
         for file in os.listdir(self.__plugins):
@@ -198,7 +198,7 @@ class Plugin:
                 continue
 
     @staticmethod
-    def load(path: str, method: int):
+    def load(path: str, method: int) -> bool:
         """
         method = 0;
         按文件加载插件

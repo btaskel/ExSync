@@ -10,9 +10,7 @@ from Crypto.PublicKey import RSA
 from core.client.command import CommandSend
 from core.config import Config
 from core.server.proxy import Proxy
-from core.tools.encryption import CryptoTools
-from core.tools.status import Status
-from core.tools.tools import HashTools, SocketTools
+from core.tools import HashTools, SocketTools, CryptoTools, Status
 
 
 class Client(Config, Proxy):
