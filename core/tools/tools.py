@@ -342,7 +342,6 @@ class SocketSession(SocketTools):
         self.count: int = 0
 
         if not self.__data_socket and not self.__command_socket:
-            # Error
             raise ValueError('SocketSession: data_socket和command_socket未传入')
 
         elif self.__command_socket and self.__data_socket:

@@ -275,6 +275,75 @@ class readConfig:
             json.dump(json_str, f, indent=4)
 
 
+class InitCache:
+    def __init__(self, path: str = None):
+        """
+        :param path: cache文件路径
+        """
+        if not path or not os.path.exists(path):
+            self.path = os.path.join(os.getcwd(), 'data\\config\\cache.json')
+        else:
+            self.path = path
+
+        self.data = {
+            "disk_activity_record": {
+                "read": [],
+                "write": []
+            }
+        }
+
+    def createCache(self) -> bool:
+        """
+        创建缓存文件
+        :return:
+        """
+
+        with open(self.path, mode='r+') as f:
+            try:
+                json.dump(self.data, f, indent=4)
+            except Exception as e:
+                print(e)
+                return False
+        return True
+
+    def loadCache(self) -> dict:
+        """
+        加载缓存文件
+        :return:
+        """
+        with open(self.path, mode='r+') as f:
+            data: dict = json.load(f)
+
+        cache_obj = {
+            'path': self.path
+        }
+
+        # disk_activity_record
+        disk_activity_record: dict = data.get('disk_activity_record')
+        if disk_activity_record:
+            read = disk_activity_record.get('read')
+            if read:
+                cache_obj['disk_activity_record']['read'] = read
+            else:
+                logging.warning('Cache : The hard disk cache record is turned off, which may cause performance loss!')
+                cache_obj['disk_activity_record']['read'] = []
+
+            write = disk_activity_record.get('write')
+            if write:
+                cache_obj['disk_activity_record']['write'] = write
+            else:
+                logging.warning('Cache : The hard disk cache record is turned off, which may cause performance loss!')
+                cache_obj['disk_activity_record']['write'] = []
+        else:
+            cache_obj['disk_activity_record'] = {
+                'read': [],
+                'write': []
+            }
+            with open(self.path, mode='w') as f:
+                json.dump(self.data, f, indent=4)
+        return cache_obj
+
+
 class Config(readConfig):
     def __init__(self):
         super().__init__()

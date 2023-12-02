@@ -1,9 +1,11 @@
+import json
 import os
 import threading
 import time
 
 import psutil
 
+from core.config import InitCache
 from core.tools import HashTools
 
 
@@ -43,19 +45,20 @@ class IOBalance:
         thread.start()
 
 
-class AutoDisk:
+class AutoDisk(InitCache):
     """
     通过多次使用记录分析当前硬盘的读写速度/读写延迟并记录
     """
 
     def __init__(self, config: dict):
+        super().__init__()
         self.config: dict = config
         self.cache_path: str = os.path.join(os.getcwd(), 'data\\config\\cache.json')
         self._table: dict = {}
         self._queue: list = []
 
+        self.cache = self.loadCache()
         self.__release()
-
 
     # def autoTimeout(self, size: int, record: bool = True) -> bool:
     #     """
@@ -66,12 +69,33 @@ class AutoDisk:
     #     """
 
     def __release(self):
+        """
+        定期处理队列中的数据
+        :return:
+        """
         while True:
             if self._queue:
                 key, value = list(self._queue.pop().items())[0]
-                with open(os.path.join(os.getcwd(), 'data\\config\\cache.json'), mode='r+') as f:
-                    # todo: 写入cache文件
-                    pass
+
+                read_list: dict = self.cache['disk_activity_record'].get('read')
+                write_list: dict = self.cache['disk_activity_record'].get('write')
+                if key == 'r':  # 如果测试的为读取速度
+                    if len(read_list) >= 50:
+                        with open(self.cache.get('path'), mode='r+') as f:
+                            data = json.load(f)
+                            data['disk_activity_record']['read'].pop(0)
+                            data['disk_activity_record']['read'].append(value)
+                            json.dump(data, f, indent=4)
+                    else:
+
+                else:
+                    if len(write_list) >= 50:
+                        with open(self.cache.get('path'), mode='r+') as f:
+                            data = json.load(f)
+                            data['disk_activity_record']['write'].pop(0)
+                            data['disk_activity_record']['write'].append(value)
+                            json.dump(data, f, indent=4)
+
             time.sleep(0.1)
 
     def recordTime(self, size: int, method: str = 'r') -> str:

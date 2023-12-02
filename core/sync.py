@@ -265,25 +265,26 @@ class SyncData(Index, Control):
         """
         userdata_list = self.config['userdata']
         for userdata in userdata_list:
-            if spacename == userdata['spacename']:
-                index_json = os.path.join(userdata['path'], '\\.sync\\info\\files.json') if isFile else os.path.join(
-                    userdata['path'], '\\.sync\\info\\folders.json')
+            if spacename != userdata['spacename']:
+                continue
+            index_json = os.path.join(userdata['path'], '\\.sync\\info\\files.json') if isFile else os.path.join(
+                userdata['path'], '\\.sync\\info\\folders.json')
 
-                with open(index_json, mode='r+', encoding='utf-8') as f:
-                    try:
-                        data = json.load(f)
-                    except Exception as error:
-                        print(error)
-                        logging.error(f'Failed to load index file: {index_json}')
-                        return False
-                    try:
-                        data['data'].update(json_example)
-                    except Exception as e:
-                        print(e)
-                        logging.error(f'When updating index file {index_json}, no data object was found')
-                    f.truncate(0)
-                    json.dump(data, f, indent=4)
-                return True
+            with open(index_json, mode='r+', encoding='utf-8') as f:
+                try:
+                    data = json.load(f)
+                except Exception as error:
+                    print(error)
+                    logging.error(f'Failed to load index file: {index_json}')
+                    return False
+                try:
+                    data['data'].update(json_example)
+                except Exception as e:
+                    print(e)
+                    logging.error(f'When updating index file {index_json}, no data object was found')
+                f.truncate(0)
+                json.dump(data, f, indent=4)
+            return True
 
         logging.warning(f'No synchronization space was found in the configuration file: {spacename}')
         return False
