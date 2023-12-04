@@ -5,7 +5,7 @@ import sys
 from core.config import readConfig
 
 
-class Init:
+class Commands:
     def __init__(self):
         parser = argparse.ArgumentParser()
         parser.add_argument("-log_level", type=int, choices=range(1, 6), default=3,
@@ -16,43 +16,49 @@ class Init:
 
         built_in_config = readConfig.jsonData()
 
-        self.initLogging(args.log_level)
         if args.version:
             self.printVersion(built_in_config.get('version', 'Unknown'))
         self.checkPython()
 
     @staticmethod
-    def initLogging(level):
-        if level == 5:
-            level = logging.DEBUG
-        elif level == 4:
-            level = logging.INFO
-        elif level == 3:
-            level = logging.WARNING
-        elif level == 2:
-            level = logging.ERROR
-        elif level == 1:
-            level = logging.CRITICAL
-        else:
-            level = logging.INFO
+    def setLogLevel(level: str):
+        match level.lower():
+            case 'debug':
+                level = logging.DEBUG
+            case 'info':
+                level = logging.INFO
+            case 'warning':
+                level = logging.WARNING
+            case 'error':
+                level = logging.ERROR
+            case 'critical':
+                level = logging.CRITICAL
+            case _:
+                level = logging.INFO
 
-        logging.basicConfig(
-            filename='debug.log',
-            level=level,
-            format='%(asctime)s - %(levelname)s - %(message)s',
-            datefmt='%Y/%m/%d %I:%M:%S '
-        )
-        logging.debug('debug message')
+        # 创建一个FileHandler实例
+        handler = logging.FileHandler('debug.log', encoding='utf-8')
+
+        # 设置日志格式
+        formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s', datefmt='%Y/%m/%d %I:%M:%S ')
+        handler.setFormatter(formatter)
+
+        # 获取根日志记录器，并添加FileHandler
+        logger = logging.getLogger()
+        logger.addHandler(handler)
+
+        # 设置日志级别
+        logger.setLevel(level)
 
     @staticmethod
     def checkPython():
         version = sys.version_info
-        if version[0] == '3' and version[1] < 11:
+        if version[0] == 3 and version[1] < 11:
             print('python版本小于3.11')
             logging.error('Python version error.')
             sys.exit(1)
 
-        elif version[0] != '3':
+        elif version[0] != 3:
             print('您不能使用除python 3以外的python版本')
             logging.error('Python version error.')
             sys.exit(1)

@@ -1,6 +1,6 @@
 {
   "log": {
-    "loglevel": ""
+    "loglevel": "debug"
   },
   "server": {
     "addr": {
@@ -28,8 +28,8 @@
   },
   "userdata": [
     {
-      "spacename": "",
-      "path": "",
+      "spacename": "test",
+      "path": "H:\\Python project\\ExSync\\test",
       "interval": 30,
       "autostart": true
     }

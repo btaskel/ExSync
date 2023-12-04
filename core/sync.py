@@ -3,17 +3,18 @@ import logging
 import os
 import threading
 import time
-from datetime import datetime
 
 import ntplib
 
 from core.config import readConfig
-from core.control import Control
+from core.control import RunServer
+from core.shell import Commands
 from core.tools.tools import createFile, relToAbs, HashTools
 
 
 class IndexBase(readConfig):
     def __init__(self):
+        super().__init__()
         self.config = self.readJson()
 
     def pathToSpaceName(self, path: str) -> str:
@@ -85,9 +86,9 @@ class IndexBase(readConfig):
             if not os.path.exists(path):
                 return None, None
 
-        with open(os.path.join(index_path, 'files.json'), mode='r') as f:
+        with open(os.path.join(index_path, 'files.json'), mode='r', encoding='utf-8') as f:
             files_json = json.load(f)
-        with open(os.path.join(index_path, 'folders.json'), mode='r') as f:
+        with open(os.path.join(index_path, 'folders.json'), mode='r', encoding='utf-8') as f:
             folders_json = json.load(f)
         return files_json, folders_json
 
@@ -100,6 +101,7 @@ class Index(IndexBase):
 
     def __init__(self):
         super().__init__()
+        Commands.setLogLevel(self.config['log']['loglevel'])
 
     def initIndex(self, spacename: str) -> bool:
         """
@@ -148,7 +150,7 @@ class Index(IndexBase):
                     "data": {
                         file_path: {
                             "type": "file",
-                            "system_date": datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                            "system_date": time.time(),
                             "file_edit_date": os.path.getmtime(file),
                             "file_create_date": os.path.getctime(file),
                             "file_read_date": os.path.getatime(file),
@@ -170,9 +172,8 @@ class Index(IndexBase):
                 table = {
                     folder: {
                         "type": "folder",
-                        "system_date": datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
-                        "file_date": datetime.fromtimestamp(os.path.getmtime(folder_path)).strftime(
-                            "%Y-%m-%d %H:%M:%S"),
+                        "system_date": time.time(),
+                        "folder_date": os.path.getmtime(folder_path),
                         "state": ""
                     }
                 }
@@ -224,14 +225,14 @@ class Index(IndexBase):
         }
 
 
-class SyncData(Index, Control):
+class SyncData(RunServer, Index):
     """
     数据同步
     """
 
     def __init__(self):
         super().__init__()
-        self.devices = Control.getAllDevice()
+        self.devices = self.getAllDevice()
         self.index_cache = []
 
     @staticmethod
@@ -298,7 +299,7 @@ class SyncData(Index, Control):
         """
         ls = []
         for i in ['files.json', 'folders.json']:
-            index_path = Control.getIndex(device_id, spacename)
+            index_path = self.getIndex(device_id, spacename)
             ls.append(os.path.join(index_path, i))
         result = self.analyseFiles(spacename, ls)
 
@@ -315,14 +316,16 @@ class SyncData(Index, Control):
             if value == 0:
                 # 0: 文件时间不同, 开始进行判断
                 tic: int = 5  # 文件修改时间在 tic 秒以内的文件，不进行同步
+                file_edit_date: float = local_file_index['data'][key].get('file_edit_date')
                 try:
-                    file_edit_date = local_file_index['data'][key]['file_edit_date']
+                    file_edit_date = float(file_edit_date)
                 except Exception as e:
                     print(e)
-                    return False
+                    logging.warning(f'file : {key}, Date format error!')
+                    continue
 
-                local_file_start_time, local_file_end_time = float(file_edit_date) - tic, float(file_edit_date) + tic
-                remote_file_start_time, remote_file_end_time = float(file_edit_date) - tic, float(file_edit_date) + tic
+                local_file_start_time, local_file_end_time = file_edit_date - tic, file_edit_date + tic
+                remote_file_start_time, remote_file_end_time = file_edit_date - tic, file_edit_date + tic
                 # 如果文件修改的时间差在5s以内则进行同步
                 if abs(remote_file_end_time - local_file_end_time) < tic and abs(
                         remote_file_start_time - local_file_start_time) < tic:
@@ -332,7 +335,7 @@ class SyncData(Index, Control):
                     if file_edit_date < remote_file_index['data'][key][
                         'file_edit_date']:
                         if local_file_hash != remote_file_index['data'][key][
-                            'hash'] and Control.getFile(device_id, key):
+                            'hash'] and self.getFile(device_id, key):
                             # 更新文件至本地
                             value = remote_file_index['data'].get(key)
                             self.updateLocalIndex(spacename, {key: value})
@@ -342,15 +345,14 @@ class SyncData(Index, Control):
                         'file_edit_date']:
                         if local_file_hash != remote_file_index['data'][key]['hash']:
                             # 更新文件至远程
-                            Control.postFile(device_id, key, mode=2)
+                            self.postFile(device_id, key, mode=2)
                             value = local_file_index['data'].get(key)
                             index = {
                                 "data": {
                                     key: value
                                 }
                             }
-                            Control.postIndex(device_id, spacename, index)
-
+                            self.postIndex(device_id, spacename, index)
 
                     else:
                         # 无操作
@@ -361,7 +363,7 @@ class SyncData(Index, Control):
             elif value == 1:
                 # 1: 本地文件不存在;
                 value = remote_file_index['data'].get(key)
-                Control.getFile(device_id, key)
+                self.getFile(device_id, key)
                 index_json_update: dict = {
                     key: value
                 }
@@ -370,8 +372,8 @@ class SyncData(Index, Control):
             elif value == 2:
                 # 2: 远程文件不存在;
                 value = local_file_index['data'].get(key)
-                Control.postFile(device_id, key, mode=2)
-                Control.postIndex(device_id, spacename, {key: {value}})
+                self.postFile(device_id, key, mode=2)
+                self.postIndex(device_id, spacename, {key: {value}})
 
     def syncFilesToAllDevices(self, spacename: str, method: int = 0):
         """
@@ -402,15 +404,21 @@ class SyncData(Index, Control):
         """
 
 
+class EXSync(SyncData):
+    def __init__(self):
+        super().__init__()
+        Commands.checkPython()
+        Commands.printVersion(0.01)
+
+    def init_app(self, app):
+        """
+        初始化EXSync至Flask
+        :return:
+        """
+        if not hasattr(app, 'extensions'):
+            raise RuntimeError('Flask instance does not have extensions object!')
+        app.extensions['exsync'] = self
+
+
 if __name__ == '__main__':
-    # p = '.\\test\\space'
-    # s = Index(p)
-    # # s.updateIndex(p)
-    # s.initIndex()
-    # table = {
-    #     'a': 1,
-    #     'b': 6,
-    #     'aa': 5
-    # }
-    # Index._updateJson('test\\index.json', table)
     pass

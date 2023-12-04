@@ -2,12 +2,12 @@ import base64
 import hashlib
 import json
 import logging
-import os
-import re
 import socket
 
 from Crypto.Cipher import PKCS1_OAEP
 from Crypto.PublicKey import RSA
+from scapy.layers.l2 import Ether, ARP
+from scapy.sendrecv import srp
 
 from core.config import Config
 from core.tools.encryption import CryptoTools
@@ -53,31 +53,53 @@ class Scan(Config):
             LAN模式：逐一扫描局域网并自动搜寻具有正确密钥的计算机
             """
 
-            # 获取局域网所在的网段
-            result = os.popen('ipconfig /all').read()
-            pattern = re.compile(r'IPv4.*?(\d+\.\d+\.\d+)\.\d+')
-            match = pattern.search(result)
-            if not match:
-                print('无法获取局域网所在的网段')
-                return []
-            net = match.group(1)
+            # # 获取局域网所在的网段
+            # result = os.popen('ipconfig /all').read()
+            # pattern = re.compile(r'IPv4.*?(\d+\.\d+\.\d+)\.\d+')
+            # match = pattern.search(result)
+            # if not match:
+            #     print('无法获取局域网所在的网段')
+            #     return []
+            # net = match.group(1)
+            #
+            # # 清空当前所有的 arp 映射表
+            # os.popen('arp -d *')
+            #
+            # # 循环遍历当前网段所有可能的 IP 与其 ping 一遍建立 arp 映射表
+            # for i in range(1, 256):
+            #     os.popen(f'ping {net}.{i} -n 1 -w 1')
+            #
+            # # 读取缓存的映射表获取所有与本机连接的设备的 MAC 地址
+            # result = os.popen('arp -a').read()
+            # pattern = re.compile(
+            #     r'(\d+\.\d+\.\d+\.\d+)\s+([\da-f]{2}-[\da-f]{2}-[\da-f]{2}-[\da-f]{2}-[\da-f]{2}-[\da-f]{2})')
+            # ips = pattern.findall(result)
+            # for ip, mac in ips:
+            #     ip_list.append(ip)
+            # logging.debug('LAN: Search for IP completed')
+            # return ip_list
 
-            # 清空当前所有的 arp 映射表
-            os.popen('arp -d *')
+            def ip_mac_scanner_sim(hosts: str):
+                """
+                网段IP&Mac ARP协议扫描器
+                :param hosts: 网段 e.g.‘*.*.*.*/*’
+                :return: dict { IP: MAC, .... }
+                """
+                packet = Ether(dst="ff:ff:ff:ff:ff:ff") / ARP(pdst=hosts)
+                _Answer, _unAnswer = srp(packet, timeout=2, verbose=0)
 
-            # 循环遍历当前网段所有可能的 IP 与其 ping 一遍建立 arp 映射表
-            for i in range(1, 256):
-                os.popen(f'ping {net}.{i} -n 1 -w 1')
+                result = {}
 
-            # 读取缓存的映射表获取所有与本机连接的设备的 MAC 地址
-            result = os.popen('arp -a').read()
-            pattern = re.compile(
-                r'(\d+\.\d+\.\d+\.\d+)\s+([\da-f]{2}-[\da-f]{2}-[\da-f]{2}-[\da-f]{2}-[\da-f]{2}-[\da-f]{2})')
-            ips = pattern.findall(result)
-            for ip, mac in ips:
-                ip_list.append(ip)
+                for Send, Receive in _Answer:
+                    result[Receive[ARP].psrc] = Receive[ARP].hwsrc
+                return result
+
+            ls = []
+            for ip in ip_mac_scanner_sim('192.168.1.1/24').keys():
+                ls.append(ip)
             logging.debug('LAN: Search for IP completed')
-            return ip_list
+            return ls
+
 
         elif scan['type'].lower() == 'white':
             """
@@ -118,7 +140,6 @@ class Scan(Config):
             test.settimeout(2)
             # 连接设备的指定端口
             if test.connect_ex((ip, self.command_port)) != 0:
-                test.shutdown(socket.SHUT_RDWR)
                 test.close()
                 continue
             # 1.本地发送验证指令:发送指令开始进行验证

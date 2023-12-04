@@ -36,17 +36,25 @@ class readConfig:
         :return:
         """
         config: dict = {}
-        path = os.path.join(os.getcwd(), 'config', 'config.json')
+        path = os.path.join(os.getcwd(), 'data\\config\\config.json')
         with open(path, mode='r', encoding='utf-8') as f:
-            json_file = json.loads(f.read())
+            try:
+                json_file = json.load(f)
+            except json.JSONDecodeError as e:
+                logging.error(
+                    f'JSON parsing error at position {e.doc}, the incorrect content is {e.doc[e.pos:e.pos + 10]}')
+            except Exception as e:
+                logging.error(f'JSON parsing error: {e}')
 
             # log-loglevel
             log = json_file.get('log')
             if not log:
-                config['log'] = {}
-                config['log']['loglevel'] = None
-            elif log and not log.get('loglevel'):
-                config['log']['loglevel'] = None
+                print('eeee')
+                config['log'] = {'loglevel': 'info'}
+            elif not log.get('loglevel'):
+                config['log'] = {'loglevel': 'info'}
+            else:
+                config['log'] = log
 
             if log.get('loglevel').lower() in ['debug', 'info', 'warning', 'error', 'none']:
                 config['log']['loglevel'] = json_file['log']['loglevel']
@@ -108,8 +116,8 @@ class readConfig:
                 logging.error('The password length is greater than 48! Should be between 4 and 48 characters!')
                 sys.exit(1)
 
-            if server.get['setting']:
-                config['server']['setting'] = server.get['setting']
+            if server.get('setting'):
+                config['server']['setting'] = server.get('setting')
             else:
                 config['server']['setting'] = {}
 
@@ -298,7 +306,7 @@ class InitCache:
         :return:
         """
 
-        with open(self.path, mode='r+') as f:
+        with open(self.path, mode='w+', encoding='utf-8') as f:
             try:
                 json.dump(self.data, f, indent=4)
             except Exception as e:
@@ -311,8 +319,14 @@ class InitCache:
         加载缓存文件
         :return:
         """
-        with open(self.path, mode='r+') as f:
-            data: dict = json.load(f)
+        with open(self.path, mode='r+', encoding='utf-8') as f:
+            try:
+                data: dict = json.load(f)
+            except json.JSONDecodeError as e:
+                logging.error(
+                    f'JSON parsing error at position {e.doc}, the incorrect content is {e.doc[e.pos:e.pos + 10]}')
+            except Exception as e:
+                logging.error(f'JSON parsing error: {e}')
 
         cache_obj = {
             'path': self.path
@@ -339,7 +353,7 @@ class InitCache:
                 'read': [],
                 'write': []
             }
-            with open(self.path, mode='w') as f:
+            with open(self.path, mode='w', encoding='utf-8') as f:
                 json.dump(self.data, f, indent=4)
         return cache_obj
 

@@ -5,37 +5,19 @@ import sys
 import threading
 
 from core.client.command import CommandSend
-from core.server.main import createSocket, socket_manage
-from core.tools.tools import relToAbs
+from core.config import readConfig
+from core.server.main import Server, socket_manage
+from core.tools import relToAbs
 
 
-class Control:
+class Control(readConfig):
     """
     本地客户端与远程服务端操作接口
     """
 
     def __init__(self):
         super().__init__()
-
-    # @staticmethod
-    # def _idToIp(device_id: str) -> str:
-    #     """
-    #     :param device_id:
-    #     :return device_ip:
-    #     """
-    #     return socket_manage[device_id].get('ip')
-    #
-    # @staticmethod
-    # def _get_command_send(device_ip: str):
-    #     """
-    #     根据ip获取客户端指令控制
-    #     :param device_ip: IP address.
-    #     :return:
-    #     """
-    #     for dev in socket_manage:
-    #         if dev.get(device_ip) == device_ip:
-    #             return dev.get('control')
-    #     return None
+        self.config = self.readJson()
 
     @staticmethod
     def getAllDevice() -> list:
@@ -244,18 +226,36 @@ class Plugin:
         raise ValueError(f'{path}, method: {method}未知的插件导入方式！')
 
 
-class Init(Control, Plugin):
-    """EXSync初始化"""
+class RunServer(Control, Plugin):
+    """
+    EXSync初始化
+    """
 
     def __init__(self):
         # 初始化服务端/客户端
         super().__init__()
-        server = createSocket()
-        socket_ls = [server.createDataSocket, server.createCommandSocket]
-        for thread in socket_ls:
-            thread = threading.Thread(target=thread)
+        logging.debug('Initializing core control service...')
+        server = Server()
+
+        """
+        持续合并指令与数据传输套接字
+        """
+        funcs: list = [server.mergeSocket, server.updateIplist]
+        for func in funcs:
+            thread = threading.Thread(target=func)
+            thread.start()
+
+        """
+        创建Command / Data Socket
+        """
+        socket_types: dict = {
+            server.command_port: server.verifyCommandSocket,
+            server.data_port: server.verifyDataSocket
+        }
+        for port, verify_func in socket_types.items():
+            thread = threading.Thread(target=server.createSocket, args=(port, verify_func))
             thread.start()
 
 
 if __name__ == '__main__':
-    pass
+    RunServer()

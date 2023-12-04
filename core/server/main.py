@@ -5,7 +5,7 @@ import time
 
 from core.client.main import Client
 from core.server.command import RecvCommand
-from core.server.proxy import Proxy
+from core.proxy import Proxy
 from core.server.scan import Scan
 from core.tools import Status, PermissionEnum, HashTools
 
@@ -59,7 +59,7 @@ class Manage:
         return False
 
 
-class createSocket(Scan, Manage, Proxy):
+class Server(Scan, Manage, Proxy):
     """
     创建命令收发和数据收发套接字
 
@@ -72,7 +72,8 @@ class createSocket(Scan, Manage, Proxy):
 
     def __init__(self):
         super().__init__()
-        # Socks5代理设置
+        logging.debug('Starting core services...')
+
         """
         Socket套接字连接成功实例存储
         address : {
@@ -82,22 +83,13 @@ class createSocket(Scan, Manage, Proxy):
         """
         self.merge_socket: dict = {}
 
+        """
+        获取当前代理状态并判断是否启用Socks5代理
+        """
         if self.config['server']['proxy'].get('enabled'):
             socket.socket = self.setProxyServer(self.config)
-        # 持续合并指令与数据传输套接字
-        funcs = [self.__mergeSocket, self.__updateIplist]
-        for func in funcs:
-            thread = threading.Thread(target=func)
-            thread.start()
 
-        # 创建Command / Data Socket
-        socket_types = {
-            self.command_port: self.verifyCommandSocket,
-            self.data_port: self.verifyDataSocket
-        }
-        for port, verify_func in socket_types.items():
-            thread = threading.Thread(target=self.createSocket, args=(port, verify_func))
-            thread.start()
+
 
     def createSocket(self, port: int, verifyFunc):
         data_socket = socket.socket(self.socket_family, socket.SOCK_STREAM)
@@ -118,6 +110,7 @@ class createSocket(Scan, Manage, Proxy):
         :param address: 客户端地址
         :return:
         """
+        logging.debug(f'Starting to verify data socket connection from {address}...')
         if address[0] in self.verify_manage and self.verify_manage[address[0]]['AES_KEY']:
             data_socket.permission = PermissionEnum.USER
         else:
@@ -141,13 +134,13 @@ class createSocket(Scan, Manage, Proxy):
         :param address: 目标客户端IP地址
         :return:
         """
+        logging.debug(f'Starting to verify command socket connection from {address}...')
         if address[0] in self.verify_manage and self.verify_manage[address[0]]['AES_KEY']:
-            # 被动验证
+            # 开始主动验证
             command_socket.permission = PermissionEnum.USER
         else:
-            # 开始主动验证
+            # 被动验证
             command_socket.permission = PermissionEnum.GUEST
-        command_socket.send_command('')
         if address[0] in self.verified_devices:
             self.merge_socket[address[0]]['command'] = command_socket
         else:
@@ -156,7 +149,7 @@ class createSocket(Scan, Manage, Proxy):
                 "data": None
             }
 
-    def __mergeSocket(self):
+    def mergeSocket(self):
         """
         当远程客户端同时连接上data_socket和command_socket后开始指令与数据的收发
         :return:
@@ -220,7 +213,7 @@ class createSocket(Scan, Manage, Proxy):
 
             return socket_manage[client_mark]
 
-    def __updateIplist(self):
+    def updateIplist(self):
         """
         持续更新设备列表, 并主动连接已验证的设备
         :return:

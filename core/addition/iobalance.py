@@ -1,4 +1,5 @@
 import json
+import logging
 import os
 import threading
 import time
@@ -79,22 +80,26 @@ class AutoDisk(InitCache):
 
                 read_list: dict = self.cache['disk_activity_record'].get('read')
                 write_list: dict = self.cache['disk_activity_record'].get('write')
-                if key == 'r':  # 如果测试的为读取速度
-                    if len(read_list) >= 50:
-                        with open(self.cache.get('path'), mode='r+') as f:
-                            data = json.load(f)
-                            data['disk_activity_record']['read'].pop(0)
-                            data['disk_activity_record']['read'].append(value)
-                            json.dump(data, f, indent=4)
-                    else:
 
-                else:
-                    if len(write_list) >= 50:
-                        with open(self.cache.get('path'), mode='r+') as f:
-                            data = json.load(f)
-                            data['disk_activity_record']['write'].pop(0)
-                            data['disk_activity_record']['write'].append(value)
-                            json.dump(data, f, indent=4)
+                # 如果为read记录，则写入到read列表；write亦然
+                disk_activity_record_type = 'read' if key == 'r' else 'write'
+                with open(self.cache.get('path'), mode='r+') as f:
+                    try:
+                        data = json.load(f)
+                    except json.JSONDecodeError as e:
+                        logging.error(
+                            f'JSON parsing error at position {e.doc}, the incorrect content is {e.doc[e.pos:e.pos + 10]}')
+                    except Exception as e:
+                        logging.error(f'JSON parsing error: {e}')
+                    if disk_activity_record_type == 'read':
+                        if len(read_list) >= 50:
+                            data['disk_activity_record'][disk_activity_record_type].pop(0)
+                    else:
+                        if len(write_list) >= 50:
+                            data['disk_activity_record'][disk_activity_record_type].pop(0)
+                    data['disk_activity_record'][disk_activity_record_type].append(value)
+                    json.dump(data, f, indent=4)
+
 
             time.sleep(0.1)
 
