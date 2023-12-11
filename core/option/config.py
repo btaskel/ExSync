@@ -319,6 +319,8 @@ class InitCache:
         加载缓存文件
         :return:
         """
+        if not os.path.exists(self.path):
+            self.createCache()
         with open(self.path, mode='r+', encoding='utf-8') as f:
             try:
                 data: dict = json.load(f)
@@ -375,6 +377,8 @@ class Config(readConfig):
 
         # 设置ip类型(ipv4 / ipv6)
         self.socket_family: int = socket.AF_INET if self.ip_type == 'ipv4' else socket.AF_INET6
+
+        self.cache_path: str = os.path.join(os.getcwd(), 'data\\config\\cache.json')
 
 
 if __name__ == '__main__':

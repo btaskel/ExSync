@@ -4,8 +4,9 @@ import os
 import sys
 import threading
 
-from core.client.command import CommandSend
 from core.config import readConfig
+
+from core.client.command import CommandSend
 from core.server.main import Server, socket_manage
 from core.tools import relToAbs
 

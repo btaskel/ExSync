@@ -2,7 +2,7 @@ import argparse
 import logging
 import sys
 
-from core.config import readConfig
+from .config import readConfig
 
 
 class Commands:

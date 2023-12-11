@@ -47,5 +47,5 @@ class PermissionEnum(enum.Enum):
 
 
 if __name__ == '__main__':
-   if '回复错误' == Status.REPLY_ERROR.value:
-       print('e')
+    if '回复错误' == Status.REPLY_ERROR.value:
+        print('e')

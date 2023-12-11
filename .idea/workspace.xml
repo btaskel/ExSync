@@ -4,29 +4,33 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="cf4f83ad-3c2a-4894-b3a1-82f233ce359d" name="变更" comment="1.修改项目结构 2.优化解码/发送性能">
-      <change afterPath="$PROJECT_DIR$/core/proxy.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/data/webui/__init__.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/data/webui/blueprints/__init__.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/data/webui/commands.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/data/webui/exts.py" afterDir="false" />
+    <list default="true" id="cf4f83ad-3c2a-4894-b3a1-82f233ce359d" name="变更" comment="1.调整目录结构, 2.连接flask (调试中)">
+      <change afterPath="$PROJECT_DIR$/core/option/__init__.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/app.py" beforeDir="false" afterPath="$PROJECT_DIR$/app.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/core/__init__.py" beforeDir="false" afterPath="$PROJECT_DIR$/core/__init__.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/core/addition/__init__.py" beforeDir="false" afterPath="$PROJECT_DIR$/core/addition/__init__.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/core/addition/iobalance.py" beforeDir="false" afterPath="$PROJECT_DIR$/core/addition/iobalance.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/core/api/__init__.py" beforeDir="false" afterPath="$PROJECT_DIR$/core/api/__init__.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/core/api/gitcode.py" beforeDir="false" afterPath="$PROJECT_DIR$/core/api/gitcode.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/core/api/github.py" beforeDir="false" afterPath="$PROJECT_DIR$/core/api/github.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/core/client/__init__.py" beforeDir="false" afterPath="$PROJECT_DIR$/core/client/__init__.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/core/client/command.py" beforeDir="false" afterPath="$PROJECT_DIR$/core/client/command.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/core/client/main.py" beforeDir="false" afterPath="$PROJECT_DIR$/core/client/main.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/core/config.py" beforeDir="false" afterPath="$PROJECT_DIR$/core/config.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/core/config.py" beforeDir="false" afterPath="$PROJECT_DIR$/core/option/config.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/core/control.py" beforeDir="false" afterPath="$PROJECT_DIR$/core/control.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/core/server/__init__.py" beforeDir="false" afterPath="$PROJECT_DIR$/core/server/__init__.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/core/server/command.py" beforeDir="false" afterPath="$PROJECT_DIR$/core/server/command.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/core/server/main.py" beforeDir="false" afterPath="$PROJECT_DIR$/core/server/main.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/core/server/proxy.py" beforeDir="false" />
       <change beforePath="$PROJECT_DIR$/core/server/scan.py" beforeDir="false" afterPath="$PROJECT_DIR$/core/server/scan.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/core/shell.py" beforeDir="false" afterPath="$PROJECT_DIR$/core/shell.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/core/shell.py" beforeDir="false" afterPath="$PROJECT_DIR$/core/option/shell.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/core/sync.py" beforeDir="false" afterPath="$PROJECT_DIR$/core/sync.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/data/blueprints/__init__.py" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/data/blueprints/home.py" beforeDir="false" afterPath="$PROJECT_DIR$/data/webui/blueprints/home.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/data/blueprints/test.py" beforeDir="false" afterPath="$PROJECT_DIR$/data/webui/blueprints/test.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/data/config/config.json" beforeDir="false" afterPath="$PROJECT_DIR$/data/config/config.json" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/core/tools/__init__.py" beforeDir="false" afterPath="$PROJECT_DIR$/core/tools/__init__.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/core/tools/downloader.py" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/core/tools/encryption.py" beforeDir="false" afterPath="$PROJECT_DIR$/core/tools/encryption.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/core/tools/status.py" beforeDir="false" afterPath="$PROJECT_DIR$/core/tools/status.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/core/tools/timedict.py" beforeDir="false" afterPath="$PROJECT_DIR$/core/tools/timedict.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/core/tools/tools.py" beforeDir="false" afterPath="$PROJECT_DIR$/core/tools/socket.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/core/updater.py" beforeDir="false" afterPath="$PROJECT_DIR$/core/updater.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -84,35 +88,35 @@
     <option name="showLibraryContents" value="true" />
     <option name="showMembers" value="true" />
   </component>
-  <component name="PropertiesComponent"><![CDATA[{
-  "keyToString": {
-    "ASKED_SHARE_PROJECT_CONFIGURATION_FILES": "true",
-    "DefaultHtmlFileTemplate": "HTML File",
-    "RunOnceActivity.OpenProjectViewOnStart": "true",
-    "RunOnceActivity.ShowReadmeOnStart": "true",
-    "WebServerToolWindowFactoryState": "false",
-    "full.screen.before.presentation.mode": "false",
-    "javascript.nodejs.core.library.configured.version": "20.6.1",
-    "javascript.nodejs.core.library.typings.version": "20.6.0",
-    "last_opened_file_path": "H:/Python project/ExSync/server/core",
-    "node.js.detected.package.eslint": "true",
-    "node.js.detected.package.standard": "true",
-    "node.js.detected.package.stylelint": "true",
-    "node.js.selected.package.eslint": "(autodetect)",
-    "node.js.selected.package.standard": "",
-    "node.js.selected.package.stylelint": "",
-    "nodejs_interpreter_path": "node",
-    "nodejs_package_manager_path": "npm",
-    "run.code.analysis.last.selected.profile": "pProject Default",
-    "settings.editor.selected.configurable": "preferences.lookFeel",
-    "ts.external.directory.path": "D:\\PyCharm 2022.1.3\\plugins\\JavaScriptLanguage\\jsLanguageServicesImpl\\external"
+  <component name="PropertiesComponent">{
+  &quot;keyToString&quot;: {
+    &quot;ASKED_SHARE_PROJECT_CONFIGURATION_FILES&quot;: &quot;true&quot;,
+    &quot;DefaultHtmlFileTemplate&quot;: &quot;HTML File&quot;,
+    &quot;RunOnceActivity.OpenProjectViewOnStart&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.ShowReadmeOnStart&quot;: &quot;true&quot;,
+    &quot;WebServerToolWindowFactoryState&quot;: &quot;false&quot;,
+    &quot;full.screen.before.presentation.mode&quot;: &quot;false&quot;,
+    &quot;javascript.nodejs.core.library.configured.version&quot;: &quot;20.6.1&quot;,
+    &quot;javascript.nodejs.core.library.typings.version&quot;: &quot;20.6.0&quot;,
+    &quot;last_opened_file_path&quot;: &quot;H:/Python project/ExSync/server/core&quot;,
+    &quot;node.js.detected.package.eslint&quot;: &quot;true&quot;,
+    &quot;node.js.detected.package.standard&quot;: &quot;true&quot;,
+    &quot;node.js.detected.package.stylelint&quot;: &quot;true&quot;,
+    &quot;node.js.selected.package.eslint&quot;: &quot;(autodetect)&quot;,
+    &quot;node.js.selected.package.standard&quot;: &quot;&quot;,
+    &quot;node.js.selected.package.stylelint&quot;: &quot;&quot;,
+    &quot;nodejs_interpreter_path&quot;: &quot;node&quot;,
+    &quot;nodejs_package_manager_path&quot;: &quot;npm&quot;,
+    &quot;run.code.analysis.last.selected.profile&quot;: &quot;pProject Default&quot;,
+    &quot;settings.editor.selected.configurable&quot;: &quot;preferences.lookFeel&quot;,
+    &quot;ts.external.directory.path&quot;: &quot;D:\\PyCharm 2022.1.3\\plugins\\JavaScriptLanguage\\jsLanguageServicesImpl\\external&quot;
   },
-  "keyToStringList": {
-    "DatabaseDriversLRU": [
-      "mysql"
+  &quot;keyToStringList&quot;: {
+    &quot;DatabaseDriversLRU&quot;: [
+      &quot;mysql&quot;
     ]
   }
-}]]></component>
+}</component>
   <component name="PyConsoleOptionsProvider">
     <option name="myPythonConsoleState">
       <console-settings module-name="Sync" is-module-sdk="true">
@@ -129,14 +133,58 @@
       <recent name="H:\Python project\ExSync\server\config" />
     </key>
     <key name="MoveFile.RECENT_KEYS">
+      <recent name="H:\Python project\ExSync\core\option" />
       <recent name="H:\Python project\ExSync\data\webui" />
       <recent name="H:\Python project\ExSync\data" />
       <recent name="H:\Python project\ExSync\core\tools" />
       <recent name="H:\Python project\ExSync\server\addition" />
-      <recent name="H:\Python project\ExSync\test\study\ajax get" />
     </key>
   </component>
-  <component name="RunManager" selected="Python.demo">
+  <component name="RunManager" selected="Python.a">
+    <configuration name="a" type="PythonConfigurationType" factoryName="Python" temporary="true" nameIsGenerated="true">
+      <module name="Sync" />
+      <option name="INTERPRETER_OPTIONS" value="" />
+      <option name="PARENT_ENVS" value="true" />
+      <envs>
+        <env name="PYTHONUNBUFFERED" value="1" />
+      </envs>
+      <option name="SDK_HOME" value="" />
+      <option name="WORKING_DIRECTORY" value="$PROJECT_DIR$/test" />
+      <option name="IS_MODULE_SDK" value="true" />
+      <option name="ADD_CONTENT_ROOTS" value="true" />
+      <option name="ADD_SOURCE_ROOTS" value="true" />
+      <EXTENSION ID="PythonCoverageRunConfigurationExtension" runner="coverage.py" />
+      <option name="SCRIPT_NAME" value="$PROJECT_DIR$/test/a.py" />
+      <option name="PARAMETERS" value="" />
+      <option name="SHOW_COMMAND_LINE" value="false" />
+      <option name="EMULATE_TERMINAL" value="false" />
+      <option name="MODULE_MODE" value="false" />
+      <option name="REDIRECT_INPUT" value="false" />
+      <option name="INPUT_FILE" value="" />
+      <method v="2" />
+    </configuration>
+    <configuration name="b" type="PythonConfigurationType" factoryName="Python" temporary="true" nameIsGenerated="true">
+      <module name="Sync" />
+      <option name="INTERPRETER_OPTIONS" value="" />
+      <option name="PARENT_ENVS" value="true" />
+      <envs>
+        <env name="PYTHONUNBUFFERED" value="1" />
+      </envs>
+      <option name="SDK_HOME" value="" />
+      <option name="WORKING_DIRECTORY" value="$PROJECT_DIR$/test" />
+      <option name="IS_MODULE_SDK" value="true" />
+      <option name="ADD_CONTENT_ROOTS" value="true" />
+      <option name="ADD_SOURCE_ROOTS" value="true" />
+      <EXTENSION ID="PythonCoverageRunConfigurationExtension" runner="coverage.py" />
+      <option name="SCRIPT_NAME" value="$PROJECT_DIR$/test/b.py" />
+      <option name="PARAMETERS" value="" />
+      <option name="SHOW_COMMAND_LINE" value="false" />
+      <option name="EMULATE_TERMINAL" value="false" />
+      <option name="MODULE_MODE" value="false" />
+      <option name="REDIRECT_INPUT" value="false" />
+      <option name="INPUT_FILE" value="" />
+      <method v="2" />
+    </configuration>
     <configuration name="demo" type="PythonConfigurationType" factoryName="Python" temporary="true" nameIsGenerated="true">
       <module name="Sync" />
       <option name="INTERPRETER_OPTIONS" value="" />
@@ -159,7 +207,7 @@
       <option name="INPUT_FILE" value="" />
       <method v="2" />
     </configuration>
-    <configuration name="demo1" type="PythonConfigurationType" factoryName="Python" temporary="true" nameIsGenerated="true">
+    <configuration name="github" type="PythonConfigurationType" factoryName="Python" temporary="true" nameIsGenerated="true">
       <module name="Sync" />
       <option name="INTERPRETER_OPTIONS" value="" />
       <option name="PARENT_ENVS" value="true" />
@@ -167,12 +215,34 @@
         <env name="PYTHONUNBUFFERED" value="1" />
       </envs>
       <option name="SDK_HOME" value="" />
-      <option name="WORKING_DIRECTORY" value="$PROJECT_DIR$/test" />
+      <option name="WORKING_DIRECTORY" value="$PROJECT_DIR$/core/api" />
       <option name="IS_MODULE_SDK" value="true" />
       <option name="ADD_CONTENT_ROOTS" value="true" />
       <option name="ADD_SOURCE_ROOTS" value="true" />
       <EXTENSION ID="PythonCoverageRunConfigurationExtension" runner="coverage.py" />
-      <option name="SCRIPT_NAME" value="$PROJECT_DIR$/test/demo1.py" />
+      <option name="SCRIPT_NAME" value="$PROJECT_DIR$/core/api/github.py" />
+      <option name="PARAMETERS" value="" />
+      <option name="SHOW_COMMAND_LINE" value="false" />
+      <option name="EMULATE_TERMINAL" value="false" />
+      <option name="MODULE_MODE" value="false" />
+      <option name="REDIRECT_INPUT" value="false" />
+      <option name="INPUT_FILE" value="" />
+      <method v="2" />
+    </configuration>
+    <configuration name="updater" type="PythonConfigurationType" factoryName="Python" temporary="true" nameIsGenerated="true">
+      <module name="Sync" />
+      <option name="INTERPRETER_OPTIONS" value="" />
+      <option name="PARENT_ENVS" value="true" />
+      <envs>
+        <env name="PYTHONUNBUFFERED" value="1" />
+      </envs>
+      <option name="SDK_HOME" value="" />
+      <option name="WORKING_DIRECTORY" value="$PROJECT_DIR$/core" />
+      <option name="IS_MODULE_SDK" value="true" />
+      <option name="ADD_CONTENT_ROOTS" value="true" />
+      <option name="ADD_SOURCE_ROOTS" value="true" />
+      <EXTENSION ID="PythonCoverageRunConfigurationExtension" runner="coverage.py" />
+      <option name="SCRIPT_NAME" value="$PROJECT_DIR$/core/updater.py" />
       <option name="PARAMETERS" value="" />
       <option name="SHOW_COMMAND_LINE" value="false" />
       <option name="EMULATE_TERMINAL" value="false" />
@@ -198,13 +268,19 @@
     </configuration>
     <list>
       <item itemvalue="Flask 服务器.EXSync" />
+      <item itemvalue="Python.b" />
+      <item itemvalue="Python.a" />
+      <item itemvalue="Python.github" />
+      <item itemvalue="Python.updater" />
       <item itemvalue="Python.demo" />
-      <item itemvalue="Python.demo1" />
     </list>
     <recent_temporary>
       <list>
+        <item itemvalue="Python.a" />
+        <item itemvalue="Python.b" />
+        <item itemvalue="Python.updater" />
         <item itemvalue="Python.demo" />
-        <item itemvalue="Python.demo1" />
+        <item itemvalue="Python.github" />
       </list>
     </recent_temporary>
   </component>
@@ -401,14 +477,17 @@
       <workItem from="1701571213374" duration="2549000" />
       <workItem from="1701591715076" duration="4234000" />
       <workItem from="1701649497267" duration="10351000" />
-      <workItem from="1701684475624" duration="3844000" />
-    </task>
-    <task id="LOCAL-00006" summary="fix bugs.">
-      <created>1694007545269</created>
-      <option name="number" value="00006" />
-      <option name="presentableId" value="LOCAL-00006" />
-      <option name="project" value="LOCAL" />
-      <updated>1694007545269</updated>
+      <workItem from="1701684475624" duration="4792000" />
+      <workItem from="1701694880680" duration="2173000" />
+      <workItem from="1701764263404" duration="3068000" />
+      <workItem from="1701777796792" duration="3546000" />
+      <workItem from="1701822304356" duration="10477000" />
+      <workItem from="1702045817987" duration="1451000" />
+      <workItem from="1702093326641" duration="14233000" />
+      <workItem from="1702184054465" duration="3189000" />
+      <workItem from="1702208114135" duration="3771000" />
+      <workItem from="1702270270395" duration="7538000" />
+      <workItem from="1702286192445" duration="5092000" />
     </task>
     <task id="LOCAL-00007" summary="The client getIndex function is complete.">
       <created>1694158527859</created>
@@ -746,7 +825,14 @@
       <option name="project" value="LOCAL" />
       <updated>1701523453683</updated>
     </task>
-    <option name="localTasksCounter" value="55" />
+    <task id="LOCAL-00055" summary="1.调整目录结构, 2.连接flask (调试中)">
+      <created>1701688416140</created>
+      <option name="number" value="00055" />
+      <option name="presentableId" value="LOCAL-00055" />
+      <option name="project" value="LOCAL" />
+      <updated>1701688416140</updated>
+    </task>
+    <option name="localTasksCounter" value="56" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -806,16 +892,17 @@
     <MESSAGE value="Client+Core Completed" />
     <MESSAGE value="update" />
     <MESSAGE value="1.修改项目结构 2.优化解码/发送性能" />
-    <option name="LAST_COMMIT_MESSAGE" value="1.修改项目结构 2.优化解码/发送性能" />
+    <MESSAGE value="1.调整目录结构, 2.连接flask (调试中)" />
+    <option name="LAST_COMMIT_MESSAGE" value="1.调整目录结构, 2.连接flask (调试中)" />
   </component>
   <component name="com.intellij.coverage.CoverageDataManagerImpl">
     <SUITE FILE_PATH="coverage/Sync$sum_of_squares_pyx.coverage" NAME="sum_of_squares.pyx 覆盖结果" MODIFIED="1691302028250" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$" />
     <SUITE FILE_PATH="coverage/ExSync$Flask__test_demo1_py_.coverage" NAME="Flask (test/demo1.py) 覆盖结果" MODIFIED="1701521635364" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="" />
     <SUITE FILE_PATH="coverage/ExSync$iobalance.coverage" NAME="iobalance 覆盖结果" MODIFIED="1695604953166" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/server/addition" />
-    <SUITE FILE_PATH="coverage/ExSync$a.coverage" NAME="a 覆盖结果" MODIFIED="1693654648779" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/test" />
     <SUITE FILE_PATH="coverage/ExSync$github__1_.coverage" NAME="github (1) 覆盖结果" MODIFIED="1699521040654" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/core/api" />
     <SUITE FILE_PATH="coverage/ExSync$control.coverage" NAME="control 覆盖结果" MODIFIED="1701570064370" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/core" />
-    <SUITE FILE_PATH="coverage/ExSync$demo.coverage" NAME="demo 覆盖结果" MODIFIED="1701688292377" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/test" />
+    <SUITE FILE_PATH="coverage/ExSync$a.coverage" NAME="a 覆盖结果" MODIFIED="1702280564954" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/test" />
+    <SUITE FILE_PATH="coverage/ExSync$demo.coverage" NAME="demo 覆盖结果" MODIFIED="1701778105660" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/test" />
     <SUITE FILE_PATH="coverage/ExSync$run.coverage" NAME="run 覆盖结果" MODIFIED="1694002892630" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/server" />
     <SUITE FILE_PATH="coverage/Sync$sync.coverage" NAME="sync 覆盖结果" MODIFIED="1692332341815" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/server" />
     <SUITE FILE_PATH="coverage/Sync$Sync.coverage" NAME="Sync 覆盖结果" MODIFIED="1692340145642" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$" />
@@ -828,12 +915,12 @@
     <SUITE FILE_PATH="coverage/ExSync$encryption.coverage" NAME="encryption 覆盖结果" MODIFIED="1699334516512" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/server/tools" />
     <SUITE FILE_PATH="coverage/ExSync$demo1.coverage" NAME="demo1 覆盖结果" MODIFIED="1701688041659" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/test" />
     <SUITE FILE_PATH="coverage/Sync$test.coverage" NAME="test 覆盖结果" MODIFIED="1692406922421" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$" />
-    <SUITE FILE_PATH="coverage/ExSync$b.coverage" NAME="b 覆盖结果" MODIFIED="1700572177362" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/test" />
+    <SUITE FILE_PATH="coverage/ExSync$b.coverage" NAME="b 覆盖结果" MODIFIED="1702096638405" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/test" />
     <SUITE FILE_PATH="coverage/Sync$test3.coverage" NAME="test3 覆盖结果" MODIFIED="1691976250069" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$" />
     <SUITE FILE_PATH="coverage/ExSync$tools.coverage" NAME="tools 覆盖结果" MODIFIED="1701252313947" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/core/tools" />
-    <SUITE FILE_PATH="coverage/ExSync$EXSync.coverage" NAME="EXSync 覆盖结果" MODIFIED="1701658057117" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$" />
+    <SUITE FILE_PATH="coverage/ExSync$EXSync.coverage" NAME="EXSync 覆盖结果" MODIFIED="1701697412033" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$" />
     <SUITE FILE_PATH="coverage/Sync$core.coverage" NAME="core 覆盖结果" MODIFIED="1691389885622" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/server" />
-    <SUITE FILE_PATH="coverage/ExSync$github.coverage" NAME="github 覆盖结果" MODIFIED="1699444349464" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/server/api" />
+    <SUITE FILE_PATH="coverage/ExSync$github.coverage" NAME="github 覆盖结果" MODIFIED="1701769107570" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/core/api" />
     <SUITE FILE_PATH="coverage/Sync$Flask__app_py_.coverage" NAME="Flask (app.py) 覆盖结果" MODIFIED="1692334215208" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="" />
     <SUITE FILE_PATH="coverage/ExSync$2.coverage" NAME="2 覆盖结果" MODIFIED="1693485648620" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/test" />
     <SUITE FILE_PATH="coverage/ExSync$Flask__app_py_.coverage" NAME="Flask (app.py:setLogLevel -log debug) 覆盖结果" MODIFIED="1701652262283" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$" />
@@ -841,6 +928,6 @@
     <SUITE FILE_PATH="coverage/Sync$client.coverage" NAME="client 覆盖结果" MODIFIED="1691836058691" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/test" />
     <SUITE FILE_PATH="coverage/ExSync$scan.coverage" NAME="scan 覆盖结果" MODIFIED="1694760249295" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/server" />
     <SUITE FILE_PATH="coverage/ExSync$encryption__1_.coverage" NAME="encryption (1) 覆盖结果" MODIFIED="1700542985301" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/core/tools" />
-    <SUITE FILE_PATH="coverage/ExSync$updater.coverage" NAME="updater 覆盖结果" MODIFIED="1695721014649" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/server" />
+    <SUITE FILE_PATH="coverage/ExSync$updater.coverage" NAME="updater 覆盖结果" MODIFIED="1701823291119" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/core" />
   </component>
 </project>

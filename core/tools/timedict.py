@@ -1,4 +1,3 @@
-import logging
 import random
 import string
 import threading
@@ -19,11 +18,29 @@ class TimeDict:
         self.lock = threading.Lock()
         self.condition = threading.Condition(self.lock)
 
+        """
+        TimeDict存储字典
+        """
         self.__dict: dict = {}
+
+        """
+        最大存活时间
+        """
         self.release_time: int = int(release)
+
+        """
+        关闭标志
+        """
+        self.close_flag: bool = False
+
+        """
+        间隔时间：周期性扫描删除过期键值对
+        """
         self.scan: float = float(scan)
 
-        self.close_flag: bool = False
+        """
+        启动周期扫描线程
+        """
         thread = threading.Thread(target=self.__release)
         thread.start()
 
@@ -35,10 +52,12 @@ class TimeDict:
         :return:
         """
         with self.lock:
+            mark_ls: list = self.__dict[key]
             if key in self.__dict:
-                # raise KeyError(f'timedict: 增加mark {key} 失败！')
-                self.__dict[key].append(value)
-                self.__dict[key][0] = time.time()
+                # 每一队列最多(1024 * 65535)
+                if len(mark_ls) < 65535:
+                    mark_ls.append(value)
+                    mark_ls[0] = time.time()
             else:
                 self.__dict[key] = [time.time()]
             self.condition.notify_all()

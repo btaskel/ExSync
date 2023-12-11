@@ -4,8 +4,8 @@ import threading
 import time
 
 from core.client.main import Client
-from core.server.command import RecvCommand
 from core.proxy import Proxy
+from core.server.command import RecvCommand
 from core.server.scan import Scan
 from core.tools import Status, PermissionEnum, HashTools
 
@@ -89,7 +89,8 @@ class Server(Scan, Manage, Proxy):
         if self.config['server']['proxy'].get('enabled'):
             socket.socket = self.setProxyServer(self.config)
 
-
+        logging.info(
+            f'EXSync runs on {self.local_ip}:{self.data_port}(data) and {self.local_ip}:{self.data_port + 1}(command)')
 
     def createSocket(self, port: int, verifyFunc):
         data_socket = socket.socket(self.socket_family, socket.SOCK_STREAM)
@@ -219,14 +220,15 @@ class Server(Scan, Manage, Proxy):
         :return:
         """
         while True:
-            time.sleep(15)
-            devices = self.testDevice(self.scanStart())
-            logging.debug(f'IP list update: {devices}')
+            ip_list = self.scanStart()
+            devices = self.testDevice(ip_list)
+            logging.debug(f'Devices list update: {devices}')
             for ip in devices:
                 if ip not in self.verified_devices:
                     thread = threading.Thread(target=self.createClientCommandSocket, args=(ip,))
                     thread.start()
                     self.verified_devices.add(ip)
+            time.sleep(15)
 
 
 if __name__ == '__main__':

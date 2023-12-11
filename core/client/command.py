@@ -6,22 +6,21 @@ from socket import socket
 
 import xxhash
 
-from core.config import readConfig
-from core.tools.status import Status, CommandSet
-from core.tools.timedict import TimeDictInit
-from core.tools.tools import HashTools, Session, SocketSession
+from core.addition import AutoDisk
+from core.option import Config
+from core.tools import HashTools, Session, SocketSession, TimeDictInit, Status, CommandSet
 
 
-class Config(readConfig):
-    def __init__(self):
-        super().__init__()
-        self.config = readConfig.readJson()
-        self.local_ip: str = self.config['server']['addr'].get('ip')
-        self.encode_type: str = self.config['server']['setting'].get('encode')
-        self.password: str = self.config['server']['addr'].get('password')
+# class Config(readConfig):
+#     def __init__(self):
+#         super().__init__()
+#         self.config = readConfig.readJson()
+#         self.local_ip: str = self.config['server']['addr'].get('ip')
+#         self.encode_type: str = self.config['server']['setting'].get('encode')
+#         self.password: str = self.config['server']['addr'].get('password')
 
 
-class BaseCommandSet(Config, Session):
+class BaseCommandSet(Config, Session, AutoDisk):
     """
     客户端指令发送类
     """
@@ -82,21 +81,20 @@ class BaseCommandSet(Config, Session):
             print(e)
             return Status.PARAMETER_ERROR
 
-        exist: bool = data.get('exists')
         remote_size: int = data.get('file_size')
         remote_filehash: str = data.get('file_hash')
         remote_filedate: float = data.get('file_date')
+        remote_status: str = data.get('status')
 
-        if not isinstance(exist, bool) or not isinstance(remote_size, int) or not isinstance(remote_filehash,
-                                                                                             str) or not isinstance(
-            remote_filedate, float):
+        if not isinstance(remote_size, int) or not isinstance(remote_filehash, str) or not isinstance(remote_filedate,
+                                                                                                      float):
             return Status.PARAMETER_ERROR
 
         with SocketSession(self.timedict, data_socket=self.data_socket, encrypt_password=self.key,
                            mark=filemark) as session:
             match mode:
                 case 0:
-                    if exist:
+                    if remote_size:
                         return False
                     with open(path, mode='rb') as f:
                         data = f.read(data_block)

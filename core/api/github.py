@@ -42,7 +42,7 @@ class Github:
             repository_name = url_split[-1]
             url = f'https://api.github.com/repos/{user_name}/{repository_name}'
         else:
-            logging.warning(f'The attempted warehouse/user information does not exist!: {self.url}') # 仓库/用户不存在
+            logging.warning(f'The attempted warehouse/user information does not exist!: {self.url}')  # 仓库/用户不存在
             return {}
         try:
             request = requests.get(url, timeout=(10, 10))  # 连接超时3 读取超时10
@@ -53,7 +53,7 @@ class Github:
 
     def getRelease(self) -> dict:
         if self.type != 'repository':
-            return {}
+            raise ValueError('更新的目标并非仓库')
         data = self.url.split('/')
         repository_name = data[-1]
         user_name = data[-2]

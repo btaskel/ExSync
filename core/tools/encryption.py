@@ -38,7 +38,7 @@ class CryptoTools:
             ciphertext = cipher.encrypt(message.encode('utf-8'))
         return cipher.nonce + ciphertext
 
-    def aes_ctr_decrypt(self, ciphertext: bytes, source: bool=False) -> bytes:
+    def aes_ctr_decrypt(self, ciphertext: bytes, source: bool = False) -> bytes:
         """aes-128-ctr 解密"""
         if len(ciphertext) > 8:
             content, nonce = ciphertext[8:], ciphertext[:8]
@@ -65,7 +65,7 @@ class CryptoTools:
         encry_message = self.aes_ctr_encrypt(message)
         return base64.b64encode(encry_message).decode('utf-8')
 
-    def b64_ctr_decrypt(self, message:str) -> bytes:
+    def b64_ctr_decrypt(self, message: str) -> bytes:
         """
         解密一个使用aes-ctr base64转码的字符串
         :param message: b64_ctr_encrypt加密后的数据

@@ -9,10 +9,8 @@ from Crypto.PublicKey import RSA
 from scapy.layers.l2 import Ether, ARP
 from scapy.sendrecv import srp
 
-from core.config import Config
-from core.tools.encryption import CryptoTools
-from core.tools.status import Status
-from core.tools.tools import SocketTools, HashTools
+from core.option import Config
+from core.tools import SocketTools, HashTools, Status, CryptoTools
 
 
 class Scan(Config):
@@ -131,6 +129,7 @@ class Scan(Config):
         如果存在活动的设备判断密码是否相同
         :return: devices
         """
+        cry_aes = CryptoTools(self.password)
 
         for ip in ip_list:
             if ip in self.verify_manage:
@@ -169,7 +168,7 @@ class Scan(Config):
 
                 # 4.本地发送sha384:发送本地密码sha384
                 password_sha384 = hashlib.sha384(self.password.encode('utf-8')).hexdigest()  # 获取密码的sha384
-                encrypt_local_id = CryptoTools(self.password).aes_ctr_encrypt(self.id)  # 获取self.id的加密值
+                encrypt_local_id = cry_aes.aes_ctr_encrypt(self.id)  # 获取self.id的加密值
                 b64_encrypt_local_id: str = base64.b64encode(encrypt_local_id).decode('utf-8')
                 command = {
                     "data": {
@@ -182,7 +181,7 @@ class Scan(Config):
                 try:
                     data = json.loads(result).get('data')
                     status = data.get('status')
-                    remote_id = CryptoTools(self.password).aes_ctr_decrypt(base64.b64decode(data.get('id')))
+                    remote_id = cry_aes.aes_ctr_decrypt(base64.b64decode(data.get('id')))
                 except Exception as e:
                     print(e)
                     logging.error(f'Pre scan: Unknown status returned while scanning server {ip}')

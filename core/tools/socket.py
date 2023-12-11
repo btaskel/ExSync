@@ -14,21 +14,6 @@ from core.tools.status import Status
 from core.tools.timedict import TimeDictInit
 
 
-def createFile(file_path: str, content: str) -> bool:
-    """
-    快速创建文件
-    :param file_path: 文件路径
-    :param content: 文件内容
-    :return:
-    """
-    if not os.path.exists(file_path):
-        with open(file_path, mode='w', encoding='utf-8') as f:
-            f.write(content)
-        return True
-    else:
-        return False
-
-
 def relToAbs(file_path: str):
     """
     默认将相对路径转换为绝对路径

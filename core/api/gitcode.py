@@ -2,12 +2,10 @@ from datetime import datetime
 from functools import lru_cache
 
 import requests
-from bs4 import BeautifulSoup
-
 from core.config import ApiConfig
 
 
-class GitcodeAPI(ApiConfig):
+class Gitcode(ApiConfig):
     """
     GitcodeAPI
     初始化实例时需要传入指定仓库的URL，

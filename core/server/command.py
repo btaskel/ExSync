@@ -40,25 +40,15 @@ class BaseCommandSet(Scan):
         self.system_encode: str = locale.getpreferredencoding()
 
         self.timedict = TimeDictInit(data_socket, command_socket, self.key)
-        # self.session = Session(self.timedict, key)
         self.closeTimeDict = False
 
-    # @staticmethod
-    # def checkTimeout(filesize: int, method: int):
-    #     """
-    #     根据传入的文件大小与判断方式来确定具体的超时时间
-    #     :param filesize: 文件大小
-    #     :param method: 判断方式: 1: xxh128, 2: 对文件读取, 3: 对文件写入
-    #     :return:
-    #     """
-    #
-    #     def decorator(func):
-    #         def wrapper():
-    #             return
-    #
-    #         return wrapper
-    #
-    #     return decorator
+    def _commonpath(self, file_path: str) -> str:
+        for userdata in self.config['userdata']:
+            if not os.path.isabs(userdata['path']):
+                space_path = os.path.abspath(userdata['path'])
+                if space_path == os.path.commonpath([space_path, file_path]):
+                    return userdata['spacename']
+        return ''
 
     def recvFile(self, data_: dict, mark: str):
         """
@@ -101,6 +91,12 @@ class BaseCommandSet(Scan):
         filemark = str(data_.get('filemark'))  # 用于接下来的文件传输的mark
         nonce_length: int = 8
 
+        spacename = self._commonpath(remote_file_path)
+        status = None
+        if not spacename:
+            # todo: 未在同步空间之内，发送拒绝通知。
+            status = 'NoSpacename'
+
         parameters = {'file_path': remote_file_path, 'file_size': remote_file_size, 'file_hash': remote_file_hash,
                       'mode': mode, 'filemark': filemark}
 
@@ -130,12 +126,13 @@ class BaseCommandSet(Scan):
             exists = False
 
         # 将所需文件信息返回到客户端
-        command = {
+        command: dict = {
             "data": {
                 "exists": exists,
                 "file_size": local_file_size,
                 "file_hash": local_file_hash,
-                "file_date": local_file_date
+                "file_date": local_file_date,
+                "status": status # 返回文件特殊状态
             }
         }
         with SocketSession(self.timedict, data_socket=self.data_socket, mark=reply_mark,
@@ -508,6 +505,7 @@ class CommandSetExpand(BaseCommandSet):
     def __init__(self, command_socket: socket, data_socket: socket, key: str):
         super().__init__(command_socket, data_socket, key)
         self.session = Session(self.timedict)
+        self.cry_aes = CryptoTools(self.password)
 
     def getIndex(self, data_: dict, mark: str) -> bool:
         """
@@ -651,14 +649,14 @@ class CommandSetExpand(BaseCommandSet):
 
             try:
                 remote_id_cry = base64.b64decode(remote_id_cry_b64)
-                remote_id = CryptoTools(self.password).aes_ctr_decrypt(remote_id_cry)
+                remote_id = self.cry_aes.aes_ctr_decrypt(remote_id_cry)
             except Exception as e:
                 print(e)
                 return False
 
             # 5.验证本地sha384值是否与远程匹配匹配: 接收对方的密码sha384值, 如果通过返回id和验证状态
             password_sha384: str = hashlib.sha384(self.password.encode('utf-8')).hexdigest()
-            encry_local_password: bytes = CryptoTools(self.password).aes_ctr_encrypt(self.id)
+            encry_local_password: bytes = self.cry_aes.aes_ctr_encrypt(self.id)
             base64_encry_local_password: str = base64.b64encode(encry_local_password).decode()
 
             if remote_password_sha384 == password_sha384:
@@ -782,7 +780,7 @@ class RecvCommand(CommandSetExpand):
         super().__init__(command_socket, data_socket, key)
         self.command_socket = command_socket
         self.data_socket = data_socket
-        self.close = False
+        self.close: bool = False
 
     def closeCommand(self):
         self.close = True

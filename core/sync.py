@@ -6,10 +6,25 @@ import time
 
 import ntplib
 
-from core.config import readConfig
+from core.addition import Record
 from core.control import RunServer
-from core.shell import Commands
-from core.tools.tools import createFile, relToAbs, HashTools
+from core.option import readConfig, Commands
+from core.tools import relToAbs, HashTools
+
+
+def createFile(file_path: str, content: str) -> bool:
+    """
+    快速创建文件
+    :param file_path: 文件路径
+    :param content: 文件内容
+    :return:
+    """
+    if not os.path.exists(file_path):
+        with open(file_path, mode='w', encoding='utf-8') as f:
+            f.write(content)
+        return True
+    else:
+        return False
 
 
 class IndexBase(readConfig):
@@ -146,16 +161,26 @@ class Index(IndexBase):
         for home, folders, files in os.walk(space_path):
             for file in files:
                 file_path = os.path.join(home, file)
+
+                system_time = time.time()
+                file_edit_date = os.path.getmtime(file)
+                file_create_date = os.path.getctime(file)
+                file_read_date = os.path.getatime(file)
+                file_size = os.path.getsize(file)
+
+                with Record(self.config, file_size, 'r'):  # 计算获取hash值的硬盘读写情况
+                    file_hash = HashTools.getFileHash(file)
+
                 file_table = {
                     "data": {
                         file_path: {
                             "type": "file",
-                            "system_date": time.time(),
-                            "file_edit_date": os.path.getmtime(file),
-                            "file_create_date": os.path.getctime(file),
-                            "file_read_date": os.path.getatime(file),
-                            "hash": HashTools.getFileHash(file),
-                            "size": os.path.getsize(file),
+                            "system_date": system_time,
+                            "file_edit_date": file_edit_date,
+                            "file_create_date": file_create_date,
+                            "file_read_date": file_read_date,
+                            "hash": file_hash,
+                            "size": file_size,
                             "state": ""
                         }
                     }
