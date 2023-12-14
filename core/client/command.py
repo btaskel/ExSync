@@ -6,7 +6,6 @@ from socket import socket
 
 import xxhash
 
-from core.addition import AutoDisk
 from core.option import Config
 from core.tools import HashTools, Session, SocketSession, TimeDictInit, Status, CommandSet
 
@@ -20,7 +19,7 @@ from core.tools import HashTools, Session, SocketSession, TimeDictInit, Status, 
 #         self.password: str = self.config['server']['addr'].get('password')
 
 
-class BaseCommandSet(Config, Session, AutoDisk):
+class BaseCommandSet(Config, Session):
     """
     客户端指令发送类
     """
@@ -36,12 +35,9 @@ class BaseCommandSet(Config, Session, AutoDisk):
         self.session = Session(self.timedict)
         self.key = key
 
-    def post_File(self, path: str, mode: int = 1):
+    def post_File(self, relative_path: str, file_status: dict, space: dict, mode: int = 1):
         """
         输入文件路径，发送文件至服务端
-        data_socket: 与服务端连接的socket
-        path: 文件的绝对路径
-
         mode = 0;
         如果不存在文件，则创建文件，返回True。否则不执行操作，返回False。
 
@@ -50,24 +46,34 @@ class BaseCommandSet(Config, Session, AutoDisk):
 
         mode = 2;
         如果存在文件，并且准备发送的文件字节是对方文件字节的超集(xxh3_128相同)，则续写文件，返回True。否则停止发送返回False。
+        :param file_hash: 当前文件xxhash值
+        :param relative_path: 文件相对路径
+        :param space: 同步空间
+        :param mode: 发送文件模式
+        :return:
         """
 
         # 获取8位数长度的文件头标识,用于保证文件的数据唯一性
         filemark = HashTools.getRandomStr(8)
         reply_mark = HashTools.getRandomStr(8)
-        # 本地文件大小，本地文件hash值，本地文件日期
-        local_size, local_filehash, local_filedate = os.path.getsize(path), HashTools.getFileHash(
-            path), os.path.getmtime(path)
+
+        space_path: str = space.get('path')
+        file_path = os.path.join(space_path, relative_path)
+
+        # 本地文件大小
+        local_size = os.path.getsize(relative_path)
+        # 本地文件hash值
+        local_filehash = file_hash
+        # 本地文件日期
+        local_filedate = os.path.getmtime(file_path)
         data_block = self.block - len(filemark)
-        # 远程服务端初始化接收文件
-        # 服务端返回信息格式：exist | filesize | filehash | filedate
 
         command = {
             "command": "data",
             "type": "file",
             "method": "post",
             "data": {
-                "file_path": path,
+                "file_path": relative_path,
                 "file_size": local_size,
                 "file_hash": local_filehash,
                 "mode": mode,
@@ -92,72 +98,71 @@ class BaseCommandSet(Config, Session, AutoDisk):
 
         with SocketSession(self.timedict, data_socket=self.data_socket, encrypt_password=self.key,
                            mark=filemark) as session:
-            match mode:
-                case 0:
-                    if remote_size:
-                        return False
-                    with open(path, mode='rb') as f:
+            if mode == 0:
+                if remote_size:
+                    return False
+                with open(file_path, mode='rb') as f:
+                    data = f.read(data_block)
+                    while True:
+                        local_size -= data_block
+                        if local_size <= 0:
+                            break
+                        session.send(data)
                         data = f.read(data_block)
-                        while True:
-                            local_size -= data_block
-                            if local_size <= 0:
-                                break
-                            session.send(data)
-                            data = f.read(data_block)
-                case 1:
-                    with open(path, mode='rb') as f:
-                        # 如果服务端已经存在文件，那么重写该文件
+            elif mode == 1:
+                with open(file_path, mode='rb') as f:
+                    # 如果服务端已经存在文件，那么重写该文件
+                    data = f.read(data_block)
+                    while True:
+                        local_size -= data_block
+                        if local_size <= 0:
+                            break
+                        session.send(data)
                         data = f.read(data_block)
-                        while True:
-                            local_size -= data_block
-                            if local_size <= 0:
-                                break
-                            session.send(data)
-                            data = f.read(data_block)
 
-                case 2:
-                    # 远程服务端准备完成
-                    xxh = xxhash.xxh3_128()
-                    block_times, little_block = divmod(remote_size, 8192)
-                    read_data = 0
-                    with open(path, mode='rb') as f:
-                        while True:
-                            if read_data < block_times:
-                                data = f.read(8192)
-                                xxh.update(data)
-                                read_data += 1
-                            else:
-                                data = f.read(little_block)
-                                xxh.update(data)
-                                break
-                    with SocketSession(self.timedict, self.data_socket, mark=reply_mark,
-                                       encrypt_password=self.key) as command_session:
-                        if remote_filehash == xxh.hexdigest():
-                            # 文件前段xxhash_128相同，证明为未传输完成文件
-                            command = {
-                                "data": {
-                                    "status": True
-                                }
-                            }
-                            self.session.sendCommand(self.data_socket, command=command, output=False, mark=reply_mark)
-
-                            with open(path, mode='rb') as f:
-                                f.seek(remote_size)
-                                data = f.read(data_block)
-                                while True:
-                                    if not data:
-                                        break
-                                    session.send(data)
-                            return True
+            elif mode == 2:
+                # 远程服务端准备完成
+                xxh = xxhash.xxh3_128()
+                block_times, little_block = divmod(remote_size, 8192)
+                read_data = 0
+                with open(file_path, mode='rb') as f:
+                    while True:
+                        if read_data < block_times:
+                            data = f.read(8192)
+                            xxh.update(data)
+                            read_data += 1
                         else:
-                            # ？这是肾么文件，这个文件不是中断传输的产物
-                            command = {
-                                "data": {
-                                    "status": False
-                                }
+                            data = f.read(little_block)
+                            xxh.update(data)
+                            break
+                with SocketSession(self.timedict, self.data_socket, mark=reply_mark,
+                                   encrypt_password=self.key) as command_session:
+                    if remote_filehash == xxh.hexdigest():
+                        # 文件前段xxhash_128相同，证明为未传输完成文件
+                        command = {
+                            "data": {
+                                "status": True
                             }
-                            self.session.sendCommand(self.data_socket, command=command, output=False, mark=reply_mark)
-                            return False
+                        }
+                        self.session.sendCommand(self.data_socket, command=command, output=False, mark=reply_mark)
+
+                        with open(file_path, mode='rb') as f:
+                            f.seek(remote_size)
+                            data = f.read(data_block)
+                            while True:
+                                if not data:
+                                    break
+                                session.send(data)
+                        return True
+                    else:
+                        # ？这是肾么文件，这个文件不是中断传输的产物
+                        command = {
+                            "data": {
+                                "status": False
+                            }
+                        }
+                        self.session.sendCommand(self.data_socket, command=command, output=False, mark=reply_mark)
+                        return False
 
     def get_File(self, path: str, output_path: str = None) -> bool:
         """

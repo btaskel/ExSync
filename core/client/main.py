@@ -6,7 +6,7 @@ import socket
 
 from Crypto.Cipher import PKCS1_OAEP
 from Crypto.PublicKey import RSA
-from core.config import Config
+from core.option import Config
 
 from core.client.command import CommandSend
 from core.proxy import Proxy

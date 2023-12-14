@@ -8,6 +8,7 @@ import socket
 import subprocess
 import threading
 import time
+from functools import lru_cache
 
 import xxhash
 from Crypto.Cipher import PKCS1_OAEP
@@ -42,6 +43,7 @@ class BaseCommandSet(Scan):
         self.timedict = TimeDictInit(data_socket, command_socket, self.key)
         self.closeTimeDict = False
 
+    @lru_cache
     def _commonpath(self, file_path: str) -> str:
         for userdata in self.config['userdata']:
             if not os.path.isabs(userdata['path']):
@@ -79,7 +81,7 @@ class BaseCommandSet(Scan):
                 "filemark": "%s"
             }
         }
-
+33,37,43
         :param data_:
         :param mark:
         :return:

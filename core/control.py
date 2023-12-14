@@ -4,9 +4,8 @@ import os
 import sys
 import threading
 
-from core.config import readConfig
-
 from core.client.command import CommandSend
+from core.option import readConfig
 from core.server.main import Server, socket_manage
 from core.tools import relToAbs
 
@@ -19,9 +18,11 @@ class Control(readConfig):
     def __init__(self):
         super().__init__()
         self.config = self.readJson()
+        self.userdata: dict = {}
+        for space in self.config['userdata']:
+            self.userdata[space['spacename']] = space
 
-    @staticmethod
-    def getAllDevice() -> list:
+    def getAllDevice(self) -> list:
         """
         :return 返回所有设备id:
         """
@@ -43,31 +44,62 @@ class Control(readConfig):
             return command_send
         return None
 
-    @staticmethod
-    def postFile(device_id: str, path: str, mode: int = 1):
+    def getSpace(self, spacename: str) -> dict:
+        """
+        根据同步空间名称获取同步空间的实例对象
+        :param spacename:
+        :return:
+        """
+        for space in self.config['userdata']:
+            if space['spacename'] == spacename:
+                return space
+        return {}
+
+    def _commonpath(self, file_path: str) -> dict:
+        """
+        当前绝对路径是否匹配到本地保存的同步空间
+        :param file_path:
+        :return:
+        """
+        for space in self.config['userdata']:
+            if not os.path.isabs(space['path']):
+                space_path = os.path.abspath(space['path'])
+                if space_path == os.path.commonpath([space_path, file_path]):
+                    return space
+        return {}
+
+    def postFile(self, device_id: str,spacename: str, path: str, file_status:dict,  mode: int = 1) -> str:
         """
         输入文件路径，发送文件至服务端
-        data_socket: 与服务端连接的socket
-        path: 文件绝对路径
+        path: 文件相对路径
 
         mode = 0;
-        如果不存在文件，则创建文件，返回True。否则不执行操作，返回False。
+        如果不存在文件，则创建文件，返 回True。否则不执行操作，返回False。
 
         mode = 1;
         如果不存在文件，则创建文件，返回True。否则重写文件，返回False。
 
         mode = 2;
         如果存在文件，并且准备发送的文件字节是对方文件字节的超集(xxh3_128相同)，则续写文件，返回True。否则停止发送返回False。
-        :param device_id:
-        :param path:
-        :param mode:
-        :return:
+        :param file_status: 文件状态信息 { filehash:..... }
+        :param spacename: 同步空间id
+        :param device_id: 设备id
+        :param path: 文件相对路径
+        :param mode: 操作模式
+        :return: 执行状态
         """
-        command_send = Control.getDevice(device_id)
-        return command_send.post_File(relToAbs(path), mode) if command_send else None
+        command_send = self.getDevice(device_id)
+        space = self.userdata.get(spacename)
+        if not space:
+            logging.error(f'postFile: No synchronization space {spacename} found!')
+            return 'NotSpace'
+        if not command_send:
+            logging.error(f'postFile: No synchronization device {device_id} found!')
+            return 'NotDevice'
 
-    @staticmethod
-    def getFile(device_id: str, path: str, output_path: str = None):
+        return command_send.post_File(relative_path=path, file_status=file_status, mode=mode, space=space)
+
+    def getFile(self, device_id: str, path: str, output_path: str = None):
         """
         获取远程文件
         传入获取文件的路径，如果本地文件已经存在则会检查是否为意外中断文件，如果是则继续传输；
@@ -77,44 +109,40 @@ class Control(readConfig):
         :param path:
         :return:
         """
-        command_send = Control.getDevice(device_id)
+        command_send = self.getDevice(device_id)
         return command_send.get_File(relToAbs(path), output_path) if command_send else None
 
-    @staticmethod
-    def postFolder(device_id: str, path: str):
+    def postFolder(self, device_id: str, path: str):
         """
         创建远程文件夹路径
         :param device_id:
         :param path:
         :return:
         """
-        command_send = Control.getDevice(device_id)
+        command_send = self.getDevice(device_id)
         return command_send.post_Folder(relToAbs(path)) if command_send else None
 
-    @staticmethod
-    def getFolder(device_id: str, path: str):
+    def getFolder(self, device_id: str, path: str):
         """
         遍历远程path路径下的所有文件夹路径并返回
         :param device_id:
         :param path:
         :return paths:
         """
-        command_send = Control.getDevice(device_id)
+        command_send = self.getDevice(device_id)
         return command_send.get_Folder(relToAbs(path)) if command_send else None
 
-    @staticmethod
-    def getIndex(device_id: str, spacename: str):
+    def getIndex(self, device_id: str, spacename: str):
         """
         获取指定设备的同步目录的索引文件
         :param device_id:
         :param spacename:
         :return:
         """
-        command_send = Control.getDevice(device_id)
+        command_send = self.getDevice(device_id)
         return command_send.get_Index(spacename) if command_send else None
 
-    @staticmethod
-    def postIndex(device_id: str, spacename: str, json_object: dict, is_file: bool = True):
+    def postIndex(self, device_id: str, spacename: str, json_object: dict, is_file: bool = True):
         """
         接收同步空间名，将dict_example更新到远程索引中
         :param is_file:
@@ -128,11 +156,10 @@ class Control(readConfig):
             xxxx......
 
         """
-        command_send = Control.getDevice(device_id)
+        command_send = self.getDevice(device_id)
         return command_send.post_Index(spacename, json_object, is_file) if command_send else None
 
-    @staticmethod
-    def sendCommand(device_id: str, command: str):
+    def sendCommand(self, device_id: str, command: str):
         """
         客户端向指定设备id发送指令
         如果当前设备没有权限操作对方系统级指令则只能执行EXSync指令
@@ -143,7 +170,7 @@ class Control(readConfig):
         :param command:
         :return:
         """
-        command_send = Control.getDevice(device_id)
+        command_send = self.getDevice(device_id)
         return command_send.send_Command(command) if command_send else None
 
 
