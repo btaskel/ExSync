@@ -39,6 +39,13 @@ class Scan(Config):
         """
         self.verify_manage = {}
 
+        """
+        保存的同步空间实例对象
+        """
+        self.userdata = {}
+        for space in self.config['userdata']:
+            self.userdata[space.get('username')] = space
+
     def scanStart(self) -> list:
         """
         添加

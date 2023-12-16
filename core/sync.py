@@ -318,12 +318,12 @@ class EXSync(RunServer, Index):
             with open(space_path, mode='r+', encoding='utf-8') as f:
                 try:
                     data: dict = json.load(f)
-                except json.JSONDecodeError as e:
+                except json.JSONDecodeError as e_:
                     logging.error(
-                        f'JSON parsing error at position {e.doc}, the incorrect content is {e.doc[e.pos:e.pos + 10]}')
+                        f'JSON parsing error at position {e_.doc}, the incorrect content is {e_.doc[e_.pos:e_.pos + 10]}')
                     return False
-                except Exception as e:
-                    logging.error(f'JSON parsing error: {e}')
+                except Exception as e_:
+                    logging.error(f'JSON parsing error: {e_}')
                     return False
                 data['data'].update(json_example_)
                 f.truncate(0)

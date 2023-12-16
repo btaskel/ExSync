@@ -1,22 +1,21 @@
 import base64
 import hashlib
 import json
-import locale
 import logging
 import os
 import socket
 import subprocess
 import threading
 import time
-from functools import lru_cache
 
 import xxhash
 from Crypto.Cipher import PKCS1_OAEP
 from Crypto.PublicKey import RSA
 from xxhash import xxh3_128
 
-from core.server.scan import Scan
 from core.tools import CryptoTools, Status, CommandSet, PermissionEnum, TimeDictInit, HashTools, SocketSession, Session
+from .cache import IndexReadCache
+from .scan import Scan
 
 
 class BaseCommandSet(Scan):
@@ -30,29 +29,28 @@ class BaseCommandSet(Scan):
 
     def __init__(self, command_socket: socket, data_socket: socket, key: str = None):
         super().__init__()
-        # 数据包传输分块大小(bytes)
 
+        # 数据包传输分块大小(bytes)
         self.block: int = 1024
+
+        # 传递套接字实例对象
         self.command_socket: socket = command_socket
         self.data_socket: socket = data_socket
+
+        # 加密密钥
         self.key: str = key
+
+        # 本机ip地址
         self.address: str = self.command_socket.getpeername()[0]
 
-        self.system_encode: str = locale.getpreferredencoding()
-
+        # 启用TimeDict
         self.timedict = TimeDictInit(data_socket, command_socket, self.key)
         self.closeTimeDict = False
 
-    @lru_cache
-    def _commonpath(self, file_path: str) -> str:
-        for userdata in self.config['userdata']:
-            if not os.path.isabs(userdata['path']):
-                space_path = os.path.abspath(userdata['path'])
-                if space_path == os.path.commonpath([space_path, file_path]):
-                    return userdata['spacename']
-        return ''
+        # 启用索引缓存
+        self.indexReadCache = IndexReadCache
 
-    def recvFile(self, data_: dict, mark: str):
+    def postFile(self, data_: dict, mark: str):
         """
 
         客户端发送文件至服务端
@@ -86,26 +84,34 @@ class BaseCommandSet(Scan):
         :param mark:
         :return:
         """
-        remote_file_path: str = str(data_.get('file_path'))
+        remote_space_name = str(data_.get('spacename'))
+        local_space_path = self.userdata[remote_space_name]['path']
+        remote_file_relative_path: str = str(data_.get('file_path'))
         remote_file_size: int = data_.get('file_size', 0)
         remote_file_hash: str = str(data_.get('file_hash'))
         mode: int = data_.get('mode')
         filemark = str(data_.get('filemark'))  # 用于接下来的文件传输的mark
         nonce_length: int = 8
 
-        spacename = self._commonpath(remote_file_path)
-        status = None
-        if not spacename:
-            # todo: 未在同步空间之内，发送拒绝通知。
-            status = 'NoSpacename'
-
-        parameters = {'file_path': remote_file_path, 'file_size': remote_file_size, 'file_hash': remote_file_hash,
-                      'mode': mode, 'filemark': filemark}
+        parameters = {
+            'local_space_path': local_space_path,
+            'remote_file_relative_path': remote_file_relative_path,
+            'file_size': remote_file_size,
+            'file_hash': remote_file_hash,
+            'mode': mode,
+            'filemark': filemark
+        }
 
         for param, value in parameters.items():
             if not value:
                 logging.warning(f'Core function recvFile: Missing parameter [{param}]!')
                 return Status.PARAMETER_ERROR
+
+        remote_file_abs_path = os.path.join(local_space_path, remote_file_relative_path)
+        status = None
+        if not local_space_path:
+            # todo: 未在同步空间之内，发送拒绝通知。
+            status = 'NoSpacename'
 
         if len(filemark) == 8 and isinstance(remote_file_size, int) and isinstance(mode, int) and len(
                 remote_file_hash) == 32:
@@ -117,11 +123,12 @@ class BaseCommandSet(Scan):
 
         # 接收数据初始化
         self.timedict.createRecv(filemark)
-
-        if os.path.exists(remote_file_path):
-            local_file_size = os.path.getsize(remote_file_path)
-            local_file_hash = HashTools.getFileHash(remote_file_path)
-            local_file_date = os.path.getmtime(remote_file_path)
+        # 读取日志
+        self.indexReadCache.getIndex()
+        if os.path.exists(remote_file_abs_path):
+            local_file_size = os.path.getsize(remote_file_abs_path)
+            local_file_hash = HashTools.getFileHash(remote_file_abs_path)
+            local_file_date = os.path.getmtime(remote_file_abs_path)
             exists = True
         else:
             local_file_size, local_file_hash, local_file_date = None, None, None
@@ -134,7 +141,7 @@ class BaseCommandSet(Scan):
                 "file_size": local_file_size,
                 "file_hash": local_file_hash,
                 "file_date": local_file_date,
-                "status": status # 返回文件特殊状态
+                "status": status  # 返回文件特殊状态
             }
         }
         with SocketSession(self.timedict, data_socket=self.data_socket, mark=reply_mark,
@@ -149,7 +156,7 @@ class BaseCommandSet(Scan):
                 if exists:
                     return False
                 read_data = remote_file_size
-                with open(remote_file_path, mode='ab') as f:
+                with open(remote_file_abs_path, mode='ab') as f:
                     while read_data > 0:
                         read_data -= data_block
                         data = self.timedict.getRecvData(filemark)
@@ -157,9 +164,9 @@ class BaseCommandSet(Scan):
             case 1:
                 # 如果不存在文件，则创建文件。否则重写文件。
                 if exists:
-                    os.remove(remote_file_path)
+                    os.remove(remote_file_abs_path)
                 read_data = remote_file_size
-                with open(remote_file_path, mode='ab') as f:
+                with open(remote_file_abs_path, mode='ab') as f:
                     while read_data > 0:
                         read_data -= data_block
                         data = self.timedict.getRecvData(filemark)
@@ -183,7 +190,7 @@ class BaseCommandSet(Scan):
                     return False
                 # 对方客户端确认未传输完成，继续接收文件
                 self.data_socket.settimeout(2)
-                with open(remote_file_path, mode='ab') as f:
+                with open(remote_file_abs_path, mode='ab') as f:
                     difference = remote_file_size - local_file_size
                     read_data = 0
                     while read_data <= difference:
@@ -192,11 +199,9 @@ class BaseCommandSet(Scan):
                         read_data += self.block
                     return True
 
-    def sendFile(self, data_: dict, mark: str):
+    def getFile(self, data_: dict, mark: str):
         """
-
-        服务端发送文件至客户端
-
+        发送文件至客户端
         mode = 0;
         直接发送所有数据。
 
@@ -879,7 +884,7 @@ class RecvCommand(CommandSetExpand):
         :return:
         """
         if self.command_socket.permission >= 10:
-            thread = threading.Thread(target=self.sendFile, args=(data_, mark))
+            thread = threading.Thread(target=self.getFile, args=(data_, mark))
             thread.daemon = True
             thread.start()
             logging.debug(f'Client {self.address}: dataGetFile executing')
@@ -904,7 +909,7 @@ class RecvCommand(CommandSetExpand):
         :return:
         """
         if self.command_socket.permission >= 10:
-            thread = threading.Thread(target=self.recvFile, args=(data_, mark))
+            thread = threading.Thread(target=self.postFile, args=(data_, mark))
             thread.daemon = True
             thread.start()
             logging.debug(f'Client {self.address}: dataPostFile executing')

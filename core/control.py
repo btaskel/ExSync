@@ -7,7 +7,6 @@ import threading
 from core.client.command import CommandSend
 from core.option import readConfig
 from core.server.main import Server, socket_manage
-from core.tools import relToAbs
 
 
 class Control(readConfig):
@@ -68,7 +67,7 @@ class Control(readConfig):
                     return space
         return {}
 
-    def postFile(self, device_id: str,spacename: str, path: str, file_status:dict,  mode: int = 1) -> str:
+    def postFile(self, device_id: str, spacename: str, path: str, file_status: dict, mode: int = 1) -> str:
         """
         输入文件路径，发送文件至服务端
         path: 文件相对路径
@@ -97,7 +96,7 @@ class Control(readConfig):
             logging.error(f'postFile: No synchronization device {device_id} found!')
             return 'NotDevice'
 
-        return command_send.post_File(relative_path=path, file_status=file_status, mode=mode, space=space)
+        return command_send.postFile(relative_path=path, file_status=file_status, mode=mode, space=space)
 
     def getFile(self, device_id: str, path: str, output_path: str = None):
         """
@@ -110,7 +109,7 @@ class Control(readConfig):
         :return:
         """
         command_send = self.getDevice(device_id)
-        return command_send.get_File(relToAbs(path), output_path) if command_send else None
+        return command_send.getFile(relToAbs(path), output_path) if command_send else None
 
     def postFolder(self, device_id: str, path: str):
         """
@@ -120,7 +119,7 @@ class Control(readConfig):
         :return:
         """
         command_send = self.getDevice(device_id)
-        return command_send.post_Folder(relToAbs(path)) if command_send else None
+        return command_send.postFolder(relToAbs(path)) if command_send else None
 
     def getFolder(self, device_id: str, path: str):
         """
@@ -130,7 +129,7 @@ class Control(readConfig):
         :return paths:
         """
         command_send = self.getDevice(device_id)
-        return command_send.get_Folder(relToAbs(path)) if command_send else None
+        return command_send.getFolder(relToAbs(path)) if command_send else None
 
     def getIndex(self, device_id: str, spacename: str):
         """
@@ -140,7 +139,7 @@ class Control(readConfig):
         :return:
         """
         command_send = self.getDevice(device_id)
-        return command_send.get_Index(spacename) if command_send else None
+        return command_send.getIndex(spacename) if command_send else None
 
     def postIndex(self, device_id: str, spacename: str, json_object: dict, is_file: bool = True):
         """
@@ -157,7 +156,7 @@ class Control(readConfig):
 
         """
         command_send = self.getDevice(device_id)
-        return command_send.post_Index(spacename, json_object, is_file) if command_send else None
+        return command_send.postIndex(spacename, json_object, is_file) if command_send else None
 
     def sendCommand(self, device_id: str, command: str):
         """

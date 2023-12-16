@@ -1,4 +1,5 @@
 import concurrent.futures
+import hashlib
 import json
 import logging
 import os
@@ -63,7 +64,23 @@ class HashTools:
         return hasher.hexdigest()
 
     @staticmethod
-    def getFileHash_32(path: str, block: int = 65536) -> str:
+    def getFileSHA265(path: str) -> str:
+        """
+        获取文件的256位sha hash值
+        :param path: 文件索引
+        :return: sha256
+        """
+        hasher = hashlib.sha256()
+        with open(path, mode='rb') as f:
+            while True:
+                data = f.read(65536)
+                if not data:
+                    break
+                hasher.update(data)
+        return hasher.hexdigest()
+
+    @staticmethod
+    def getFileHash_312(path: str, block: int = 65536) -> str:
         """
         获取文件的32位 xxhash值
         :param path: 文件路径
@@ -571,4 +588,4 @@ if __name__ == '__main__':
     # with SocketSession(None, None, None, 1) as session:
     #     session.send({})
     # print(session)
-    print(HashTools.getFileHash('d:\\CDR2019.zip'))
+    print(HashTools.getFileSHA265('d:\\demo.jpg'))

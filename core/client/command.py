@@ -35,7 +35,7 @@ class BaseCommandSet(Config, Session):
         self.session = Session(self.timedict)
         self.key = key
 
-    def post_File(self, relative_path: str, file_status: dict, space: dict, mode: int = 1):
+    def postFile(self, relative_path: str, file_status: dict, space: dict, mode: int = 1):
         """
         输入文件路径，发送文件至服务端
         mode = 0;
@@ -46,7 +46,7 @@ class BaseCommandSet(Config, Session):
 
         mode = 2;
         如果存在文件，并且准备发送的文件字节是对方文件字节的超集(xxh3_128相同)，则续写文件，返回True。否则停止发送返回False。
-        :param file_hash: 当前文件xxhash值
+        :param file_status:
         :param relative_path: 文件相对路径
         :param space: 同步空间
         :param mode: 发送文件模式
@@ -60,12 +60,14 @@ class BaseCommandSet(Config, Session):
         space_path: str = space.get('path')
         file_path = os.path.join(space_path, relative_path)
 
+        space_name: str = space.get('spacename')
+
         # 本地文件大小
-        local_size = os.path.getsize(relative_path)
+        local_size = file_status.get('size')
         # 本地文件hash值
-        local_filehash = file_hash
+        local_filehash = file_status.get('hash')
         # 本地文件日期
-        local_filedate = os.path.getmtime(file_path)
+        local_filedate = file_status.get('file_edit_date')
         data_block = self.block - len(filemark)
 
         command = {
@@ -76,8 +78,9 @@ class BaseCommandSet(Config, Session):
                 "file_path": relative_path,
                 "file_size": local_size,
                 "file_hash": local_filehash,
+                "filemark": filemark,
                 "mode": mode,
-                "filemark": filemark
+                "spacename": space_name
             }
         }
         result = self.session.sendCommand(self.command_socket, command=command, mark=reply_mark)
@@ -164,7 +167,7 @@ class BaseCommandSet(Config, Session):
                         self.session.sendCommand(self.data_socket, command=command, output=False, mark=reply_mark)
                         return False
 
-    def get_File(self, path: str, output_path: str = None) -> bool:
+    def getFile(self, path: str, output_path: str = None) -> bool:
         """
         获取远程文件
         传入获取文件的路径，如果本地文件已经存在则会检查是否为意外中断文件，如果是则继续传输；
@@ -266,7 +269,7 @@ class BaseCommandSet(Config, Session):
                     return True
         return False
 
-    def post_Folder(self, path: str) -> bool:
+    def postFolder(self, path: str) -> bool:
         """
         发送文件夹创建指令至服务端
         :param path:
@@ -285,7 +288,7 @@ class BaseCommandSet(Config, Session):
             command_session.send(command, output=False)
         return True
 
-    def get_Folder(self, path: str) -> list:
+    def getFolder(self, path: str) -> list:
         """
         遍历获取远程文件夹下的所有文件夹
         :param path:
@@ -317,7 +320,7 @@ class BaseCommandSet(Config, Session):
             # 路径不存在
             return []
 
-    def post_Index(self, spacename: str, json_example: dict, is_file: bool) -> str:
+    def postIndex(self, spacename: str, json_example: dict, is_file: bool) -> str:
         """
         更新远程设备指定同步空间 文件/文件夹 索引
         发送成功返回 True 否则 False
@@ -381,7 +384,7 @@ class BaseCommandSet(Config, Session):
                 logging.warning(f'postIndex {spacename}: Unknown error.')
                 return 'unknown'
 
-    def get_Index(self, spacename: str):
+    def getIndex(self, spacename: str):
         """
         传入spacename，获取对方指定同步空间的索引文件
         :param spacename:
@@ -415,8 +418,8 @@ class BaseCommandSet(Config, Session):
 
         if not os.path.exists(cache_path):
             os.makedirs(cache_path)
-        result = self.get_File(os.path.join(path, '\\.sync\\info\\files.json'),
-                               os.path.join(save_path, 'files.jsons')), self.get_File(
+        result = self.getFile(os.path.join(path, '\\.sync\\info\\files.json'),
+                              os.path.join(save_path, 'files.jsons')), self.getFile(
             os.path.join(path, '\\.sync\\info\\folders.json'), os.path.join(save_path, 'folders.json'))
 
         if not result:
