@@ -5,9 +5,8 @@ import time
 
 
 class IndexReadCache:
-    def __init__(self, config: dict):
+    def __init__(self):
         self.indexDict = {}
-        self.config = config
         self._close = False
         threading.Thread(target=self._release, daemon=True).start()
 
@@ -69,8 +68,7 @@ class IndexReadCache:
         del self.indexDict
 
 
+indexReadCache = IndexReadCache()
+
 if __name__ == '__main__':
-    # print(time.time())
-    # ls= [1,2,30]
-    # print(ls[-1])
     pass

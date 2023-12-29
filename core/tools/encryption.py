@@ -38,23 +38,18 @@ class CryptoTools:
             ciphertext = cipher.encrypt(message.encode('utf-8'))
         return cipher.nonce + ciphertext
 
-    def aes_ctr_decrypt(self, ciphertext: bytes, source: bool = False) -> bytes:
+    def aes_ctr_decrypt(self, ciphertext: bytes) -> bytes:
         """aes-128-ctr 解密"""
         if len(ciphertext) > 8:
             content, nonce = ciphertext[8:], ciphertext[:8]
 
             cipher = AES.new(self.key.encode('utf-8'), AES.MODE_CTR, nonce=nonce)
-            try:
-                plaintext = cipher.decrypt(content)
-            except Exception as e:
-                print(e)
-                logging.debug('Core : AES_Ctr_Decrypt decryption failed!')
-                return b''
-
+            plaintext = cipher.decrypt(content)
+            # logging.debug('Core : AES_Ctr_Decrypt decryption failed!')
             return plaintext
         else:
             logging.debug('Core : AES_Ctr_Decrypt execution failed!')
-            return b''
+            raise ValueError('Core : AES_Ctr_Decrypt execution failed!')
 
     def b64_ctr_encrypt(self, message: bytes) -> str:
         """
@@ -79,8 +74,9 @@ if __name__ == '__main__':
     cry = CryptoTools('123')
     encry = cry.aes_ctr_encrypt('awdhawdihawdoiw')
     # print(encry)
-    print(base64.b64encode(encry).decode())
+    # print(base64.b64encode(encry).decode())
     # decry = cry.aes_ctr_decrypt(encry)
+    print(cry.aes_ctr_decrypt(encry))
     # print(decry)
 
     # string = b'\x939\xca|\xc1\x19J\x7fE\x19_\xde\xde_\xbc\xed\xc6zj\x11\x95\xf1;'

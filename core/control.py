@@ -98,38 +98,63 @@ class Control(readConfig):
 
         return command_send.postFile(relative_path=path, file_status=file_status, mode=mode, space=space)
 
-    def getFile(self, device_id: str, path: str, output_path: str = None):
+    def getFile(self, device_id: str, spacename: str, path: str, file_status: dict, output_path: str = None):
         """
         获取远程文件
         传入获取文件的路径，如果本地文件已经存在则会检查是否为意外中断文件，如果是则继续传输；
         如果本地文件不存在则接收远程文件传输
-        :param output_path:
-        :param device_id:
-        :param path:
-        :return:
+
+        :param file_status: 文件状态信息 { filehash:..... }
+        :param spacename: 同步空间名称
+        :param output_path: 文件存储路径
+        :param device_id: 设备id
+        :param path: 文件相对路径
+        :return: 文件状态
         """
         command_send = self.getDevice(device_id)
-        return command_send.getFile(relToAbs(path), output_path) if command_send else None
+        space = self.userdata.get(spacename)
+        if not space:
+            logging.error(f'postFile: No synchronization space {spacename} found!')
+            return 'NotSpace'
+        if not command_send:
+            logging.error(f'postFile: No synchronization device {device_id} found!')
+            return 'NotDevice'
 
-    def postFolder(self, device_id: str, path: str):
+        return command_send.getFile(path, space, file_status, output_path)
+
+    def postFolder(self, device_id: str, spacename: str, path: str):
         """
         创建远程文件夹路径
+        :param spacename:
         :param device_id:
         :param path:
         :return:
         """
         command_send = self.getDevice(device_id)
-        return command_send.postFolder(relToAbs(path)) if command_send else None
+        if not command_send:
+            logging.error(f'postFile: No synchronization device {device_id} found!')
+            return 'NotDevice'
 
-    def getFolder(self, device_id: str, path: str):
+        return command_send.postFolder(path=path, spacename=spacename)
+
+    def getFolder(self, device_id: str, spacename: str, path: str):
         """
         遍历远程path路径下的所有文件夹路径并返回
+        :param spacename:
         :param device_id:
         :param path:
         :return paths:
         """
         command_send = self.getDevice(device_id)
-        return command_send.getFolder(relToAbs(path)) if command_send else None
+        space = self.userdata.get(spacename)
+        if not space:
+            logging.error(f'postFile: No synchronization space {spacename} found!')
+            return 'NotSpace'
+        if not command_send:
+            logging.error(f'postFile: No synchronization device {device_id} found!')
+            return 'NotDevice'
+
+        return command_send.getFolder(path=path, space=space)
 
     def getIndex(self, device_id: str, spacename: str):
         """
@@ -139,12 +164,19 @@ class Control(readConfig):
         :return:
         """
         command_send = self.getDevice(device_id)
-        return command_send.getIndex(spacename) if command_send else None
+        space = self.userdata.get(spacename)
+        if not space:
+            logging.error(f'postFile: No synchronization space {spacename} found!')
+            return 'NotSpace'
+        if not command_send:
+            logging.error(f'postFile: No synchronization device {device_id} found!')
+            return 'NotDevice'
 
-    def postIndex(self, device_id: str, spacename: str, json_object: dict, is_file: bool = True):
+        return command_send.getIndex(space)
+
+    def postIndex(self, device_id: str, spacename: str, json_object: dict):
         """
         接收同步空间名，将dict_example更新到远程索引中
-        :param is_file:
         :param device_id:
         :param spacename:
         :param json_object:
@@ -156,7 +188,11 @@ class Control(readConfig):
 
         """
         command_send = self.getDevice(device_id)
-        return command_send.postIndex(spacename, json_object, is_file) if command_send else None
+        if not command_send:
+            logging.error(f'postFile: No synchronization device {device_id} found!')
+            return 'NotDevice'
+
+        return command_send.postIndex(spacename, json_object)
 
     def sendCommand(self, device_id: str, command: str):
         """
@@ -170,7 +206,11 @@ class Control(readConfig):
         :return:
         """
         command_send = self.getDevice(device_id)
-        return command_send.send_Command(command) if command_send else None
+        if not command_send:
+            logging.error(f'postFile: No synchronization device {device_id} found!')
+            return 'NotDevice'
+
+        return command_send.send_Command(command)
 
 
 class Plugin:

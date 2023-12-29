@@ -1,1 +1,2 @@
-from .iobalance import Record, ReadDisk
+from .iobalance import Record, ReadDiskInfo
+from .iobalance import readDiskInfo

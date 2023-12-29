@@ -6,11 +6,11 @@ import socket
 
 from Crypto.Cipher import PKCS1_OAEP
 from Crypto.PublicKey import RSA
-from core.option import Config
 
-from core.client.command import CommandSend
+from core.option import Config
 from core.proxy import Proxy
 from core.tools import HashTools, SocketTools, CryptoTools, Status
+from .command import CommandSend
 
 
 class Client(Config, Proxy):
@@ -50,6 +50,7 @@ class Client(Config, Proxy):
         :return: 指令Socket
         """
         self.client_command_socket = socket.socket(self.socket_family, socket.SOCK_STREAM)
+        self.client_command_socket.settimeout(4)
         return self.client_command_socket
 
     def connectRemoteCommandSocket(self) -> bool:
@@ -165,7 +166,6 @@ class Client(Config, Proxy):
             AES_KEY不为空, 则预验证通过, 直接进行连接
             :return: 连接认证成功返回True，否则为False
             """
-            self.client_command_socket.settimeout(2)
             status = self.client_command_socket.connect_ex((self.ip, self.command_port))
             if status == 0:
                 # 连接成功
@@ -187,7 +187,6 @@ class Client(Config, Proxy):
             AES_KEY为空, 则预验证未通过, 进行验证连接
             :return: 连接认证成功返回True，否则为False
             """
-            self.client_command_socket.settimeout(2)
 
             count = 3  # 连接失败重试次数
             for i in range(count):
@@ -207,7 +206,11 @@ class Client(Config, Proxy):
                     data = json.loads(result[8:]).get('data')
                 except Exception as e:
                     print(e)
-                    self.client_command_socket.shutdown(socket.SHUT_RDWR)
+                    try:
+                        self.client_command_socket.shutdown(socket.SHUT_RDWR)
+                    except OSError as e:
+                        print(e)
+                        logging.debug(e)
                     self.client_command_socket.close()
                     continue
                 public_key = data.get('public_key')
@@ -245,8 +248,11 @@ class Client(Config, Proxy):
                         return False
                     else:
                         continue
-
-            self.client_command_socket.shutdown(socket.SHUT_RDWR)
+            try:
+                self.client_command_socket.shutdown(socket.SHUT_RDWR)
+            except OSError as e:
+                print(e)
+                logging.debug(e)
             self.client_command_socket.close()
             return False
 
@@ -288,8 +294,16 @@ class Client(Config, Proxy):
 
     def closeAllSocket(self):
         """结束与服务端的所有会话"""
-        self.client_data_socket.shutdown(socket.SHUT_RDWR)
+        try:
+            self.client_data_socket.shutdown(socket.SHUT_RDWR)
+        except OSError as e:
+            print(e)
+            logging.debug(e)
         self.client_data_socket.close()
-        self.client_command_socket.shutdown(socket.SHUT_RDWR)
+        try:
+            self.client_command_socket.shutdown(socket.SHUT_RDWR)
+        except OSError as e:
+            print(e)
+            logging.debug(e)
         self.client_command_socket.close()
         return True

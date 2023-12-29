@@ -132,10 +132,9 @@ class IOBalance:
 #         byte_per_second = size / (end_time - start_time)
 #         self._queue.append({method: byte_per_second})
 
-class ReadDisk(InitCache):
+class ReadDiskInfo(InitCache):
     def __init__(self):
         super().__init__()
-        self.cache_path: str = os.path.join(os.getcwd(), 'data\\config\\cache.json')
 
     def getDiskCongestionInfo(self, method: str) -> float:
         """
@@ -162,6 +161,9 @@ class ReadDisk(InitCache):
 
         else:
             raise TypeError('ReadDisk method参数错误！')
+
+
+readDiskInfo = ReadDiskInfo()
 
 
 class Record(InitCache):

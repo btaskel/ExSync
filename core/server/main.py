@@ -51,7 +51,7 @@ class Manage:
     @staticmethod
     def delDevInfo(client_mark: str) -> bool:
         """
-        :param client_mark: 客户端mark值
+        param client_mark: 客户端mark值
         :return:
         """
         if socket_manage.pop(client_mark):
@@ -93,20 +93,26 @@ class Server(Scan, Manage, Proxy):
             f'EXSync runs on {self.local_ip}:{self.data_port}(data) and {self.local_ip}:{self.data_port + 1}(command)')
 
     def createSocket(self, port: int, verifyFunc):
-        data_socket = socket.socket(self.socket_family, socket.SOCK_STREAM)
-        data_socket.bind((self.local_ip, port))
-        data_socket.listen(128)
+        """
+        创建套接字对象
+        :param port: 端口号
+        :param verifyFunc: 目标验证套接字
+        :return:
+        """
+        tcp = socket.socket(self.socket_family, socket.SOCK_STREAM)
+        tcp.bind((self.local_ip, port))
+        tcp.listen(128)
+        tcp.settimeout(4)
 
         while True:
             # 等待客户端连接服务端
-            sub_socket, addr = data_socket.accept()
+            sub_socket, addr = tcp.accept()
             thread = threading.Thread(target=verifyFunc, args=(sub_socket, addr))
             thread.start()
 
     def verifyDataSocket(self, data_socket: socket, address: str):
         """
-        验证数据套接字；
-        验证连接对象是否已经通过验证
+        验证数据套接字，确保连接对象是否已经通过验证
         :param data_socket: 数据套接字
         :param address: 客户端地址
         :return:
@@ -115,7 +121,11 @@ class Server(Scan, Manage, Proxy):
         if address[0] in self.verify_manage and self.verify_manage[address[0]]['AES_KEY']:
             data_socket.permission = PermissionEnum.USER
         else:
-            data_socket.shutdown(socket.SHUT_RDWR)
+            try:
+                data_socket.shutdown(socket.SHUT_RDWR)
+            except OSError as e:
+                print(e)
+                logging.debug(e)
             data_socket.close()
         # 如果指令套接字存在则添加
         if address[0] in self.verified_devices:

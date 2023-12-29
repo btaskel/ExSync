@@ -80,7 +80,7 @@ class HashTools:
         return hasher.hexdigest()
 
     @staticmethod
-    def getFileHash_312(path: str, block: int = 65536) -> str:
+    def getFileHash_32(path: str, block: int = 65536) -> str:
         """
         获取文件的32位 xxhash值
         :param path: 文件路径
@@ -171,12 +171,12 @@ class SocketTools:
             return ''
 
         socket_.send(data)
-        with concurrent.futures.ThreadPoolExecutor() as excutor:
+        with concurrent.futures.ThreadPoolExecutor() as executor:
             if encrypt_password:
                 getRecv = timedict.getRecvData(mark_value)
             else:
                 getRecv = timedict.getRecvData(mark_value)
-            future = excutor.submit(getRecv.decode('utf-8'))
+            future = executor.submit(getRecv.decode, 'utf-8')
             try:
                 # 没有超时2000ms则返回接收值
                 result = future.result(timeout=timeout)
@@ -186,18 +186,18 @@ class SocketTools:
             return result
 
     @staticmethod
-    def sendCommandNoTimeDict(socket_: socket, command: dict, output: bool = True, timeout: int = 2,
-                              encrypt_password: str = None) -> str:
+    def sendCommandNoTimeDict(socket_: socket, command: dict, output: bool = True, encrypt_password: str = None) -> str:
         """
         取消使用TimeDict收发数据, 用于非异步数据传输. 如无必要建议使用sendCommand()
 
         :param encrypt_password: 如果此项填写, 则发送数据时会对数据进行加密, 否则为明文(安全的局域网下可以不填写以提高传输性能)。
-        :param timeout: 默认超时时间，如果超过则返回DATA_RECEIVE_TIMEOUT。
         :param output: 如果 output = True 则sendCommand()将会等待一个返回值，默认超时2s。设置是否等待接下来的返回值。
         :param socket_: 客户端选择使用（Command Socket/Data Socket）作为发送套接字（在此例下是主动发起请求方，为Command_socket）。
         :param command: 设置发送的指令。
         :return:
         """
+        crypto = CryptoTools(encrypt_password)
+
         try:
             command = json.dumps(command)
         except ValueError as e:
@@ -206,33 +206,35 @@ class SocketTools:
 
         if not output:
             socket_.send(command.encode('utf-8'))
+
         if encrypt_password:
             if len(command) > 1008:
                 raise ValueError('sendCommandNoTimeDict: 指令发送时大于1008个字节')
-
-            data = CryptoTools(encrypt_password).aes_ctr_encrypt(HashTools.getRandomStr(8) + command)
+            data = crypto.aes_ctr_encrypt(HashTools.getRandomStr(8) + command)
         else:
             if len(command) > 1016:
                 raise ValueError('sendCommandNoTimeDict: 指令发送时大于1016个字节')
             data = (HashTools.getRandomStr(8) + command).encode('utf-8')
 
-        socket_.send(data)
-        with concurrent.futures.ThreadPoolExecutor() as excutor:
+        try:
+            socket_.send(data)
+        except OSError as e:
+            logging.debug(e)
+            raise OSError('send timeout')
+
+        try:
             data = socket_.recv(1024)
-            if len(data) <= 8:
-                raise ValueError('sendCommandNoTimeDict: 获取的data数据少于8个字节，无法分离出mark与数据内容')
-            data = data[8:]
-            if encrypt_password:
-                future = excutor.submit(CryptoTools(encrypt_password).aes_ctr_decrypt(data))
-            else:
-                future = excutor.submit(data)
-            try:
-                # 没有超时2000ms则返回接收值
-                result = future.result(timeout=timeout)
-                return result
-            except concurrent.futures.TimeoutError:
-                # 超时返回错误
-                return Status.DATA_RECEIVE_TIMEOUT.value
+        except OSError as e:
+            logging.debug(e)
+            raise OSError('recv timeout')
+        if len(data) <= 8:
+            raise ValueError('sendCommandNoTimeDict: 获取的data数据少于8个字节，无法分离出mark与数据内容')
+
+        if encrypt_password:
+            data = crypto.aes_ctr_decrypt(data)
+            return data.decode('utf-8')
+        else:
+            return data.decode('utf-8')
 
 
 class Session:
@@ -259,24 +261,13 @@ class Session:
         :param command: 设置发送的指令, 如果为字典类型则转换为json发送。
         :return: 如果Output=True在发送数据后等待对方返回一条数据; 否则仅发送
         """
-        mark_value = str(mark)
-        if not mark_value or len(mark_value) != 8:
-            while True:
-                characters = string.ascii_letters + '1234567890'
-                mark_value = "".join(random.sample(characters, 8))
-                if self.timedict.hasKey(mark_value):
-                    continue
-                else:
-                    break
+        if not mark or len(mark) != 8:
+            raise ValueError('Session : MarkError')
 
-        self.timedict.createRecv(mark_value)
+        self.timedict.createRecv(mark)
 
-        try:
-            command = json.dumps(command)
-        except ValueError as e:
-            print(e)
-            return ''
-        data = mark_value + command
+        command = json.dumps(command)
+        data = mark + command
 
         if encrypt:
             try:
@@ -287,29 +278,15 @@ class Session:
         else:
             data = data.encode('utf-8')
         if len(data) > 1024:
-            raise ValueError(f'发送命令时超过1K bytes: {mark_value + command}')
+            raise ValueError(f'发送命令时超过1K bytes: {mark + command}')
 
-        if not output:
+        if output:
             socket_.send(data)
-            if not mark:
-                return mark_value
-
-        try:
+            reply = self.timedict.getRecvData(mark).decode('utf-8')
+            if not reply:
+                raise ValueError('没有答复')
+        else:
             socket_.send(data)
-            with concurrent.futures.ThreadPoolExecutor() as excutor:
-                future = excutor.submit(self.timedict.getRecvData(mark_value).decode('utf-8'))
-                try:
-                    # 没有超时2000ms则返回接收值
-                    result = future.result(timeout=timeout)
-                    if not mark:
-                        return mark_value, result
-                    return result
-                except concurrent.futures.TimeoutError:
-                    # 超时返回错误
-                    return Status.DATA_RECEIVE_TIMEOUT
-        except Exception as e:
-            print(e)
-            return Status.UNKNOWN_ERROR
 
 
 class SocketSession(SocketTools):
@@ -326,7 +303,7 @@ class SocketSession(SocketTools):
     """
 
     def __init__(self, timedict: TimeDictInit, data_socket: socket = None, command_socket: socket = None,
-                 mark: str = None, timeout: int = 2, encrypt_password: str = None):
+                 mark: str = None, timeout: int = None, encrypt_password: str = None):
         """
         :param timedict: TimeDict实例
         :param data_socket: 数据Socket
@@ -338,10 +315,16 @@ class SocketSession(SocketTools):
         self.__timedict: TimeDictInit = timedict
         self.__data_socket: socket = data_socket
         self.__command_socket: socket = command_socket
-        self.__timeout: int = timeout
         self.__aes_ctr: CryptoTools = CryptoTools(encrypt_password)
         self.mark: str = mark
         self.count: int = 0
+
+        if timeout:
+            self.__data_socket.settimeout(timeout)
+            self.__command_socket.settimeout(timeout)
+
+        if not self.mark or len(self.mark) != 8:
+            raise ValueError('SocketSession: Mark标识缺少')
 
         if not self.__data_socket and not self.__command_socket:
             raise ValueError('SocketSession: data_socket和command_socket未传入')
@@ -357,15 +340,6 @@ class SocketSession(SocketTools):
         else:
             # 从command_socket 发送与接收数据(不经过timedict 保存数据)
             self.method = 2
-
-        if not self.mark:
-            while True:
-                characters = string.ascii_letters + '1234567890'
-                self.mark = "".join(random.sample(characters, 8))
-                if timedict.hasKey(self.mark):
-                    continue
-                else:
-                    break
 
     def recv(self) -> bytes:
         """
@@ -387,72 +361,46 @@ class SocketSession(SocketTools):
         :param output: 是否返回内容
         :return:
         """
-        if self.__timedict:
-            return self._send_TimeDict(message, output)
-        return self._send_NoTimeDict(message, output)
+        if not self.__timedict:
+            return self._sendNoTimeDict(message, output)
 
-    def _send_TimeDict(self, message: dict or bytes, output: bool = True) -> str:
-        if isinstance(message, bytes):
-            self._sendData(self.__data_socket, message, mark=self.mark)
-            return ''
-
-        match self.method:
-            case 0:
-                # 从command_socket 发送指令(此后的所有数据从data_socket发送和接收)
-                _socket = self.__command_socket if not self.count else self.__data_socket
-                if output:
-                    return self._sendCommand(socket_=_socket, command=message, output=output, timeout=self.__timeout)
-                else:
-                    self._sendCommand(socket_=_socket, command=message, output=output, timeout=self.__timeout)
-
-            case 1:
-                # 从data_socket发送与接收数据(经过timedict标识收发)
-                if output:
-                    return self._sendCommand(socket_=self.__data_socket, command=message, output=output,
-                                             timeout=self.__timeout)
-                else:
-                    self._sendCommand(socket_=self.__data_socket, command=message, output=output,
-                                      timeout=self.__timeout)
-
-            case 2:
-                # 从command_socket 发送与接收数据(不经过timedict 保存数据)
-                if output:
-                    return self.sendCommandNoTimeDict(self.__command_socket, message, output, timeout=self.__timeout)
-                else:
-                    self.sendCommandNoTimeDict(self.__command_socket, message, output, timeout=self.__timeout)
-
-        self.count += 1
-
-    def _sendData(self, data_socket: socket, data: bytes or str, mark: str):
-        """
-
-        :param data_socket: Data socket
-        :param data: 数据流
-        :param mark: 数据标识
-        :return:
-        """
-        # 检查形参
-        if not mark:
-            raise ValueError('sendData: 没有传入mark值')
-
-        if isinstance(data, bytes):
-            data = bytes(mark, 'utf-8') + data
-        elif isinstance(data, str):
-            data = (mark + data).encode('utf-8')
         else:
-            raise TypeError('sendData: 无法识别发送的数据类型！')
-        if not mark:
-            raise ValueError('sendData: 没有Mark！')
+            if isinstance(message, bytes):
+                if self.__aes_ctr:
+                    self.__data_socket.send(self.__aes_ctr.aes_ctr_encrypt(bytes(self.mark, 'utf-8') + message))
+                else:
+                    self.__data_socket.send(bytes(self.mark, 'utf-8') + message)
+                return ''
 
-        # 是否加密
-        if self.__aes_ctr:
-            data = self.__aes_ctr.aes_ctr_encrypt(data)
-            data_socket.send(data)
-            return
-        else:
-            data_socket.send(data)
+            match self.method:
 
-    def _send_NoTimeDict(self, message: dict or bytes, output: bool = True) -> str:
+                case 0:
+                    # 从command_socket 发送指令(此后的所有数据从data_socket发送和接收)
+                    _socket = self.__command_socket if not self.count else self.__data_socket
+                    if output:
+                        return self._sendTimeDict(socket_=_socket, command=message, output=output)
+                    else:
+                        self._sendTimeDict(socket_=_socket, command=message, output=output)
+                        return ''
+
+                case 1:
+                    # 从data_socket发送与接收数据(经过timedict标识收发)
+                    if output:
+                        return self._sendTimeDict(socket_=self.__data_socket, command=message, output=output)
+                    else:
+                        self._sendTimeDict(socket_=self.__data_socket, command=message, output=output)
+                        return ''
+
+                case 2:
+                    # 从command_socket 发送与接收数据(不经过timedict 保存数据)
+                    if output:
+                        return self.sendCommandNoTimeDict(self.__command_socket, message, output)
+                    else:
+                        self.sendCommandNoTimeDict(self.__command_socket, message, output)
+                        return ''
+            self.count += 1
+
+    def _sendNoTimeDict(self, message: dict or bytes, output: bool = True) -> str:
         """
         取消使用TimeDict收发数据, 用于非异步数据传输. 如无必要建议使用sendCommand()
 
@@ -473,7 +421,6 @@ class SocketSession(SocketTools):
             case 1:
                 # 从data_socket发送与接收数据(经过timedict标识收发)
                 socket_ = self.__data_socket
-
             case 2:
                 # 从command_socket 发送与接收数据(不经过timedict 保存数据)
                 socket_ = self.__command_socket
@@ -490,24 +437,16 @@ class SocketSession(SocketTools):
                 raise ValueError('sendCommandNoTimeDict: 指令发送时大于1016个字节')
             data = (HashTools.getRandomStr(8) + command).encode('utf-8')
 
-        socket_.send(data)
-
         if output:
-            try:
-                with concurrent.futures.ThreadPoolExecutor() as excutor:
-                    future = excutor.submit(socket_.recv(1024))
-                    try:
-                        # 没有超时2000ms则返回接收值
-                        result = future.result(timeout=self.__timeout)
-                        return result
-                    except concurrent.futures.TimeoutError:
-                        # 超时返回错误
-                        return Status.DATA_RECEIVE_TIMEOUT.value
-            except Exception as e:
-                print(e)
-                return ''
+            socket_.send(data)
+            data = socket_.recv(1024)
+            if not data:
+                raise OSError('recv timeout')
+            return data.decode('utf-8')
+        else:
+            socket_.send(data)
 
-    def _sendCommand(self, socket_: socket, command: dict, output: bool = True, timeout: int = 2) -> str:
+    def _sendTimeDict(self, socket_: socket, command: dict, output: bool = True) -> str:
         """
         发送指令并准确接收返回数据
 
@@ -517,65 +456,51 @@ class SocketSession(SocketTools):
         2. 在发送指令的前方追加[答复ID]，编码发送。
         3. 从timedict中等待返回值，如果超时，返回DATA_RECEIVE_TIMEOUT。
 
-        :param timeout: 默认超时时间，如果超过则返回DATA_RECEIVE_TIMEOUT。
         :param output: 设置是否等待接下来的返回值。
         :param socket_: 客户端选择使用（Command Socket/Data Socket）作为发送套接字（在此例下是主动发起请求方，为Command_socket）。
         :param command: 设置发送的指令, 如果为字典类型则转换为json发送。
         :return: 如果Output=True在发送数据后等待对方返回一条数据; 否则仅发送
         """
 
-        if not self.mark or len(self.mark) != 8:
-            while True:
-                characters = string.ascii_letters + '1234567890'
-                mark_value = "".join(random.sample(characters, 8))
-                if self.__timedict.hasKey(mark_value):
-                    continue
-                else:
-                    break
-
         self.__timedict.createRecv(self.mark)
 
         try:
             command = json.dumps(command)
-        except ValueError as e:
+        except Exception as e:
             print(e)
             return ''
-        data = self.mark + command
 
         if self.__aes_ctr:
-            data = self.__aes_ctr.aes_ctr_encrypt(data)
-            if not data:
-                raise ValueError('sendCommand: 发送时加密失败')
+            if len(command) > 1008:
+                raise ValueError('sendCommand: 指令发送时大于1008个字节')
+
+            data = self.__aes_ctr.aes_ctr_encrypt(self.mark + command)
         else:
-            data = data.encode('utf-8')
-        if len(data) > 1024:
-            raise ValueError(f'发送命令时超过1K bytes: {self.mark + command}')
+            if len(command) > 1016:
+                raise ValueError('sendCommand: 指令发送时大于1016个字节')
+            data = bytes(self.mark + command, 'utf-8')
 
-        if not output:
+        if output:
             socket_.send(data)
-            if not self.mark:
-                return self.mark
-
-        socket_.send(data)
-        with concurrent.futures.ThreadPoolExecutor() as excutor:
             if self.__aes_ctr:
                 getRecv = self.__timedict.getRecvData(self.mark)
             else:
                 getRecv = self.__timedict.getRecvData(self.mark)
-            future = excutor.submit(getRecv.decode('utf-8'))
-            try:
-                # 没有超时2000ms则返回接收值
-                result = future.result(timeout=timeout)
-            except concurrent.futures.TimeoutError:
-                # 超时返回错误
-                return Status.DATA_RECEIVE_TIMEOUT.value
-            return result
+            if not getRecv:
+                raise ValueError('getRecvTimeout')
+            return getRecv.decode('utf-8')
+        else:
+            socket_.send(data)
+            return ''
 
     def __enter__(self):
         return self
 
     def __exit__(self):
         # 清理会话
+        if self.__timedict:
+            self.__command_socket.settimeout(4)
+            self.__data_socket.settimeout(4)
         self.__timedict.delKey(self.mark)
 
 

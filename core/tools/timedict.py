@@ -226,7 +226,7 @@ class TimeDictInit(TimeDict):
         if 4 < len(mark) < 8:
             self.set(mark)
         else:
-            raise ValueError(f'Mark: {mark} set error!!')
+            raise ValueError(f'Mark: {mark} set error!')
 
     def closeRecv(self):
         """
