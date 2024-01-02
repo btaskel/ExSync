@@ -33,8 +33,8 @@ class BaseCommandSet(Config, Session):
 
         self.indexReadCache = indexReadCache
 
-        # 数据包发送分块大小(含filemark, AES_)
-        self.block: int = 1024
+        # 数据包发送分块大小(含filemark, AES_nonce and AES_gcm_tag)
+        self.block: int = 4096
 
         self.timedict = TimeDictInit(data_socket, command_socket, key)
         self.session = Session(self.timedict, key)
@@ -83,7 +83,7 @@ class BaseCommandSet(Config, Session):
         # 本地文件hash值
         local_filehash = file_status.get('hash')
 
-        data_block = self.block - len(filemark)
+        data_block = self.block - len(filemark) - 32 # 32 = nonce + tag
 
         command = {
             "command": "data",
@@ -234,7 +234,7 @@ class BaseCommandSet(Config, Session):
         file_abspath = os.path.join(space_path, path)
 
         self.timedict.createRecv(filemark)
-        data_block = self.block - len(filemark) - 8  # 加密nonce 损耗8 bytes
+        data_block = self.block - len(filemark) - 32  # 16 nonce + 16 tag
 
         if os.path.exists(file_abspath):
             file_hash = file_status.get('hash')

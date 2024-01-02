@@ -1,3 +1,4 @@
+import logging
 import random
 import string
 import threading
@@ -160,10 +161,7 @@ class TimeDictInit(TimeDict):
         self.encry: bool = False
 
         # 启动数据接收线程
-        threads = [self._recvData]
-        for thread in threads:
-            t = threading.Thread(target=thread)
-            t.start()
+        threading.Thread(target=self._recvData).start()
 
     def _recvData(self):
         """
@@ -177,17 +175,19 @@ class TimeDictInit(TimeDict):
         crypto = CryptoTools(self.key)
         while True:
             if not self.close_all:
-                result: bytes = self.data_socket.recv(1024)
+                result: bytes = self.data_socket.recv(4096)
                 # 确保接收到的数据有效
-                if len(result) <= 16:
+                # 16 nonce + 16 tag + 8 mark = 40 head
+                if len(result) <= 40:
                     continue
                 # 分流数据内容
-                decrypt_data = crypto.aes_ctr_decrypt(result)
-                if decrypt_data:
-                    result = decrypt_data
-
-                mark: str = result[:8].decode('utf-8')
-                data: bytes = result[8:]
+                try:
+                    decrypt_data = crypto.aes_gcm_decrypt(result)
+                except Exception as e:
+                    logging.debug(e)
+                    continue
+                mark: str = decrypt_data[:8].decode('utf-8')
+                data: bytes = decrypt_data[8:]
 
                 if self.hasKey(mark):
                     self.set(mark, data)
@@ -208,7 +208,7 @@ class TimeDictInit(TimeDict):
             if not self.hasKey(mark):
                 return mark
 
-    def getRecvData(self, mark: str, timeout: int = 2) -> bytes:
+    def getRecvData(self, mark: str, timeout: int = 3) -> bytes:
         """
         :param timeout: 超时时间
         :param mark: 取出指定mark队列第一个值，并且将其弹出
@@ -223,7 +223,7 @@ class TimeDictInit(TimeDict):
         :param mark: mark头
         :return:
         """
-        if 4 < len(mark) < 8:
+        if len(mark) == 8:
             self.set(mark)
         else:
             raise ValueError(f'Mark: {mark} set error!')

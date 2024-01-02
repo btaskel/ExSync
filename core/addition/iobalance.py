@@ -158,7 +158,6 @@ class ReadDiskInfo(InitCache):
                 w_list.remove(max_w)
                 w_list.remove(min_w)
             return sum(w_list) / len(w_list)
-
         else:
             raise TypeError('ReadDisk method参数错误！')
 

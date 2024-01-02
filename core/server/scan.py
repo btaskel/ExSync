@@ -175,7 +175,7 @@ class Scan(Config):
 
                 # 4.本地发送sha384:发送本地密码sha384
                 password_sha384 = hashlib.sha384(self.password.encode('utf-8')).hexdigest()  # 获取密码的sha384
-                encrypt_local_id = cry_aes.aes_ctr_encrypt(self.id)  # 获取self.id的加密值
+                encrypt_local_id = cry_aes.aes_gcm_encrypt(self.id)  # 获取self.id的加密值
                 b64_encrypt_local_id: str = base64.b64encode(encrypt_local_id).decode('utf-8')
                 command = {
                     "data": {
@@ -188,7 +188,7 @@ class Scan(Config):
                 try:
                     data = json.loads(result).get('data')
                     status = data.get('status')
-                    remote_id = cry_aes.aes_ctr_decrypt(base64.b64decode(data.get('id')))
+                    remote_id = cry_aes.aes_gcm_decrypt(base64.b64decode(data.get('id')))
                 except Exception as e:
                     print(e)
                     logging.error(f'Pre scan: Unknown status returned while scanning server {ip}')
@@ -262,7 +262,7 @@ class Scan(Config):
                     continue
 
                 try:
-                    remote_id = CryptoTools(session_password).b64_ctr_decrypt(remote_id)
+                    remote_id = CryptoTools(session_password).b64_gcm_decrypt(remote_id)
                 except Exception as e:
                     print(e)
                     test.shutdown(socket.SHUT_RDWR)

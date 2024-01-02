@@ -153,22 +153,18 @@ class SocketTools:
         data = mark_value + command
 
         if encrypt_password:
-            data = CryptoTools(encrypt_password).aes_ctr_encrypt(data)
+            data = CryptoTools(encrypt_password).aes_gcm_encrypt(data)
             if not data:
                 raise ValueError('sendCommand: 发送时加密失败')
         else:
             data = data.encode('utf-8')
-        if len(data) > 1024:
+        if len(data) > 4096:
             raise ValueError(f'发送命令时超过1K bytes: {mark_value + command}')
 
         if not output:
-            try:
-                socket_.send(data)
-                if not mark:
-                    return mark_value
-            except Exception as e:
-                raise TimeoutError('Socket错误: ', e)
-            return ''
+            socket_.send(data)
+            if not mark:
+                return mark_value
 
         socket_.send(data)
         with concurrent.futures.ThreadPoolExecutor() as executor:
@@ -200,41 +196,45 @@ class SocketTools:
 
         try:
             command = json.dumps(command)
-        except ValueError as e:
+        except Exception as e:
             print(e)
             raise ValueError('sendCommandNoTimeDict: 格式化指令时失败')
 
-        if not output:
-            socket_.send(command.encode('utf-8'))
-
         if encrypt_password:
-            if len(command) > 1008:
+            if len(command) > 4056:  # 8mark + 16nonce + 16tag = 40head
                 raise ValueError('sendCommandNoTimeDict: 指令发送时大于1008个字节')
-            data = crypto.aes_ctr_encrypt(HashTools.getRandomStr(8) + command)
+            elif len(command) < 40:
+                raise ValueError('sendCommandNoTimeDict: 指令发送时无字节')
+            data = crypto.aes_gcm_encrypt(HashTools.getRandomStr(8) + command)
         else:
-            if len(command) > 1016:
+            if len(command) > 4088:
                 raise ValueError('sendCommandNoTimeDict: 指令发送时大于1016个字节')
+            elif len(command) < 40:
+                raise ValueError('sendCommandNoTimeDict: 指令发送时无字节')
             data = (HashTools.getRandomStr(8) + command).encode('utf-8')
 
         try:
             socket_.send(data)
         except OSError as e:
             logging.debug(e)
-            raise OSError('send timeout')
+            raise TimeoutError('send timeout')
 
-        try:
-            data = socket_.recv(1024)
-        except OSError as e:
-            logging.debug(e)
-            raise OSError('recv timeout')
-        if len(data) <= 8:
-            raise ValueError('sendCommandNoTimeDict: 获取的data数据少于8个字节，无法分离出mark与数据内容')
+        if output:
+            try:
+                data = socket_.recv(4096)
+            except OSError as e:
+                logging.debug(e)
+                raise TimeoutError('recv timeout')
 
-        if encrypt_password:
-            data = crypto.aes_ctr_decrypt(data)
+            if len(data) <= 8:
+                raise ValueError('sendCommandNoTimeDict: 获取的data数据少于8个字节，无法分离出mark与数据内容')
             return data.decode('utf-8')
         else:
-            return data.decode('utf-8')
+            if encrypt_password:
+                data = crypto.aes_gcm_encrypt(data)
+                return data.decode('utf-8')
+            else:
+                return data.decode('utf-8')
 
 
 class Session:
@@ -261,32 +261,68 @@ class Session:
         :param command: 设置发送的指令, 如果为字典类型则转换为json发送。
         :return: 如果Output=True在发送数据后等待对方返回一条数据; 否则仅发送
         """
+
+        #
+        # self.timedict.createRecv(mark)
+        #
+        # command = json.dumps(command)
+        # data = mark + command
+        #
+        # if encrypt:
+        #     try:
+        #         data = CryptoTools(self.key).aes_gcm_encrypt(data)
+        #     except Exception as e:
+        #         print(e)
+        #         return
+        # else:
+        #     data = data.encode('utf-8')
+        # if len(data) > 4096:
+        #     raise ValueError(f'发送命令时超过1K bytes: {mark + command}')
+        #
+        # if output:
+        #     socket_.send(data)
+        #     reply = self.timedict.getRecvData(mark).decode('utf-8')
+        #     if not reply:
+        #         raise TimeoutError('NoReply')
+        # else:
+        #     socket_.send(data)
         if not mark or len(mark) != 8:
             raise ValueError('Session : MarkError')
 
         self.timedict.createRecv(mark)
 
-        command = json.dumps(command)
-        data = mark + command
+        try:
+            command = json.dumps(command)
+        except Exception as e:
+            print(e)
+            return ''
 
         if encrypt:
-            try:
-                data = CryptoTools(self.key).aes_ctr_encrypt(data)
-            except Exception as e:
-                print(e)
-                return
+            if len(command) > 4056:  # 8mark + 16nonce + 16tag = 40head
+                raise ValueError('_sendTimeDict: 指令发送时大于1008个字节')
+            elif len(command) < 40:
+                raise ValueError('_sendTimeDict: 指令发送时无字节')
+            data = CryptoTools(self.key).aes_gcm_encrypt(mark + command)
         else:
-            data = data.encode('utf-8')
-        if len(data) > 1024:
-            raise ValueError(f'发送命令时超过1K bytes: {mark + command}')
+            if len(command) > 4088:
+                raise ValueError('_sendTimeDict: 指令发送时大于1016个字节')
+            elif len(command) < 40:
+                raise ValueError('_sendTimeDict: 指令发送时无字节')
+            data = (HashTools.getRandomStr(8) + command).encode('utf-8')
+
+        try:
+            socket_.send(data)
+        except OSError as e:
+            logging.debug(e)
+            raise TimeoutError('SendTimeout')
 
         if output:
-            socket_.send(data)
-            reply = self.timedict.getRecvData(mark).decode('utf-8')
-            if not reply:
-                raise ValueError('没有答复')
+            getRecv = self.timedict.getRecvData(mark)
+            if not getRecv:
+                raise ValueError('getRecvTimeout')
+            return getRecv.decode('utf-8')
         else:
-            socket_.send(data)
+            return ''
 
 
 class SocketSession(SocketTools):
@@ -367,9 +403,18 @@ class SocketSession(SocketTools):
         else:
             if isinstance(message, bytes):
                 if self.__aes_ctr:
-                    self.__data_socket.send(self.__aes_ctr.aes_ctr_encrypt(bytes(self.mark, 'utf-8') + message))
+                    if len(message) > 4056:  # 8mark + 16nonce + 16tag = 40head
+                        raise ValueError('sendCommandNoTimeDict: 指令发送时大于1008个字节')
+                    elif len(message) < 40:
+                        raise ValueError('sendCommandNoTimeDict: 指令发送时无字节')
+                    data = self.__aes_ctr.aes_gcm_encrypt(bytes(self.mark, 'utf-8') + message)
                 else:
-                    self.__data_socket.send(bytes(self.mark, 'utf-8') + message)
+                    if len(message) > 4088:
+                        raise ValueError('sendCommandNoTimeDict: 指令发送时大于1016个字节')
+                    elif len(message) < 40:
+                        raise ValueError('sendCommandNoTimeDict: 指令发送时无字节')
+                    data = bytes(self.mark, 'utf-8') + message
+                self.__data_socket.send(data)
                 return ''
 
             match self.method:
@@ -377,32 +422,20 @@ class SocketSession(SocketTools):
                 case 0:
                     # 从command_socket 发送指令(此后的所有数据从data_socket发送和接收)
                     _socket = self.__command_socket if not self.count else self.__data_socket
-                    if output:
-                        return self._sendTimeDict(socket_=_socket, command=message, output=output)
-                    else:
-                        self._sendTimeDict(socket_=_socket, command=message, output=output)
-                        return ''
+                    return self._sendTimeDict(socket_=_socket, command=message, output=output)
 
                 case 1:
                     # 从data_socket发送与接收数据(经过timedict标识收发)
-                    if output:
-                        return self._sendTimeDict(socket_=self.__data_socket, command=message, output=output)
-                    else:
-                        self._sendTimeDict(socket_=self.__data_socket, command=message, output=output)
-                        return ''
+                    return self._sendTimeDict(socket_=self.__data_socket, command=message, output=output)
 
                 case 2:
                     # 从command_socket 发送与接收数据(不经过timedict 保存数据)
-                    if output:
-                        return self.sendCommandNoTimeDict(self.__command_socket, message, output)
-                    else:
-                        self.sendCommandNoTimeDict(self.__command_socket, message, output)
-                        return ''
+                    return self.sendCommandNoTimeDict(self.__command_socket, command=message, output=output)
             self.count += 1
 
     def _sendNoTimeDict(self, message: dict or bytes, output: bool = True) -> str:
         """
-        取消使用TimeDict收发数据, 用于非异步数据传输. 如无必要建议使用sendCommand()
+        取消使用TimeDict收发数据, 用于非异步数据传输.
 
         :param output: 如果 output = True 则sendCommand()将会等待一个返回值，默认超时2s。设置是否等待接下来的返回值。
         :param message: 设置发送的信息。
@@ -427,21 +460,43 @@ class SocketSession(SocketTools):
             case _:
                 raise ValueError('SocketSession: 得到的Socket不支持现有的任何发送方法')
 
-        if self.__aes_ctr:
-            if len(command) > 1008:
-                raise ValueError('sendCommandNoTimeDict: 指令发送时大于1008个字节')
+        # if self.__aes_ctr:
+        #     if len(command) > 1008:
+        #         raise ValueError('sendCommandNoTimeDict: 指令发送时大于1008个字节')
+        #
+        #     data = self.__aes_ctr.aes_ctr_encrypt(self.mark + command)
+        # else:
+        #     if len(command) > 1016:
+        #         raise ValueError('sendCommandNoTimeDict: 指令发送时大于1016个字节')
+        #     data = (HashTools.getRandomStr(8) + command).encode('utf-8')
 
-            data = self.__aes_ctr.aes_ctr_encrypt(self.mark + command)
+        if self.__aes_ctr:
+            if len(command) > 4056:  # 8mark + 16nonce + 16tag = 40head
+                raise ValueError('_sendNoTimeDict: 指令发送时大于1008个字节')
+            elif len(command) < 40:
+                raise ValueError('_sendNoTimeDict: 指令发送时无字节')
+            data = self.__aes_ctr.aes_gcm_encrypt(HashTools.getRandomStr(8) + command)
         else:
-            if len(command) > 1016:
-                raise ValueError('sendCommandNoTimeDict: 指令发送时大于1016个字节')
+            if len(command) > 4088:
+                raise ValueError('_sendNoTimeDict: 指令发送时大于1016个字节')
+            elif len(command) < 40:
+                raise ValueError('_sendNoTimeDict: 指令发送时无字节')
             data = (HashTools.getRandomStr(8) + command).encode('utf-8')
 
         if output:
-            socket_.send(data)
-            data = socket_.recv(1024)
+            try:
+                socket_.send(data)
+            except OSError as e:
+                logging.debug(e)
+                raise TimeoutError('SendTimeout')
+            try:
+                data = socket_.recv(4096)
+            except OSError as e:
+                logging.debug(e)
+                raise TimeoutError('RecvTimeout')
+
             if not data:
-                raise OSError('recv timeout')
+                raise ValueError('RecvError')
             return data.decode('utf-8')
         else:
             socket_.send(data)
@@ -471,17 +526,24 @@ class SocketSession(SocketTools):
             return ''
 
         if self.__aes_ctr:
-            if len(command) > 1008:
-                raise ValueError('sendCommand: 指令发送时大于1008个字节')
-
-            data = self.__aes_ctr.aes_ctr_encrypt(self.mark + command)
+            if len(command) > 4056:  # 8mark + 16nonce + 16tag = 40head
+                raise ValueError('_sendTimeDict: 指令发送时大于1008个字节')
+            elif len(command) < 40:
+                raise ValueError('_sendTimeDict: 指令发送时无字节')
+            data = self.__aes_ctr.aes_gcm_encrypt(self.mark + command)
         else:
-            if len(command) > 1016:
-                raise ValueError('sendCommand: 指令发送时大于1016个字节')
-            data = bytes(self.mark + command, 'utf-8')
+            if len(command) > 4088:
+                raise ValueError('_sendTimeDict: 指令发送时大于1016个字节')
+            elif len(command) < 40:
+                raise ValueError('_sendTimeDict: 指令发送时无字节')
+            data = (HashTools.getRandomStr(8) + command).encode('utf-8')
 
         if output:
-            socket_.send(data)
+            try:
+                socket_.send(data)
+            except OSError as e:
+                logging.debug(e)
+                raise TimeoutError('SendTimeout')
             if self.__aes_ctr:
                 getRecv = self.__timedict.getRecvData(self.mark)
             else:
@@ -490,8 +552,28 @@ class SocketSession(SocketTools):
                 raise ValueError('getRecvTimeout')
             return getRecv.decode('utf-8')
         else:
-            socket_.send(data)
+            try:
+                socket_.send(data)
+            except OSError as e:
+                logging.debug(e)
+                raise TimeoutError('SendTimeout')
             return ''
+
+    # @staticmethod
+    # def verifySendData(src_data: str or bytes, aes_ctr: CryptoTools) -> bytes:
+    #     if aes_ctr:
+    #         if len(src_data) > 4056:  # 8mark + 16nonce + 16tag = 40head
+    #             raise ValueError('sendCommandNoTimeDict: 指令发送时大于1008个字节')
+    #         elif len(src_data) < 40:
+    #             raise ValueError('sendCommandNoTimeDict: 指令发送时无字节')
+    #         data = aes_ctr.aes_gcm_encrypt(HashTools.getRandomStr(8) + src_data)
+    #     else:
+    #         if len(src_data) > 4088:
+    #             raise ValueError('sendCommandNoTimeDict: 指令发送时大于1016个字节')
+    #         elif len(src_data) < 40:
+    #             raise ValueError('sendCommandNoTimeDict: 指令发送时无字节')
+    #         data = (HashTools.getRandomStr(8) + src_data).encode('utf-8')
+    #     return data
 
     def __enter__(self):
         return self

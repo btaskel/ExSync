@@ -30,7 +30,7 @@ class BaseCommandSet(Scan):
         super().__init__()
 
         # 数据包传输分块大小(bytes)
-        self.block: int = 1024
+        self.block: int = 4096
 
         # 传递套接字实例对象
         self.command_socket: socket = command_socket
@@ -90,7 +90,6 @@ class BaseCommandSet(Scan):
         remote_file_hash: str = str(data_.get('file_hash'))
         mode: int = data_.get('mode')
         filemark = str(data_.get('filemark'))  # 用于接下来的文件传输的mark
-        nonce_length: int = 8
         reply_mark = mark
 
         def sendStatus(status_: str):
@@ -184,7 +183,7 @@ class BaseCommandSet(Scan):
                            encrypt_password=self.key) as command_session:
             command_session.send(command, output=False)
 
-        data_block = self.block - len(filemark) - nonce_length
+        data_block = self.block - len(filemark) - 32  # nonce + tag
 
         match mode:
             case 0:
@@ -231,7 +230,7 @@ class BaseCommandSet(Scan):
                     while read_data <= difference:
                         data = self.timedict.getRecvData(filemark)
                         f.write(data)
-                        read_data += self.block
+                        read_data += self.block - 40
                     return True
 
     def getFile(self, data_: dict, mark: str):
@@ -290,7 +289,7 @@ class BaseCommandSet(Scan):
             sendStatus('ParameterError')
             return
 
-        data_block = 1024 - len(filemark) - 8
+        data_block = self.block - len(filemark) - 32  # nonce + tag
 
         # 读取索引
         index = self.indexReadCache.getIndex(os.path.join(local_space_path, '.sync\\info\\files.json'))
@@ -303,11 +302,11 @@ class BaseCommandSet(Scan):
             local_file_size = 0
             local_file_hash = 0
 
-        def sendData(m_filemark):
+        def sendData(m_filemark, m_f):
             with SocketSession(self.timedict, self.data_socket, mark=m_filemark,
                                encrypt_password=self.key) as m_session:
                 while True:
-                    m_f_data = f.read(data_block)
+                    m_f_data = m_f.read(data_block)
                     if not m_f_data:
                         break
                     m_f_data = bytes(filemark, 'utf-8') + m_f_data
@@ -367,20 +366,20 @@ class BaseCommandSet(Scan):
                         }
                         command_session.send(command, output=False)
                         f.seek(remote_size)
-                        sendData(filemark)
+                        sendData(filemark, f)
                         return True
                     else:
                         return False
             elif remote_size > local_file_size:
                 # 重写远程文件
                 with open(file_abspath, mode='rb') as f:
-                    sendData(filemark)
+                    sendData(filemark, f)
                 return True
             else:
                 # 检查哈希值是否相同
                 if remote_file_hash == local_file_hash:
                     with open(file_abspath, mode='rb') as f:
-                        sendData(filemark)
+                        sendData(filemark, f)
                     return True
                 else:
                     return False
@@ -689,7 +688,7 @@ class CommandSetExpand(BaseCommandSet):
                 de_session_password = private_key.decrypt(base64_session_password).decode('utf-8')
                 de_session_id = private_key.decrypt(base64_session_id).decode('utf-8')
 
-                crypt_id = CryptoTools(de_session_password).b64_ctr_encrypt(self.id.encode('utf-8'))
+                crypt_id = CryptoTools(de_session_password).b64_gcm_encrypt(self.id.encode('utf-8'))
 
                 command = {
                     "data": {
@@ -728,14 +727,14 @@ class CommandSetExpand(BaseCommandSet):
 
             try:
                 remote_id_cry = base64.b64decode(remote_id_cry_b64)
-                remote_id = self.cry_aes.aes_ctr_decrypt(remote_id_cry)
+                remote_id = self.cry_aes.aes_gcm_decrypt(remote_id_cry)
             except Exception as e:
                 print(e)
                 return False
 
             # 5.验证本地sha384值是否与远程匹配匹配: 接收对方的密码sha384值, 如果通过返回id和验证状态
             password_sha384: str = hashlib.sha384(self.password.encode('utf-8')).hexdigest()
-            encry_local_password: bytes = self.cry_aes.aes_ctr_encrypt(self.id)
+            encry_local_password: bytes = self.cry_aes.aes_gcm_encrypt(self.id)
             base64_encry_local_password: str = base64.b64encode(encry_local_password).decode()
 
             if remote_password_sha384 == password_sha384:
@@ -891,7 +890,7 @@ class RecvCommand(CommandSetExpand):
                 continue
             mark, command = command[:8], command[8:]  # 8字节的mark头信息和指令
 
-            command = CryptoTools(self.key).aes_ctr_decrypt(command)
+            command = CryptoTools(self.key).aes_gcm_decrypt(command)
             if not command:
                 continue
 

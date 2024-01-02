@@ -67,7 +67,7 @@ class Client(Config, Proxy):
             """
             # 4.本地发送sha384:发送本地密码sha384
             password_sha384: str = hashlib.sha384(self.password.encode('utf-8')).hexdigest()
-            encrypt_local_id: bytes = CryptoTools(self.password).aes_ctr_encrypt(self.id)
+            encrypt_local_id: bytes = CryptoTools(self.password).aes_gcm_encrypt(self.id)
             b64_encrypt_local_id: str = base64.b64encode(encrypt_local_id).decode('utf-8')
 
             _command = {
@@ -76,13 +76,14 @@ class Client(Config, Proxy):
                     "id": b64_encrypt_local_id
                 }
             }
+
             out = SocketTools.sendCommandNoTimeDict(self.client_command_socket, command=_command)
             # 6.远程发送状态和id:获取通过状态和远程id 验证结束
             try:
                 output = json.loads(out[8:]).get('data')
-                remote_id = CryptoTools(self.password).aes_ctr_decrypt(base64.b64decode(output.get('id')))
+                remote_id = CryptoTools(self.password).aes_gcm_decrypt(base64.b64decode(output.get('id')))
                 status_ = output.get('status')
-            except Exception as w:
+            except TypeError as w:
                 print(w)
                 return False
 
@@ -147,11 +148,11 @@ class Client(Config, Proxy):
             try:
                 _data: dict = json.loads(_result[8:]).get('data')
                 remote_id = _data.get('id')
-            except Exception as a:
+            except TypeError as a:
                 print(a)
                 return False
             try:
-                remote_id = CryptoTools(session_password).b64_ctr_decrypt(remote_id)
+                remote_id = CryptoTools(session_password).b64_gcm_decrypt(remote_id)
             except Exception as e:
                 print(e)
                 return False
