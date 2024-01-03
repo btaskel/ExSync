@@ -9,7 +9,7 @@ from Crypto.PublicKey import RSA
 
 from core.option import Config
 from core.proxy import Proxy
-from core.tools import HashTools, SocketTools, CryptoTools, Status
+from core.tools import HashTools, SocketTools, CryptoTools
 from .command import CommandSend
 
 
@@ -26,34 +26,41 @@ class Client(Config, Proxy):
 
         if self.config['server']['proxy'].get('enabled'):
             socket.socket = self.setProxyServer(self.config)
+        self.timedict = None
 
-    def host_info(self, host_info: dict) -> bool:
+    def createSocket(self, host_info: dict):
         """
-        输入与主机联系的属性资料, 用于确认连接状态
-        {
-            'client_mark': client_mark,
-            'ip': ip,
-            'id': id,
-            'AES_KEY': aes_key,
-        }
+        创建套接字并连接到服务器
         :param host_info:
         :return:
         """
-        if isinstance(host_info, dict) and len(host_info) >= 1:
-            self.__host_info = host_info
-            return True
-        return False
+        self.__host_info = host_info
 
-    def createCommandSocket(self):
-        """
-        创建客户端的指令套接字
-        :return: 指令Socket
-        """
+        # 初始化命令套接字
         self.client_command_socket = socket.socket(self.socket_family, socket.SOCK_STREAM)
         self.client_command_socket.settimeout(4)
-        return self.client_command_socket
 
-    def connectRemoteCommandSocket(self) -> bool:
+        # 链接服务端
+        if not self._connectRemoteCommandSocket():
+            logging.error(f'Client: connect server. {self.ip} connection failure!')
+            raise ConnectionRefusedError('ClientDataSocketVerify')
+
+        self.client_data_socket = socket.socket(self.socket_family, socket.SOCK_STREAM)
+        self.client_data_socket.bind((self.local_ip, 0))
+        status = self.client_data_socket.connect_ex((self.ip, self.data_port))
+        if status == 0:
+            # 会话验证成功,创建指令控制对象
+            return CommandSend(self.client_data_socket, self.client_command_socket, self.__host_info.get('AES_KEY'))
+
+        elif status == 10061:
+            # 超时关闭连接
+            raise TimeoutError('ClientDataSocketConnectError')
+
+        else:
+            # 会话验证失败
+            raise ConnectionRefusedError('ConnectFail')
+
+    def _connectRemoteCommandSocket(self) -> bool:
         """
         尝试连接ip_list,连接成功返回连接的ip，并且增加进connected列表
         连接至对方的server-command_socket
@@ -76,15 +83,19 @@ class Client(Config, Proxy):
                     "id": b64_encrypt_local_id
                 }
             }
-
-            out = SocketTools.sendCommandNoTimeDict(self.client_command_socket, command=_command)
+            try:
+                out = SocketTools.sendCommandNoTimeDict(self.client_command_socket, command=_command)
+            except (TimeoutError, ValueError) as e:
+                logging.debug(e)
+                return False
             # 6.远程发送状态和id:获取通过状态和远程id 验证结束
+
             try:
                 output = json.loads(out[8:]).get('data')
                 remote_id = CryptoTools(self.password).aes_gcm_decrypt(base64.b64decode(output.get('id')))
                 status_ = output.get('status')
-            except TypeError as w:
-                print(w)
+            except (TypeError, ValueError) as e:
+                logging.debug(e)
                 return False
 
             if status_ == 'success':
@@ -96,11 +107,6 @@ class Client(Config, Proxy):
             elif status_ == 'fail':
                 # 验证服务端密码失败
                 debug_status and logging.error(f'Failed to verify server {self.ip} password!')
-                return False
-
-            elif status_ == Status.DATA_RECEIVE_TIMEOUT:
-                # 验证服务端密码超时
-                debug_status and logging.error(f'Verifying server {self.ip} password timeout!')
                 return False
 
             else:
@@ -135,16 +141,17 @@ class Client(Config, Proxy):
             # 获取加密当前主机id发送至对方
             encry_session_id: bytes = cipher_pub.encrypt(self.id.encode('utf-8'))
             base64_encry_session_id: str = base64.b64encode(encry_session_id).decode('utf-8')
-
             _command = {
                 "data": {
                     "session_password": base64_encry_session_password,
                     "id": base64_encry_session_id
                 }
             }
-
-            _result = SocketTools.sendCommandNoTimeDict(self.client_command_socket, _command)
-
+            try:
+                _result = SocketTools.sendCommandNoTimeDict(self.client_command_socket, _command)
+            except (ValueError, TimeoutError) as e:
+                logging.debug(e)
+                return False
             try:
                 _data: dict = json.loads(_result[8:]).get('data')
                 remote_id = _data.get('id')
@@ -201,7 +208,11 @@ class Client(Config, Proxy):
                     "method": "post",
                     "data": {"version": str(self.config.get('version'))}
                 }
-                result = SocketTools.sendCommandNoTimeDict(self.client_command_socket, command)
+                try:
+                    result = SocketTools.sendCommandNoTimeDict(self.client_command_socket, command)
+                except (ValueError, TimeoutError) as e:
+                    logging.debug(e)
+                    return False
                 # 3.远程发送sha256值:验证远程sha256值是否与本地匹配
                 try:
                     data = json.loads(result[8:]).get('data')
@@ -232,14 +243,14 @@ class Client(Config, Proxy):
                         return True
                     else:
                         continue
-
-                elif remote_password_sha256 == Status.DATA_RECEIVE_TIMEOUT:
-                    # 验证客户端密码哈希超时
-                    if i == count:
-                        logging.error(f'Connection to server {self.ip} timed out!')
-                        return False
-                    else:
-                        continue
+                #
+                # elif remote_password_sha256 == Status.DATA_RECEIVE_TIMEOUT:
+                #     # 验证客户端密码哈希超时
+                #     if i == count:
+                #         logging.error(f'Connection to server {self.ip} timed out!')
+                #         return False
+                #     else:
+                #         continue
 
                 else:
                     # 验证客户端密码哈希得到未知参数
@@ -263,35 +274,6 @@ class Client(Config, Proxy):
 
         aes_key = self.__host_info.get('AES_KEY')
         return direct() if aes_key else check()
-
-    def createClientDataSocket(self):
-        """
-        创建并连接client_data_socket - server_command_socket
-        :return: client_data_socket
-        """
-        if not self.client_command_socket:
-            raise AttributeError('未进行Command_socket连接，无法创建Data_socket')
-        self.client_data_socket = socket.socket(self.socket_family, socket.SOCK_STREAM)
-        self.client_data_socket.bind((self.local_ip, 0))
-        status = self.client_data_socket.connect_ex((self.ip, self.data_port))
-        if status == 0:
-            # 会话验证成功
-            return self.client_data_socket
-
-        elif status == 10061:
-            # 超时关闭连接
-            return Status.CONNECT_TIMEOUT
-
-        else:
-            # 会话验证失败
-            return Status.SESSION_FALSE
-
-    def createCommand(self):
-        """
-        创建指令控制对象
-        :return: 指令控制对象
-        """
-        return CommandSend(self.client_data_socket, self.client_command_socket, self.__host_info.get('AES_KEY'))
 
     def closeAllSocket(self):
         """结束与服务端的所有会话"""

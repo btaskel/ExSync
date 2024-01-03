@@ -7,18 +7,15 @@ from core.client.main import Client
 from core.proxy import Proxy
 from core.server.command import RecvCommand
 from core.server.scan import Scan
-from core.tools import Status, PermissionEnum, HashTools
+from core.tools import PermissionEnum, HashTools
 
 """
 客户端实例管理
 client_mark : {
-        'ip': ip,
-        'id': remote_id,
-        'client': client,
-        'command_socket': client_command_socket,
-        'permission': PermissionEnum.USER.value,
-        'control': control,
-        'AES_KEY': aes_key
+    'ip': ip,
+    'id': remote_id,
+    'control': client_control,
+    'AES_KEY': aes_key
     }
 """
 socket_manage: dict = {}
@@ -193,36 +190,26 @@ class Server(Scan, Manage, Proxy):
             'id': None,
             'AES_KEY': aes_key
         }
-        client.host_info(client_info)
-        client_command_socket = client.createCommandSocket()
-
-        if not client.connectRemoteCommandSocket():  # 连接指令Socket
-            logging.error(f'Client: {client_mark}, server: {ip} connection failure!')
+        try:
+            client_control = client.createSocket(client_info)
+        except TimeoutError as te:
+            logging.debug(te)
+            logging.info(f'Verifying connection to server {ip} has timed out!')
             return
-
-        client_data_socket = client.createClientDataSocket()  # 连接数据Socket
-        if client_data_socket == Status.CONNECT_TIMEOUT:
-            client.closeAllSocket()  # 连接超时, 关闭客户端连接
+        except ConnectionRefusedError as ce:
+            logging.debug(ce)
+            logging.info(f'Connection verification failed with server {ip}')
             return
-        elif client_data_socket == Status.SESSION_FALSE:
-            client.closeAllSocket()  # 会话验证失败, 关闭客户端连接
-            return
-        elif client_command_socket.permission >= PermissionEnum.USER.value:
+        if client_control.client_command_socket.permission >= PermissionEnum.USER.value:
             # 连接成功
-
-            control = client.createCommand()  # 初始化指令控制对象
-
             socket_manage[client_mark] = {
                 'ip': ip,
                 'id': remote_id,
-                'client': client,
-                'command_socket': client_command_socket,
-                'permission': PermissionEnum.USER.value,
-                'control': control,
+                'control': client_control,
                 'AES_KEY': aes_key
             }
-
-            return socket_manage[client_mark]
+            self.verified_devices.add(ip)
+            return
 
     def updateIplist(self):
         """
@@ -237,7 +224,6 @@ class Server(Scan, Manage, Proxy):
                 if ip not in self.verified_devices:
                     thread = threading.Thread(target=self.createClientCommandSocket, args=(ip,))
                     thread.start()
-                    self.verified_devices.add(ip)
             time.sleep(15)
 
 

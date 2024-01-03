@@ -159,7 +159,6 @@ class TimeDictInit(TimeDict):
         self.key: str = key
         self.close_all: bool = False
         self.encry: bool = False
-
         # 启动数据接收线程
         threading.Thread(target=self._recvData).start()
 
@@ -178,7 +177,10 @@ class TimeDictInit(TimeDict):
                 result: bytes = self.data_socket.recv(4096)
                 # 确保接收到的数据有效
                 # 16 nonce + 16 tag + 8 mark = 40 head
-                if len(result) <= 40:
+                if len(result) == 0:
+                    self.close()
+                    return
+                elif len(result) <= 40:
                     continue
                 # 分流数据内容
                 try:
@@ -186,7 +188,12 @@ class TimeDictInit(TimeDict):
                 except Exception as e:
                     logging.debug(e)
                     continue
-                mark: str = decrypt_data[:8].decode('utf-8')
+                try:
+                    mark: str = decrypt_data[:8].decode('utf-8')
+                except UnicodeDecodeError as e:
+                    logging.debug(e)
+                    continue
+
                 data: bytes = decrypt_data[8:]
 
                 if self.hasKey(mark):

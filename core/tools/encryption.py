@@ -101,7 +101,7 @@ class CryptoTools:
         tag = data[16:32]
         data_ = data[32:]
         if not nonce or not tag or not data_:
-            raise ValueError('DataError')
+            raise ValueError('aes_gcm_decrypt:DataError')
         cipher = AES.new(self.key.encode('utf-8'), AES.MODE_GCM, nonce=nonce)
         return cipher.decrypt_and_verify(data_, tag)
 

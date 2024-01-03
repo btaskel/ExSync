@@ -30,22 +30,26 @@ class BaseCommandSet(Config, Session):
         super().__init__()
         self.data_socket = data_socket
         self.command_socket = command_socket
-
-        self.indexReadCache = indexReadCache
-
-        # 数据包发送分块大小(含filemark, AES_nonce and AES_gcm_tag)
-        self.block: int = 4096
-
         self.timedict = TimeDictInit(data_socket, command_socket, key)
+        self.indexReadCache = indexReadCache
+        self.readDiskInfo = readDiskInfo
+
+        self.block: int = 4096 # 数据包发送分块大小(含filemark, AES_nonce and AES_gcm_tag)
+
         self.session = Session(self.timedict, key)
         self.key = key
-
-        self.readDiskInfo = readDiskInfo
 
         self.flags = []
 
     # def _addFlag(self, second: int):
     #     self.flags.remove()
+
+    def checkConnect(self):
+        while True:
+            time.sleep(2)
+            if not self.timedict.close_flag:
+                continue
+
 
     def postFile(self, relative_path: str, file_status: dict, space: dict, mode: int = 1):
         """

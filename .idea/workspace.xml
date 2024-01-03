@@ -4,15 +4,13 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="cf4f83ad-3c2a-4894-b3a1-82f233ce359d" name="变更" comment="索引读取缓存接入服务端文件索引处理">
+    <list default="true" id="cf4f83ad-3c2a-4894-b3a1-82f233ce359d" name="变更" comment="更改使用aes gcm">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/core/addition/iobalance.py" beforeDir="false" afterPath="$PROJECT_DIR$/core/addition/iobalance.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/core/client/command.py" beforeDir="false" afterPath="$PROJECT_DIR$/core/client/command.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/core/client/main.py" beforeDir="false" afterPath="$PROJECT_DIR$/core/client/main.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/core/server/command.py" beforeDir="false" afterPath="$PROJECT_DIR$/core/server/command.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/core/server/scan.py" beforeDir="false" afterPath="$PROJECT_DIR$/core/server/scan.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/core/control.py" beforeDir="false" afterPath="$PROJECT_DIR$/core/control.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/core/server/main.py" beforeDir="false" afterPath="$PROJECT_DIR$/core/server/main.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/core/tools/encryption.py" beforeDir="false" afterPath="$PROJECT_DIR$/core/tools/encryption.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/core/tools/socketSession.py" beforeDir="false" afterPath="$PROJECT_DIR$/core/tools/socketSession.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/core/tools/timedict.py" beforeDir="false" afterPath="$PROJECT_DIR$/core/tools/timedict.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
@@ -123,7 +121,7 @@
       <recent name="H:\Python project\ExSync\server\addition" />
     </key>
   </component>
-  <component name="RunManager" selected="Python.a">
+  <component name="RunManager" selected="Python.encryption">
     <configuration default="true" type="PythonConfigurationType" factoryName="Python">
       <module name="Sync" />
       <option name="INTERPRETER_OPTIONS" value="" />
@@ -271,9 +269,9 @@
     </list>
     <recent_temporary>
       <list>
+        <item itemvalue="Python.encryption" />
         <item itemvalue="Python.a" />
         <item itemvalue="Python.b" />
-        <item itemvalue="Python.encryption" />
         <item itemvalue="Python.demo546" />
         <item itemvalue="Python.demo546" />
       </list>
@@ -513,14 +511,9 @@
       <workItem from="1704076728744" duration="1690000" />
       <workItem from="1704109463944" duration="1039000" />
       <workItem from="1704117535213" duration="5392000" />
-      <workItem from="1704166122442" duration="18877000" />
-    </task>
-    <task id="LOCAL-00010" summary="远程索引更新完成">
-      <created>1694525901897</created>
-      <option name="number" value="00010" />
-      <option name="presentableId" value="LOCAL-00010" />
-      <option name="project" value="LOCAL" />
-      <updated>1694525901897</updated>
+      <workItem from="1704166122442" duration="24686000" />
+      <workItem from="1704254110096" duration="4891000" />
+      <workItem from="1704286206366" duration="5975000" />
     </task>
     <task id="LOCAL-00011" summary="双方文件同步完成">
       <created>1694611455571</created>
@@ -858,7 +851,14 @@
       <option name="project" value="LOCAL" />
       <updated>1702734271046</updated>
     </task>
-    <option name="localTasksCounter" value="59" />
+    <task id="LOCAL-00059" summary="更改使用aes gcm">
+      <created>1704192434890</created>
+      <option name="number" value="00059" />
+      <option name="presentableId" value="LOCAL-00059" />
+      <option name="project" value="LOCAL" />
+      <updated>1704192434890</updated>
+    </task>
+    <option name="localTasksCounter" value="60" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -894,7 +894,6 @@
     <ignored-roots>
       <path value="$PROJECT_DIR$/test/yonglonius.github.io" />
     </ignored-roots>
-    <MESSAGE value="基本交互内核完成." />
     <MESSAGE value="fix bugs." />
     <MESSAGE value="The client getIndex function is complete." />
     <MESSAGE value="远程索引更新完成" />
@@ -919,7 +918,8 @@
     <MESSAGE value="1.调整目录结构, 2.连接flask (调试中)" />
     <MESSAGE value="更改文件发送逻辑为使用本地索引" />
     <MESSAGE value="索引读取缓存接入服务端文件索引处理" />
-    <option name="LAST_COMMIT_MESSAGE" value="索引读取缓存接入服务端文件索引处理" />
+    <MESSAGE value="更改使用aes gcm" />
+    <option name="LAST_COMMIT_MESSAGE" value="更改使用aes gcm" />
   </component>
   <component name="com.intellij.coverage.CoverageDataManagerImpl">
     <SUITE FILE_PATH="coverage/Sync$sum_of_squares_pyx.coverage" NAME="sum_of_squares.pyx 覆盖结果" MODIFIED="1691302028250" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$" />
@@ -927,7 +927,7 @@
     <SUITE FILE_PATH="coverage/ExSync$iobalance.coverage" NAME="iobalance 覆盖结果" MODIFIED="1695604953166" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/server/addition" />
     <SUITE FILE_PATH="coverage/ExSync$github__1_.coverage" NAME="github (1) 覆盖结果" MODIFIED="1699521040654" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/core/api" />
     <SUITE FILE_PATH="coverage/ExSync$control.coverage" NAME="control 覆盖结果" MODIFIED="1701570064370" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/core" />
-    <SUITE FILE_PATH="coverage/ExSync$a.coverage" NAME="a 覆盖结果" MODIFIED="1704182704532" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/test" />
+    <SUITE FILE_PATH="coverage/ExSync$a.coverage" NAME="a 覆盖结果" MODIFIED="1704256601688" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/test" />
     <SUITE FILE_PATH="coverage/ExSync$demo.coverage" NAME="demo 覆盖结果" MODIFIED="1703659509912" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/test" />
     <SUITE FILE_PATH="coverage/ExSync$run.coverage" NAME="run 覆盖结果" MODIFIED="1694002892630" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/server" />
     <SUITE FILE_PATH="coverage/ExSync$socket.coverage" NAME="socket 覆盖结果" MODIFIED="1702646562606" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/core/tools" />
@@ -943,9 +943,9 @@
     <SUITE FILE_PATH="coverage/ExSync$demo546__1_.coverage" NAME="demo546 (1) 覆盖结果" MODIFIED="1703659581112" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/test" />
     <SUITE FILE_PATH="coverage/Sync$test2.coverage" NAME="test2 覆盖结果" MODIFIED="1692244692468" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$" />
     <SUITE FILE_PATH="coverage/ExSync$demo1.coverage" NAME="demo1 覆盖结果" MODIFIED="1701688041659" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/test" />
-    <SUITE FILE_PATH="coverage/ExSync$encryption.coverage" NAME="encryption 覆盖结果" MODIFIED="1704175829972" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/core/tools" />
+    <SUITE FILE_PATH="coverage/ExSync$encryption.coverage" NAME="encryption 覆盖结果" MODIFIED="1704256658798" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/core/tools" />
     <SUITE FILE_PATH="coverage/Sync$test.coverage" NAME="test 覆盖结果" MODIFIED="1692406922421" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$" />
-    <SUITE FILE_PATH="coverage/ExSync$b.coverage" NAME="b 覆盖结果" MODIFIED="1704177990519" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/test" />
+    <SUITE FILE_PATH="coverage/ExSync$b.coverage" NAME="b 覆盖结果" MODIFIED="1704202863300" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/test" />
     <SUITE FILE_PATH="coverage/ExSync$cache.coverage" NAME="cache 覆盖结果" MODIFIED="1702649204939" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/core/server" />
     <SUITE FILE_PATH="coverage/Sync$test3.coverage" NAME="test3 覆盖结果" MODIFIED="1691976250069" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$" />
     <SUITE FILE_PATH="coverage/ExSync$tools.coverage" NAME="tools 覆盖结果" MODIFIED="1701252313947" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/core/tools" />

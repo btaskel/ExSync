@@ -9,19 +9,12 @@ from core.option import readConfig
 from core.server.main import Server, socket_manage
 
 
-class Control(readConfig):
-    """
-    本地客户端与远程服务端操作接口
-    """
-
+class SocketManage(readConfig):
     def __init__(self):
-        super().__init__()
         self.config = self.readJson()
-        self.userdata: dict = {}
-        for space in self.config['userdata']:
-            self.userdata[space['spacename']] = space
 
-    def getAllDevice(self) -> list:
+    @staticmethod
+    def getAllDevice() -> list:
         """
         :return 返回所有设备id:
         """
@@ -53,6 +46,18 @@ class Control(readConfig):
             if space['spacename'] == spacename:
                 return space
         return {}
+
+
+class Control(SocketManage):
+    """
+    本地客户端与远程服务端操作接口
+    """
+
+    def __init__(self):
+        super().__init__()
+        self.userdata: dict = {}
+        for space in self.config['userdata']:
+            self.userdata[space['spacename']] = space
 
     def _commonpath(self, file_path: str) -> dict:
         """
